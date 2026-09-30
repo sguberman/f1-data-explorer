@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>2026 F1 Analytics</title>
+<link rel="stylesheet" href="theme.css">
+<script src="theme.js"></script>
+<style>
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;padding:32px 16px 48px;}
+main{max-width:760px;margin:0 auto;}
+h1{font-size:22px;margin:0 0 4px;}
+.sub{font-size:13px;color:var(--sub);margin:0 0 24px;}
+h2{font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--sub);margin:28px 0 10px;}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px;}
+a.card{display:block;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 16px 14px;text-decoration:none;color:inherit;transition:border-color .15s,box-shadow .15s,transform .15s;}
+a.card:hover,a.card:focus-visible{border-color:var(--line-strong);box-shadow:0 4px 14px var(--shadow);transform:translateY(-1px);outline:none;}
+.card h3{font-size:15px;margin:0 0 6px;}
+.card p{font-size:12.5px;line-height:1.5;color:var(--muted);margin:0;}
+.card .go{display:inline-block;margin-top:10px;font-size:12px;font-weight:600;color:var(--ink2);}
+</style>
+</head>
+<body>
+<main>
+<div class="theme-bar" id="themeToggle"></div>
+<h1>2026 F1 Analytics</h1>
+<p class="sub">Championship charts and title projections · through Round 15 (Azerbaijan)</p>
+
+<h2>Drivers</h2>
+<div class="grid">
+  <a class="card" href="drivers.html">
+    <h3>Drivers' Championship — Cumulative Points</h3>
+    <p>Round-by-round points for drivers from the top four teams, with a knockout line showing who can still mathematically win the title.</p>
+    <span class="go">View chart →</span>
+  </a>
+  <a class="card" href="simulator.html">
+    <h3>Title Simulator</h3>
+    <p>Monte Carlo projection of the remaining 8 Grands Prix plus the Singapore sprint, based on current form with adjustable reliability.</p>
+    <span class="go">Run simulator →</span>
+  </a>
+  <a class="card" href="position.html">
+    <h3>Race Finishing Position</h3>
+    <p>Per-driver breakdown of how often each finishes P1 through P10 or worse, across all 15 rounds (mechanical DNFs excluded).</p>
+    <span class="go">View chart →</span>
+  </a>
+</div>
+
+<h2>Constructors</h2>
+<div class="grid">
+  <a class="card" href="constructors-top4.html">
+    <h3>Constructors' Championship — Top Four Teams</h3>
+    <p>Mercedes, Ferrari, McLaren and Red Bull, with projections from each team's last 5 rounds.</p>
+    <span class="go">View chart →</span>
+  </a>
+  <a class="card" href="constructors-midfield.html">
+    <h3>Constructors' Championship — Midfield Teams</h3>
+    <p>Racing Bulls, Alpine, Haas, Williams, Audi, Aston Martin and Cadillac, with projections from each team's last 5 rounds.</p>
+    <span class="go">View chart →</span>
+  </a>
+</div>
+</main>
+</body>
+</html>

@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>2026 Title Simulator</title>
+<link rel="stylesheet" href="theme.css">
+<script src="theme.js"></script>
+<style>
+:root{
+  --mer:#00A79D;--mcl:#FF8000;--fer:#DC0000;--rb:#1B2A6B;
+  box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+}
+*{box-sizing:border-box;}
+html,body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;}
+body{padding:28px 18px 60px;}
+.wrap{max-width:760px;margin:0 auto;}
+h1{font-size:22px;font-weight:650;letter-spacing:-0.01em;margin:0 0 4px;}
+.lede{color:var(--sub);font-size:14px;line-height:1.55;margin:0 0 22px;max-width:62ch;}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:18px 20px;margin-bottom:16px;}
+.row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;}
+label{font-size:13px;color:var(--sub);}
+select,button{font:inherit;}
+select{background:var(--inset);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:6px 10px;}
+button{background:var(--ink);color:var(--on-ink);border:none;border-radius:7px;padding:10px 18px;font-weight:600;cursor:pointer;}
+button:active{transform:translateY(1px);}
+button:disabled{opacity:.5;cursor:default;}
+.status{font-size:12.5px;color:var(--sub);margin-top:10px;}
+h2{font-size:14px;font-weight:650;margin:0 0 12px;color:var(--sub);text-transform:none;}
+.driver-row{display:grid;grid-template-columns:52px 1fr 46px;align-items:center;gap:10px;padding:6px 0;}
+.tag{font-weight:700;font-size:13px;}
+.bar-track{background:var(--inset);border-radius:5px;height:14px;overflow:hidden;}
+.bar-fill{height:100%;border-radius:5px;}
+.pct{font-variant-numeric:tabular-nums;font-size:13px;text-align:right;}
+table{width:100%;border-collapse:collapse;font-size:13px;}
+th,td{text-align:right;padding:7px 6px;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums;}
+th:first-child,td:first-child{text-align:left;}
+th{color:var(--sub);font-weight:600;font-size:11.5px;}
+.note{font-size:11.5px;color:var(--sub);line-height:1.5;margin-top:2px;}
+.dnf-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px 14px;}
+.dnf-item{display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--inset);border:1px solid var(--line);border-radius:7px;padding:7px 8px 7px 10px;}
+.dnf-item .tag{font-size:12.5px;}
+.stepper{display:flex;align-items:center;gap:2px;}
+.stepper button{width:26px;height:26px;padding:0;border-radius:6px;background:var(--ctrl);color:var(--ink);border:1px solid var(--line);font-size:15px;font-weight:600;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;}
+.stepper button:active{background:var(--ctrl-active);}
+.stepper button:disabled{opacity:.35;cursor:default;}
+.stepper .val{width:20px;text-align:center;font-variant-numeric:tabular-nums;font-size:13px;}
+.reset{background:transparent;color:var(--sub);border:1px solid var(--line);border-radius:6px;padding:7px 12px;font-size:12.5px;cursor:pointer;}
+canvas{max-width:100%;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="theme-bar" id="themeToggle"></div>
+  <h1>2026 Drivers' title — rest-of-season simulation</h1>
+  <p class="lede">Monte Carlo projection for the rest of the season: 8 remaining Grands Prix plus the Singapore sprint. Pace comes from each driver's actual finishing-position distribution through round 15 (mechanical DNFs excluded from that pace read); reliability is set manually below as a number of DNFs out of all 9 remaining events, with the specific event(s) randomized per simulation. Not a prediction — a range of plausible outcomes if current form holds.</p>
+
+  <div class="card">
+    <div class="row" style="margin-bottom:12px;">
+      <h2 style="margin:0;">DNFs in the remaining 8 rounds</h2>
+      <button class="reset" id="resetDnf">Reset to 0</button>
+    </div>
+    <div class="dnf-grid" id="dnfGrid"></div>
+    <div class="note">Set how many of the remaining 9 events (8 Grands Prix + the Singapore sprint) each driver fails to finish. Which specific event(s) each DNF lands on is randomized fresh in every simulated season.</div>
+  </div>
+
+  <div class="card row">
+    <div>
+      <label for="n">Simulations</label><br>
+      <select id="n">
+        <option value="2000">2,000 (fast)</option>
+        <option value="10000" selected>10,000</option>
+        <option value="30000">30,000 (slower)</option>
+      </select>
+    </div>
+    <button id="run">Run simulation</button>
+  </div>
+  <div class="status" id="status">Ready — click run.</div>
+
+  <div class="card" id="oddsCard" style="display:none;">
+    <h2>Championship win probability</h2>
+    <div id="odds"></div>
+  </div>
+
+  <div class="card" id="rangeCard" style="display:none;">
+    <h2>Projected final points (5th–95th percentile range)</h2>
+    <table>
+      <thead><tr><th>Driver</th><th>Now</th><th>Median</th><th>Low (5%)</th><th>High (95%)</th></tr></thead>
+      <tbody id="rangeBody"></tbody>
+    </table>
+    <div class="note">Ranks among these 8 drivers only. Grands Prix use standard race points (25–4 for 1st–8th); the Singapore sprint uses sprint points (8–1 for 1st–8th), using the same pace weighting as a normal round.</div>
+  </div>
+
+  <div class="card" id="distCard" style="display:none;">
+    <h2>Final points — distribution across all simulated seasons</h2>
+    <div style="position:relative;height:280px;"><canvas id="distChart"></canvas></div>
+    <div class="note">Each curve is one driver's spread of possible final totals. Overlap between two curves is a rough visual read on how contested that gap still is — heavy overlap means the sim sees the outcome as a toss-up.</div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+const T={mer:'#00A79D',mcl:'#FF8000',fer:'#DC0000',rb:'#1B2A6B'};
+// weight = average race points/weekend through round 15 (mechanical DNFs excluded) — pace when the car survives
+// dnf  = share of this driver's rounds this season lost to a mechanical/reliability issue — risk of not surviving
+const D=[
+ {n:'ANT',c:T.mer,now:302,w:21.23},
+ {n:'RUS',c:T.mer,now:236,w:14.43},
+ {n:'HAM',c:T.fer,now:199,w:12.64},
+ {n:'NOR',c:T.mcl,now:186,w:12.83},
+ {n:'LEC',c:T.fer,now:179,w:10.93},
+ {n:'VER',c:T.rb, now:163,w:11.62},
+ {n:'PIA',c:T.mcl,now:120,w:7.36},
+ {n:'HAD',c:T.rb, now:86, w:7.00}
+];
+const ROUNDS_LEFT=8; // remaining Grands Prix
+const EVENTS=9; // 8 GPs + 1 sprint (Singapore) — DNF risk applies equally to all 9
+const EVENT_TYPES=['gp','gp','gp','gp','gp','gp','gp','gp','sprint'];
+const PTS_GP=[25,18,15,12,10,8,6,4];       // 8 tracked drivers only, ranked among survivors
+const PTS_SPRINT=[8,7,6,5,4,3,2,1];
+
+function dnfCounts(){ return dnfState.slice(); }
+
+// pick k distinct event indices out of EVENTS (partial Fisher-Yates)
+function randomRounds(k){
+  const a=Array.from({length:EVENTS},(_,i)=>i);
+  for(let i=0;i<k;i++){
+    const j=i+Math.floor(Math.random()*(EVENTS-i));
+    [a[i],a[j]]=[a[j],a[i]];
+  }
+  return new Set(a.slice(0,k));
+}
+
+function sampleOrder(alive){
+  // Gumbel-max trick: log(w) - log(-log(U)) ranked desc = a draw from Plackett-Luce(w), restricted to survivors
+  return alive.map(i=>({i,k:Math.log(D[i].w)-Math.log(-Math.log(Math.random()))}))
+              .sort((a,b)=>b.k-a.k).map(x=>x.i);
+}
+function quantile(arr,q){
+  const s=[...arr].sort((a,b)=>a-b);
+  const pos=(s.length-1)*q, lo=Math.floor(pos), hi=Math.ceil(pos);
+  return lo===hi ? s[lo] : s[lo]+(s[hi]-s[lo])*(pos-lo);
+}
+
+function buildDnfInputs(){
+  document.getElementById('dnfGrid').innerHTML=D.map((d,i)=>`
+    <div class="dnf-item">
+      <span class="tag" data-i="${i}" style="color:${F1Theme.team(d.c)}">${d.n}</span>
+      <div class="stepper">
+        <button type="button" data-i="${i}" data-dir="-1" aria-label="Decrease ${d.n} DNFs">−</button>
+        <span class="val" id="dnfVal${i}">0</span>
+        <button type="button" data-i="${i}" data-dir="1" aria-label="Increase ${d.n} DNFs">+</button>
+      </div>
+    </div>`).join('');
+  dnfState=D.map(()=>0);
+  syncStepperDisabled();
+  document.querySelectorAll('.stepper button').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      const i=+btn.dataset.i, dir=+btn.dataset.dir;
+      dnfState[i]=Math.min(EVENTS,Math.max(0,dnfState[i]+dir));
+      document.getElementById('dnfVal'+i).textContent=dnfState[i];
+      syncStepperDisabled();
+    });
+  });
+}
+function recolorDnfTags(){
+  document.querySelectorAll('#dnfGrid .tag[data-i]').forEach(el=>{ el.style.color=F1Theme.team(D[+el.dataset.i].c); });
+}
+function syncStepperDisabled(){
+  document.querySelectorAll('.stepper button').forEach(btn=>{
+    const i=+btn.dataset.i, dir=+btn.dataset.dir;
+    btn.disabled = dir<0 ? dnfState[i]<=0 : dnfState[i]>=EVENTS;
+  });
+}
+let dnfState=D.map(()=>0);
+buildDnfInputs();
+document.getElementById('resetDnf').addEventListener('click',buildDnfInputs);
+
+document.getElementById('run').addEventListener('click',()=>{
+  const btn=document.getElementById('run'); btn.disabled=true;
+  document.getElementById('status').textContent='Simulating…';
+  setTimeout(()=>{
+    const N=+document.getElementById('n').value;
+    const counts=dnfCounts();
+    const finals=D.map(()=>[]);
+    const wins=new Array(D.length).fill(0);
+    for(let s=0;s<N;s++){
+      const totals=D.map(d=>d.now);
+      const dnfRounds=counts.map(k=>randomRounds(k)); // which of the 9 events each driver misses, this season
+      for(let r=0;r<EVENTS;r++){
+        const alive=[];
+        for(let i=0;i<D.length;i++) if(!dnfRounds[i].has(r)) alive.push(i);
+        const order=sampleOrder(alive);
+        const pts = EVENT_TYPES[r]==='sprint' ? PTS_SPRINT : PTS_GP;
+        order.forEach((driverIdx,rank)=>{ if(rank<pts.length) totals[driverIdx]+=pts[rank]; });
+      }
+      let best=0;
+      for(let i=1;i<D.length;i++) if(totals[i]>totals[best]) best=i;
+      wins[best]++;
+      totals.forEach((t,i)=>finals[i].push(t));
+    }
+    const odds=wins.map(w=>100*w/N);
+    renderOdds(odds);
+    renderRange(finals);
+    renderDist(finals);
+    document.getElementById('oddsCard').style.display='block';
+    document.getElementById('rangeCard').style.display='block';
+    document.getElementById('distCard').style.display='block';
+    document.getElementById('status').textContent=`${N.toLocaleString()} seasons simulated.`;
+    btn.disabled=false;
+  },30);
+});
+
+let distChart=null, lastFinals=null;
+function renderDist(finals){
+  lastFinals=finals;
+  const P=F1Theme.chart();
+  const DC=D.map(d=>({...d,c:F1Theme.team(d.c)}));
+  const all=finals.flat();
+  const min=Math.floor(Math.min(...all)/10)*10, max=Math.ceil(Math.max(...all)/10)*10;
+  const binSize=10;
+  const bins=[]; for(let b=min;b<=max;b+=binSize) bins.push(b);
+  const datasets=DC.map((d,i)=>{
+    const counts=new Array(bins.length).fill(0);
+    finals[i].forEach(v=>{ const bi=Math.min(Math.floor((v-min)/binSize),bins.length-1); counts[bi]++; });
+    return {label:d.n,data:counts,backgroundColor:d.c+'55',borderColor:d.c,borderWidth:1.5};
+  });
+  if(distChart) distChart.destroy();
+  distChart=new Chart(document.getElementById('distChart'),{
+    type:'bar',
+    data:{labels:bins.map(b=>b), datasets},
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      interaction:{mode:'index',intersect:false},
+      plugins:{legend:{position:'bottom',labels:{color:P.text,boxWidth:12,font:{size:11}}},
+        tooltip:{callbacks:{title:t=>`~${t[0].label} pts`, label:t=>` ${t.dataset.label}: ${t.raw} seasons`}}},
+      scales:{
+        x:{stacked:false,grid:{display:false},ticks:{color:P.text,maxRotation:0,autoSkip:true},title:{display:true,text:'final points',color:P.text}},
+        y:{stacked:false,grid:{color:P.grid},ticks:{color:P.text},title:{display:true,text:'simulated seasons',color:P.text}}
+      }
+    }
+  });
+}
+window.addEventListener('themechange',()=>{ if(lastFinals) renderDist(lastFinals); });
+
+function renderOdds(odds){
+  lastOdds=odds;
+  const rows=D.map((d,i)=>({d,c:F1Theme.team(d.c),pct:odds[i]})).sort((a,b)=>b.pct-a.pct);
+  document.getElementById('odds').innerHTML=rows.map(({d,c,pct})=>`
+    <div class="driver-row">
+      <div class="tag" style="color:${c}">${d.n}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${Math.max(pct,0.4)}%;background:${c}"></div></div>
+      <div class="pct">${pct<0.1 && pct>0 ? '<0.1' : pct.toFixed(1)}%</div>
+    </div>`).join('');
+}
+function renderRange(finals){
+  const rows=D.map((d,i)=>{
+    const f=finals[i];
+    return {d,c:F1Theme.team(d.c),med:quantile(f,.5),lo:quantile(f,.05),hi:quantile(f,.95)};
+  }).sort((a,b)=>b.med-a.med);
+  document.getElementById('rangeBody').innerHTML=rows.map(({d,c,med,lo,hi})=>`
+    <tr>
+      <td style="color:${c};font-weight:600;">${d.n}</td>
+      <td>${d.now}</td>
+      <td>${Math.round(med)}</td>
+      <td>${Math.round(lo)}</td>
+      <td>${Math.round(hi)}</td>
+    </tr>`).join('');
+}
+let lastOdds=null;
+window.addEventListener('themechange',()=>{
+  recolorDnfTags();
+  if(lastOdds) renderOdds(lastOdds);
+  if(lastFinals) renderRange(lastFinals);
+});
+</script>
+</body>
+</html>
