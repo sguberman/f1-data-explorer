@@ -152,6 +152,30 @@ const F1Data = (() => {
     return rounds;
   }
 
+  // Real season schedule from /api/[year] — every round for the year, including ones not yet run,
+  // each flagged for whether it has a sprint. This is the authoritative source for "how many rounds
+  // and sprints does this season have in total", replacing any static guess. Cached for a day: calendars
+  // are effectively static but can occasionally get revised (e.g. a postponed/relocated round).
+  const CALENDAR_TTL_MS = 24*60*60*1000;
+  async function getCalendar(year){
+    const key = `${year}/calendar`;
+    const cached = cacheGet(key);
+    if(cached !== undefined) return cached;
+    let totalRounds=0, sprintRounds=[], raceNames={};
+    try{
+      const data = await fetchJSON(`${API}/${year}?limit=30`);
+      const races = (data && data.races) || [];
+      totalRounds = races.length;
+      races.forEach(r=>{
+        raceNames[r.round] = r.raceName;
+        if(r.schedule && r.schedule.sprintRace && r.schedule.sprintRace.date) sprintRounds.push(r.round);
+      });
+    }catch(e){ /* leave zeros — callers fall back to their own default when totalRounds is 0 */ }
+    const result = { totalRounds, sprintRounds, raceNames };
+    cacheSet(key, result, CALENDAR_TTL_MS);
+    return result;
+  }
+
   // Build cumulative per-driver and per-team points through a given round (1-indexed, inclusive).
   // mechanicalMode: 'exclude' (drop mechanical DNF rounds from the dataset, as we've been doing) or 'include' (zero them, keep the round)
   function cumulative(seasonRounds, throughRound, mechanicalMode='exclude'){
@@ -178,5 +202,5 @@ const F1Data = (() => {
       .sort((a,b)=>b.total-a.total).slice(0,n).map(t=>t.teamId);
   }
 
-  return { loadSeason, cumulative, topTeams, isMechanical };
+  return { loadSeason, cumulative, topTeams, isMechanical, getCalendar };
 })();

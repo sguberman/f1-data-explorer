@@ -20,8 +20,12 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
 <div class="wrap">
 <div class="theme-bar" id="themeToggle"></div>
 <h1>F1 Drivers' Championship — Cumulative Points</h1>
-<p class="sub">Top four teams by points, as of the selected round · knockout line shows the minimum points needed to still win the title · projections from each driver's last 5 races</p>
+<p class="sub">Defaults to the top four teams by points, as of the selected round — pick any drivers below · knockout line shows the minimum points needed to still win the title · projections from each driver's last 5 races</p>
 <div id="f1controls" class="f1c"></div>
+<div class="card" style="margin-bottom:16px;">
+<div style="font-size:12px;color:var(--sub);margin-bottom:8px;">Drivers shown</div>
+<div id="driverPicker" style="display:flex;flex-wrap:wrap;gap:4px 16px;font-size:12.5px;"></div>
+</div>
 <div class="card">
 <div id="lg" style="display:flex;flex-wrap:wrap;gap:8px 20px;margin:0 0 10px;font-size:12px;color:var(--ink2);"></div>
 <div style="position:relative;width:100%;height:440px;" id="chartWrap">
@@ -55,35 +59,64 @@ const rgba=(h,a)=>{
  return h.slice(0,-1)+' / '+a+')'; // modern hsl(h s% l% / a) syntax for the hashed-color fallback
 };
 
-let D=[], N=0, L=0, R=[], thr=[], lead=[], P, chart;
-let currentYear=null, currentSeasonRounds=[];
+let D=[], N=0, L=0, R=[], thr=[], lead=[], P, chart, usingRealCalendar=false;
+let currentYear=null, currentSeasonRounds=[], currentCalendar=null, selectedDriverIds=null;
 
-function buildFromSelection(detail){
+async function buildFromSelection(detail){
  currentYear = detail.year;
  currentSeasonRounds = detail.seasonRounds;
  if(!currentSeasonRounds.length){ D=[]; if(chart) chart.destroy(); return; }
+ currentCalendar = await F1Data.getCalendar(currentYear);
+ selectedDriverIds = null; // reset to "default to top 4 teams" whenever the season changes
+ buildDriverPicker();
  recompute(detail.round);
+}
+
+function buildDriverPicker(){
+ const fullCum = F1Data.cumulative(currentSeasonRounds, currentSeasonRounds.length, 'include');
+ const top4 = F1Data.topTeams(fullCum, 4);
+ if(!selectedDriverIds) selectedDriverIds = Object.values(fullCum.drivers).filter(d=>top4.includes(d.teamId)).map(d=>d.driverId);
+ const byTeam={};
+ Object.values(fullCum.drivers).forEach(d=>{ (byTeam[d.teamId]=byTeam[d.teamId]||[]).push(d); });
+ document.getElementById('driverPicker').innerHTML = Object.values(byTeam).map(drivers=>
+   drivers.map(d=>`<label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;">
+     <input type="checkbox" data-id="${d.driverId}" ${selectedDriverIds.includes(d.driverId)?'checked':''}>${d.code}</label>`).join('')
+ ).join('');
+ document.querySelectorAll('#driverPicker input').forEach(cb=>{
+   cb.addEventListener('change', ()=>{
+     const id=cb.dataset.id;
+     selectedDriverIds = cb.checked ? [...selectedDriverIds, id] : selectedDriverIds.filter(x=>x!==id);
+     recompute(L);
+   });
+ });
 }
 
 // Pure recompute from already-loaded season data — no network, safe to call on every drag-handle move.
 function recompute(round){
  const year = currentYear, seasonRounds = currentSeasonRounds;
  const cum = F1Data.cumulative(seasonRounds, round, 'include');
- const top4 = F1Data.topTeams(cum, 4);
  const meta = seasonMeta(year);
+ const cal = currentCalendar;
+ const haveCalendar = cal && cal.totalRounds > 0;
+ usingRealCalendar = haveCalendar;
  L = round;
- N = Math.max(meta.rounds, L);
- R = seasonRounds.map(r=>r.raceName.replace(/ Grand Prix.*/i,'').replace(String(year),'').trim());
- while(R.length<N) R.push('TBD');
+ N = haveCalendar ? Math.max(cal.totalRounds, L) : Math.max(meta.rounds, L);
+ R = Array.from({length:N},(_,i)=>{
+   const rnd=i+1;
+   const name = haveCalendar ? cal.raceNames[rnd] : (seasonRounds[i] && seasonRounds[i].raceName);
+   return name ? name.replace(/ Grand Prix.*/i,'').replace(String(year),'').trim() : 'TBD';
+ });
 
- const sprintsSoFar = seasonRounds.filter(r=>r.round<=L && r.sprintResults).length;
- const remainingSprints = Math.max(0, meta.sprints - sprintsSoFar);
- const rem = r => { const roundsLeft=N-r; return 25*roundsLeft + 8*Math.min(remainingSprints, roundsLeft); };
+ // Exact remaining-points calc when we have the real calendar; falls back to the old estimate otherwise.
+ const rem = haveCalendar
+   ? (r => 25*(N-r) + 8*cal.sprintRounds.filter(x=>x>r).length)
+   : (r => { const left=N-r; const sprintsSoFar=seasonRounds.filter(x=>x.round<=L && x.sprintResults).length;
+       return 25*left + 8*Math.min(Math.max(0,meta.sprints-sprintsSoFar), left); });
 
- D = top4.flatMap(teamId=>{
-   const teamDrivers = Object.values(cum.drivers).filter(dr=>dr.teamId===teamId)
-     .map(dr=>({...dr,total:dr.rounds.reduce((s,x)=>s+x.points,0)}))
-     .sort((a,b)=>b.total-a.total);
+ const byTeam={};
+ (selectedDriverIds||[]).forEach(id=>{ const dr=cum.drivers[id]; if(!dr) return; (byTeam[dr.teamId]=byTeam[dr.teamId]||[]).push(dr); });
+ D = Object.entries(byTeam).flatMap(([teamId,teamDrivers])=>{
+   teamDrivers = teamDrivers.map(dr=>({...dr,total:dr.rounds.reduce((s,x)=>s+x.points,0)})).sort((a,b)=>b.total-a.total);
    return teamDrivers.map((dr,i)=>{
      const w=Array.from({length:L},(_,ri)=>{
        const rnd=ri+1;
@@ -140,7 +173,7 @@ const yMax=Math.ceil(peak*1.1/50)*50;
 const yStep=yMax<=300?50:yMax<=600?100:yMax<=1200?200:500;
 if(chart)chart.destroy();
 chart=new Chart(document.getElementById('c'),{type:'line',data:{labels:R.map((_,i)=>String(i+1)),datasets:ds},plugins:[shade,marks,ends],
-options:{responsive:true,maintainAspectRatio:false,layout:{padding:{right:PR,top:4}},interaction:{mode:'index',intersect:false},
+options:{responsive:true,maintainAspectRatio:false,animation:false,layout:{padding:{right:PR,top:4}},interaction:{mode:'index',intersect:false},
 plugins:{legend:{display:false},tooltip:{filter:i=>i.raw!=null&&((i.dataset.kind==='a'||i.dataset.kind==='ka')||i.dataIndex>L-1),itemSort:(a,b)=>b.raw-a.raw,
 callbacks:{title:t=>{const i=t[0].dataIndex;return 'Round '+(i+1)+(i>L-1?' (projected)':'');},label:t=>' '+t.dataset.driver+': '+Math.round(t.raw)}}},
 scales:{x:{offset:false,grid:{display:false},border:{color:P.axis},title:{display:true,text:'Round',color:P.text}},
@@ -157,7 +190,7 @@ document.getElementById('lg').innerHTML=Object.values(byTeam).map(drivers=>{
 const lab=d=>`${d.n} (R${d.out+1})`;
 const now=D.filter(d=>d.out>=0&&d.out<L).sort((a,b)=>a.out-b.out),proj=D.filter(d=>d.out>=L).sort((a,b)=>a.out-b.out);
 document.getElementById('sm').innerHTML=
- `<b>After round ${L}:</b> knockout line at ${Math.round(thr[L-1])} pts (leader ${Math.round(lead[L-1])} minus ${Math.round(lead[L-1]-thr[L-1])} still available, approximated from the season's known shape).`
+ `<b>After round ${L}:</b> knockout line at ${Math.round(thr[L-1])} pts (leader ${Math.round(lead[L-1])} minus ${Math.round(lead[L-1]-thr[L-1])} still available over the rest of the season${usingRealCalendar?'':', estimated — the real calendar was not available this load'}).`
  +`<br><span style="color:var(--elim);">●</span> Eliminated: ${now.length?now.map(lab).join(', '):'none'} &nbsp; <span style="color:var(--elim);">○</span> Projected to be eliminated at current form: ${proj.length?proj.map(lab).join(', '):'none'}`;
 positionHandle();
 }
