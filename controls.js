@@ -44,8 +44,8 @@ const F1Controls = (() => {
       </div>
       <div class="f1c-row">
         <input type="range" class="f1c-round" min="1" max="1" value="1" step="1">
-        <span class="f1c-roundlabel"></span>
-      </div>`;
+      </div>
+      <div class="f1c-row"><span class="f1c-roundlabel"></span></div>`;
 
     const yearSel = container.querySelector('.f1c-year');
     const roundSlider = container.querySelector('.f1c-round');
@@ -66,7 +66,21 @@ const F1Controls = (() => {
 
     try{ localStorage.setItem(SEASON_KEY, defaultYear); }catch(e){}
     loadYear(container, defaultYear, statusEl);
+    mountedContainer = container;
   }
 
-  return { mount, get state(){ return { ...state }; } };
+  let mountedContainer = null;
+  // Update the slider/label to reflect a round chosen elsewhere (e.g. dragging the chart's own handle),
+  // without re-fetching or re-emitting f1selection — the caller already redrew itself.
+  function setRound(round){
+    if(!mountedContainer) return;
+    state.round = round;
+    const slider = mountedContainer.querySelector('.f1c-round');
+    if(slider) slider.value = round;
+    const r = state.seasonRounds[round-1];
+    const label = mountedContainer.querySelector('.f1c-roundlabel');
+    if(label) label.textContent = `Round ${round} of ${state.maxRound}${r?(' — '+r.raceName):''}`;
+  }
+
+  return { mount, setRound, get state(){ return { ...state }; } };
 })();

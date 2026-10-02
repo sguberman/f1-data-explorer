@@ -24,8 +24,9 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
 <div id="f1controls" class="f1c"></div>
 <div class="card">
 <div id="lg" style="display:flex;flex-wrap:wrap;gap:8px 20px;margin:0 0 10px;font-size:12px;color:var(--ink2);"></div>
-<div style="position:relative;width:100%;height:440px;">
+<div style="position:relative;width:100%;height:440px;" id="chartWrap">
 <canvas id="c" role="img" aria-label="Line chart of cumulative 2026 F1 driver points by round with a knockout line showing the minimum points a driver needs to still be mathematically able to win the championship. The area below the line is shaded as eliminated. After round 15 the line is at 94 points and HAD, at 86, is eliminated.">After round 15 the knockout line is at 94 points. HAD (86) is below it and mathematically eliminated. All other drivers shown are still alive.</canvas>
+<div class="drag-handle" id="dragHandle" title="Drag to change the as-of round"></div>
 </div>
 <div id="sm" style="font-size:12px;color:var(--muted);line-height:1.6;margin:10px 2px 2px;"></div>
 </div>
@@ -55,10 +56,18 @@ const rgba=(h,a)=>{
 };
 
 let D=[], N=0, L=0, R=[], thr=[], lead=[], P, chart;
+let currentYear=null, currentSeasonRounds=[];
 
 function buildFromSelection(detail){
- const {year, round, seasonRounds} = detail;
- if(!seasonRounds.length){ D=[]; if(chart) chart.destroy(); return; }
+ currentYear = detail.year;
+ currentSeasonRounds = detail.seasonRounds;
+ if(!currentSeasonRounds.length){ D=[]; if(chart) chart.destroy(); return; }
+ recompute(detail.round);
+}
+
+// Pure recompute from already-loaded season data — no network, safe to call on every drag-handle move.
+function recompute(round){
+ const year = currentYear, seasonRounds = currentSeasonRounds;
  const cum = F1Data.cumulative(seasonRounds, round, 'include');
  const top4 = F1Data.topTeams(cum, 4);
  const meta = seasonMeta(year);
@@ -126,13 +135,16 @@ const ends={id:'ends',afterDatasetsDraw(ch){
 // Reserve right padding from the widest end label so it's never clipped
 const mc=document.createElement('canvas').getContext('2d');mc.font='11px '+ff;
 const PR=Math.ceil(Math.max(...ds.filter(s=>s.kind==='p').map(s=>mc.measureText(s.driver+' '+Math.round(s.fin)).width)))+17+8;
+const peak=Math.max(1,...D.map(d=>Math.max(...d.full)),...thr);
+const yMax=Math.ceil(peak*1.1/50)*50;
+const yStep=yMax<=300?50:yMax<=600?100:yMax<=1200?200:500;
 if(chart)chart.destroy();
 chart=new Chart(document.getElementById('c'),{type:'line',data:{labels:R.map((_,i)=>String(i+1)),datasets:ds},plugins:[shade,marks,ends],
 options:{responsive:true,maintainAspectRatio:false,layout:{padding:{right:PR,top:4}},interaction:{mode:'index',intersect:false},
 plugins:{legend:{display:false},tooltip:{filter:i=>i.raw!=null&&((i.dataset.kind==='a'||i.dataset.kind==='ka')||i.dataIndex>L-1),itemSort:(a,b)=>b.raw-a.raw,
-callbacks:{title:t=>{const i=t[0].dataIndex;return 'Round '+(i+1)+' · '+R[i]+(i>L-1?' (projected)':'');},label:t=>' '+t.dataset.driver+': '+Math.round(t.raw)}}},
+callbacks:{title:t=>{const i=t[0].dataIndex;return 'Round '+(i+1)+(i>L-1?' (projected)':'');},label:t=>' '+t.dataset.driver+': '+Math.round(t.raw)}}},
 scales:{x:{offset:false,grid:{display:false},border:{color:P.axis},title:{display:true,text:'Round',color:P.text}},
-y:{min:0,max:520,ticks:{stepSize:100},grid:{color:P.grid},border:{display:false},title:{display:true,text:'Cumulative championship points',color:P.text}}}}});
+y:{min:0,max:yMax,ticks:{stepSize:yStep},grid:{color:P.grid},border:{display:false},title:{display:true,text:'Cumulative championship points',color:P.text}}}}});
 const sw=(c,d,w)=>`<svg width="22" height="8" aria-hidden="true"><line x1="1" y1="4" x2="21" y2="4" stroke="${c}" stroke-width="${w||2.5}" ${d?'stroke-dasharray="5 3"':''}/></svg>`;
 const byTeam={};
 DC.forEach(d=>{ (byTeam[d.teamId] = byTeam[d.teamId]||[]).push(d); });
@@ -147,9 +159,42 @@ const now=D.filter(d=>d.out>=0&&d.out<L).sort((a,b)=>a.out-b.out),proj=D.filter(
 document.getElementById('sm').innerHTML=
  `<b>After round ${L}:</b> knockout line at ${Math.round(thr[L-1])} pts (leader ${Math.round(lead[L-1])} minus ${Math.round(lead[L-1]-thr[L-1])} still available, approximated from the season's known shape).`
  +`<br><span style="color:var(--elim);">●</span> Eliminated: ${now.length?now.map(lab).join(', '):'none'} &nbsp; <span style="color:var(--elim);">○</span> Projected to be eliminated at current form: ${proj.length?proj.map(lab).join(', '):'none'}`;
+positionHandle();
 }
+
+function positionHandle(){
+ if(!chart) return;
+ const xScale=chart.scales.x;
+ document.getElementById('dragHandle').style.left=xScale.getPixelForValue(L-1)+'px';
+ document.getElementById('dragHandle').style.top=xScale.bottom+'px';
+}
+
+// Drag the handle left/right to change "as of round" directly on the chart. No network calls while
+// dragging — all rounds for the season are already in memory, so recompute() is just arithmetic.
+(function setupDragHandle(){
+ const handle=document.getElementById('dragHandle');
+ let dragging=false, raf=null, pendingRound=null;
+ function apply(round){
+   if(round===L) return;
+   recompute(round);
+   F1Controls.setRound(round);
+ }
+ handle.addEventListener('pointerdown', e=>{ dragging=true; handle.setPointerCapture(e.pointerId); e.preventDefault(); });
+ handle.addEventListener('pointermove', e=>{
+   if(!dragging||!chart) return;
+   const rect=chart.canvas.getBoundingClientRect();
+   const idx=Math.round(chart.scales.x.getValueForPixel(e.clientX-rect.left));
+   const round=Math.max(1,Math.min(currentSeasonRounds.length,idx+1));
+   pendingRound=round;
+   if(raf) return;
+   raf=requestAnimationFrame(()=>{ raf=null; if(pendingRound!=null) apply(pendingRound); });
+ });
+ handle.addEventListener('pointerup', e=>{ dragging=false; try{handle.releasePointerCapture(e.pointerId);}catch(err){} });
+})();
+
 window.addEventListener('f1selection', e=>buildFromSelection(e.detail));
 window.addEventListener('themechange',draw);
+window.addEventListener('resize', ()=>{ if(chart) positionHandle(); });
 F1Controls.mount('f1controls', {defaultYear:2026});
 </script>
 </div>
