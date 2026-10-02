@@ -6,6 +6,8 @@
 <title>2026 F1 Drivers' Championship — Cumulative Points</title>
 <link rel="stylesheet" href="theme.css">
 <script src="theme.js"></script>
+<script src="data.js"></script>
+<script src="controls.js"></script>
 <style>
 body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;padding:24px 16px 40px;}
 .wrap{max-width:820px;margin:0 auto;}
@@ -17,8 +19,9 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
 <body>
 <div class="wrap">
 <div class="theme-bar" id="themeToggle"></div>
-<h1>2026 F1 Drivers' Championship — Cumulative Points</h1>
-<p class="sub">Top four teams · through Round 15 (Azerbaijan) · knockout line shows the minimum points needed to still win the title · projections from each driver's last 5 rounds</p>
+<h1>F1 Drivers' Championship — Cumulative Points</h1>
+<p class="sub">Top four teams by points, as of the selected round · knockout line shows the minimum points needed to still win the title · projections from each driver's last 5 races</p>
+<div id="f1controls" class="f1c"></div>
 <div class="card">
 <div id="lg" style="display:flex;flex-wrap:wrap;gap:8px 20px;margin:0 0 10px;font-size:12px;color:var(--ink2);"></div>
 <div style="position:relative;width:100%;height:440px;">
@@ -30,34 +33,71 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
 <script>
 const ff=getComputedStyle(document.body).fontFamily;
 Chart.defaults.font.family=ff;Chart.defaults.font.size=11;
-const N=23,L=15;
-const R=['Australia','China','Japan','Miami','Canada','Monaco','Barcelona','Austria','Britain','Belgium','Hungary','Netherlands','Italy','Spain','Azerbaijan','Bahrain (Sepang)','Singapore','USA','Mexico','Brazil','Las Vegas','Qatar','Abu Dhabi'];
-const SPR=[2,4,5,9,12,17];
-const T={mer:'#00A79D',mcl:'#FF8000',fer:'#DC0000',rb:'#1B2A6B'};
-const D=[
-{k:'ant',n:'ANT',c:T.mer,d:[],w:[18,29,25,28,31,25,0,15,8,25,15,23,25,25,10]},
-{k:'rus',n:'RUS',c:T.mer,d:[6,4],w:[25,26,12,17,8,0,18,25,23,0,6,23,18,10,25]},
-{k:'nor',n:'NOR',c:T.mcl,d:[],w:[10,5,10,26,7,0,15,6,18,6,25,31,12,15,0]},
-{k:'pia',n:'PIA',c:T.mcl,d:[6,4],w:[0,3,18,22,5,12,10,12,2,10,0,12,10,4,0]},
-{k:'ham',n:'HAM',c:T.fer,d:[],w:[12,21,8,10,21,18,25,10,22,12,10,14,8,0,8]},
-{k:'lec',n:'LEC',c:T.fer,d:[6,4],w:[15,19,15,10,16,0,0,4,29,18,12,17,0,12,12]},
-{k:'ver',n:'VER',c:T.rb,d:[],w:[8,0,4,14,17,0,12,18,3,15,18,3,15,18,18]},
-{k:'had',n:'HAD',c:T.rb,d:[6,4],w:[0,4,0,0,10,15,8,8,10,8,8,0,0,0,15]}
-];
-const rgba=(h,a)=>{const n=parseInt(h.slice(1),16);return `rgba(${n>>16&255},${n>>8&255},${n&255},${a})`};
-D.forEach(d=>{
- let s=0;d.cum=d.w.map(v=>s+=v);
- const idx=d.k==='had'?[7,8,9,10,14]:[10,11,12,13,14];
- d.rate=idx.reduce((x,i)=>x+d.w[i],0)/5;
- d.last=d.cum[L-1];
- d.full=Array.from({length:N},(_,i)=>i<L?d.cum[i]:d.last+d.rate*(i-(L-1)));
-});
-const rem=r=>25*(N-r)+8*SPR.filter(x=>x>r).length;
-const lead=Array.from({length:N},(_,i)=>Math.max(...D.map(d=>d.full[i])));
-const thr=lead.map((v,i)=>Math.max(0,v-rem(i+1)));
-D.forEach(d=>{d.out=-1;for(let i=0;i<N;i++){if(thr[i]>0&&d.full[i]<thr[i]-1e-6){d.out=i;break;}}});
-let P,chart;
+
+// Team colors by f1api.dev teamId. Unlisted teams get a stable hashed color instead of breaking.
+const TEAM_COLORS={mercedes:'#00A79D',ferrari:'#DC0000',mclaren:'#FF8000',red_bull:'#1B2A6B',redbull:'#1B2A6B',
+ alpine:'#FF1493',haas:'#1A1A1A',williams:'#00A3E0',audi:'#E8534D',sauber:'#E8534D',
+ aston_martin:'#229971',astonmartin:'#229971',rb:'#2B4EE6',racing_bulls:'#2B4EE6',visa_rb:'#2B4EE6',cadillac:'#B8860B'};
+function teamColor(teamId){
+ if(TEAM_COLORS[teamId]) return TEAM_COLORS[teamId];
+ let h=0; for(const ch of teamId) h=(h*31+ch.charCodeAt(0))>>>0;
+ return `hsl(${h%360} 55% 45%)`;
+}
+// Approximate season shape — f1api.dev doesn't expose a full future calendar, so total rounds/sprints
+// per year are a lookup rather than fetched. Refine this table as needed for other seasons.
+const SEASON_META={2026:{rounds:23,sprints:6},2025:{rounds:24,sprints:6},2024:{rounds:24,sprints:6},
+ 2023:{rounds:22,sprints:6},2022:{rounds:22,sprints:3},2021:{rounds:22,sprints:3}};
+function seasonMeta(year){ return SEASON_META[year] || {rounds:24,sprints:6}; }
+
+const rgba=(h,a)=>{
+ if(h[0]==='#'){const n=parseInt(h.slice(1),16);return `rgba(${n>>16&255},${n>>8&255},${n&255},${a})`;}
+ return h.slice(0,-1)+' / '+a+')'; // modern hsl(h s% l% / a) syntax for the hashed-color fallback
+};
+
+let D=[], N=0, L=0, R=[], thr=[], lead=[], P, chart;
+
+function buildFromSelection(detail){
+ const {year, round, seasonRounds} = detail;
+ if(!seasonRounds.length){ D=[]; if(chart) chart.destroy(); return; }
+ const cum = F1Data.cumulative(seasonRounds, round, 'include');
+ const top4 = F1Data.topTeams(cum, 4);
+ const meta = seasonMeta(year);
+ L = round;
+ N = Math.max(meta.rounds, L);
+ R = seasonRounds.map(r=>r.raceName.replace(/ Grand Prix.*/i,'').replace(String(year),'').trim());
+ while(R.length<N) R.push('TBD');
+
+ const sprintsSoFar = seasonRounds.filter(r=>r.round<=L && r.sprintResults).length;
+ const remainingSprints = Math.max(0, meta.sprints - sprintsSoFar);
+ const rem = r => { const roundsLeft=N-r; return 25*roundsLeft + 8*Math.min(remainingSprints, roundsLeft); };
+
+ D = top4.flatMap(teamId=>{
+   const teamDrivers = Object.values(cum.drivers).filter(dr=>dr.teamId===teamId)
+     .map(dr=>({...dr,total:dr.rounds.reduce((s,x)=>s+x.points,0)}))
+     .sort((a,b)=>b.total-a.total);
+   return teamDrivers.map((dr,i)=>{
+     const w=Array.from({length:L},(_,ri)=>{
+       const rnd=ri+1;
+       return dr.rounds.filter(x=>x.round===rnd).reduce((s,x)=>s+x.points,0);
+     });
+     let s=0; const cumArr=w.map(v=>s+=v);
+     const participated = dr.rounds.reduce((acc,x)=>{ if(!acc.includes(x.round)) acc.push(x.round); return acc; },[]).sort((a,b)=>a-b);
+     const last5rounds = participated.slice(-5);
+     const rate = last5rounds.length
+       ? last5rounds.reduce((s,rnd)=>s+w[rnd-1],0)/last5rounds.length : 0;
+     const full=Array.from({length:N},(_,ri)=>ri<L?cumArr[ri]:cumArr[L-1]+rate*(ri-(L-1)));
+     return {n:dr.code, c:teamColor(teamId), teamId, teamName:cum.teams[teamId].teamName, d:i===0?[]:[6,4], cum:cumArr, full, rate};
+   });
+ });
+
+ lead=Array.from({length:N},(_,i)=>Math.max(...D.map(d=>d.full[i])));
+ thr=lead.map((v,i)=>Math.max(0,v-rem(i+1)));
+ D.forEach(d=>{d.out=-1;for(let i=0;i<N;i++){if(thr[i]>0&&d.full[i]<thr[i]-1e-6){d.out=i;break;}}});
+ draw();
+}
+
 function draw(){
+ if(!D.length) return;
 P=F1Theme.chart();Chart.defaults.color=P.text;
 const DC=D.map(d=>({...d,c:F1Theme.team(d.c)}));
 const ds=[];
@@ -94,18 +134,23 @@ callbacks:{title:t=>{const i=t[0].dataIndex;return 'Round '+(i+1)+' · '+R[i]+(i
 scales:{x:{offset:false,grid:{display:false},border:{color:P.axis},title:{display:true,text:'Round',color:P.text}},
 y:{min:0,max:520,ticks:{stepSize:100},grid:{color:P.grid},border:{display:false},title:{display:true,text:'Cumulative championship points',color:P.text}}}}});
 const sw=(c,d,w)=>`<svg width="22" height="8" aria-hidden="true"><line x1="1" y1="4" x2="21" y2="4" stroke="${c}" stroke-width="${w||2.5}" ${d?'stroke-dasharray="5 3"':''}/></svg>`;
-const g=k=>DC.find(d=>d.k===k);
-document.getElementById('lg').innerHTML=[['Mercedes',T.mer,'ant','rus'],['McLaren',T.mcl,'nor','pia'],['Ferrari',T.fer,'ham','lec'],['Red Bull',T.rb,'ver','had']].map(([t,c,a,b])=>
- `<span style="display:flex;align-items:center;gap:6px;"><span style="font-weight:500;">${t}</span>${sw(c,0)}${g(a).n}${sw(c,1)}${g(b).n}</span>`).join('')
+const byTeam={};
+DC.forEach(d=>{ (byTeam[d.teamId] = byTeam[d.teamId]||[]).push(d); });
+document.getElementById('lg').innerHTML=Object.values(byTeam).map(drivers=>{
+ const label=drivers[0].teamName||drivers[0].teamId;
+ const items=drivers.map((d,i)=>sw(d.c,i>0)+d.n).join('');
+ return `<span style="display:flex;align-items:center;gap:6px;"><span style="font-weight:500;">${label}</span>${items}</span>`;
+}).join('')
  +`<span style="display:flex;align-items:center;gap:6px;"><span style="font-weight:500;">Knockout line</span>${sw(P.knock,0,3)}</span>`;
 const lab=d=>`${d.n} (R${d.out+1})`;
 const now=D.filter(d=>d.out>=0&&d.out<L).sort((a,b)=>a.out-b.out),proj=D.filter(d=>d.out>=L).sort((a,b)=>a.out-b.out);
 document.getElementById('sm').innerHTML=
- `<b>After round ${L}:</b> knockout line at ${Math.round(thr[L-1])} pts (leader ${Math.round(lead[L-1])} minus ${rem(L)} still available).`
+ `<b>After round ${L}:</b> knockout line at ${Math.round(thr[L-1])} pts (leader ${Math.round(lead[L-1])} minus ${Math.round(lead[L-1]-thr[L-1])} still available, approximated from the season's known shape).`
  +`<br><span style="color:var(--elim);">●</span> Eliminated: ${now.length?now.map(lab).join(', '):'none'} &nbsp; <span style="color:var(--elim);">○</span> Projected to be eliminated at current form: ${proj.length?proj.map(lab).join(', '):'none'}`;
 }
-draw();
+window.addEventListener('f1selection', e=>buildFromSelection(e.detail));
 window.addEventListener('themechange',draw);
+F1Controls.mount('f1controls', {defaultYear:2026});
 </script>
 </div>
 </body>
