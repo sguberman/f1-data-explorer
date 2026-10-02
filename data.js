@@ -53,19 +53,23 @@ const F1Data = (() => {
     return res.json();
   }
 
+  // Always resolves to the SAME normalized shape whether it came from cache or the network:
+  // { ok, raceName, results, _fresh, _key } — ok=false covers both "no sprint this round" and
+  // "round hasn't happened yet", both of which are safe to cache (the latter gets a short TTL by the caller).
   async function fetchSession(season, round, kind){
-    // kind: 'race' or 'sprint'
     const path = kind==='sprint' ? `${season}/${round}/sprint/race` : `${season}/${round}/race`;
-    const key = `${path}`;
-    const cached = cacheGet(key);
-    if(cached !== undefined) return cached;
+    const cached = cacheGet(path);
+    if(cached !== undefined) return { ...cached, _fresh:false, _key:path };
     let race = null;
     try{
       const data = await fetchJSON(`${API}/${path}`);
       race = data && data.races ? data.races : null;
     }catch(e){ race = null; }
     const hasResults = race && Array.isArray(race.results) && race.results.length>0;
-    return { race: hasResults ? race : null, _fresh: true, _key: key };
+    const norm = hasResults
+      ? { ok:true, raceName: race.raceName, results: normalizeResults(race, season, round, kind) }
+      : { ok:false, raceName:null, results:[] };
+    return { ...norm, _fresh:true, _key:path };
   }
 
   function normalizeResults(race, season, round, kind){
@@ -89,36 +93,61 @@ const F1Data = (() => {
     });
   }
 
-  // Walk rounds until an empty race result is hit. Returns array of {round, raceName, race:[...], sprint:[...]|null}
+  // Walk rounds (in small parallel batches, for speed) until an empty race result is hit.
+  // Returns array of {round, raceName, raceResults:[...], sprintResults:[...]|null}
+  const BATCH_SIZE = 5;
+
   async function loadSeason(year, opts={}){
     const { onProgress } = opts;
     const rounds = [];
-    for(let round=1; round<=MAX_ROUNDS; round++){
-      const { race, _fresh, _key } = await fetchSession(year, round, 'race');
-      if(!race) break; // first un-run round — season data ends here
-      // cache: permanent for everything except we'll overwrite the *last* round with a short TTL below
-      if(_fresh) cacheSet(_key, { race, results: normalizeResults(race, year, round, 'race') }, null);
+    let round = 1;
 
-      const sprintResult = await fetchSession(year, round, 'sprint');
-      let sprintNorm = null;
-      if(sprintResult.race){
-        sprintNorm = normalizeResults(sprintResult.race, year, round, 'sprint');
-        if(sprintResult._fresh) cacheSet(sprintResult._key, { race: sprintResult.race, results: sprintNorm }, null);
+    while(round <= MAX_ROUNDS){
+      const batch = [];
+      for(let i=0; i<BATCH_SIZE && round+i<=MAX_ROUNDS; i++) batch.push(round+i);
+
+      let pairs;
+      try{
+        pairs = await Promise.all(batch.map(async r=>{
+          const [raceR, sprintR] = await Promise.all([
+            fetchSession(year, r, 'race'),
+            fetchSession(year, r, 'sprint')
+          ]);
+          return { r, raceR, sprintR };
+        }));
+      }catch(e){
+        console.warn('F1Data: batch fetch failed, stopping load at round', round, e);
+        break; // a genuine network failure — stop here rather than hang, keep whatever loaded so far
       }
 
-      rounds.push({
-        round,
-        raceName: race.raceName,
-        raceResults: normalizeResults(race, year, round, 'race'),
-        sprintResults: sprintNorm
-      });
-      if(onProgress) onProgress(round, rounds.length);
+      let hitEnd = false;
+      for(const {r, raceR, sprintR} of pairs){
+        // cache every freshly-fetched round permanently, including negative results (no sprint that
+        // round, or round hasn't happened yet) so we stop re-asking the same question on every load.
+        // A round that hasn't happened yet gets a short TTL — it needs rechecking as the season moves on.
+        if(raceR._fresh) cacheSet(raceR._key, {ok:raceR.ok, raceName:raceR.raceName, results:raceR.results}, raceR.ok ? null : FRESH_ROUND_TTL_MS);
+        if(!raceR.ok){ hitEnd = true; break; } // first un-run round — season data ends here
+        if(sprintR._fresh) cacheSet(sprintR._key, {ok:sprintR.ok, raceName:sprintR.raceName, results:sprintR.results}, null);
+
+        rounds.push({
+          round: r,
+          raceName: raceR.raceName,
+          raceResults: raceR.results,
+          sprintResults: sprintR.ok ? sprintR.results : null
+        });
+        if(onProgress) onProgress(r, rounds.length);
+      }
+      if(hitEnd) break;
+      round += BATCH_SIZE;
     }
-    // re-stamp the last round's cache entries with a short TTL so post-race penalty corrections get re-fetched soon
+
+    // Shorten the TTL on just the last round, so post-race penalty corrections get re-checked soon —
+    // rewriting the SAME correct value, not a placeholder (that was the earlier bug).
     if(rounds.length){
       const last = rounds[rounds.length-1];
-      cacheSet(`${year}/${last.round}/race`, { race:true, results:last.raceResults }, FRESH_ROUND_TTL_MS);
-      if(last.sprintResults) cacheSet(`${year}/${last.round}/sprint/race`, { race:true, results:last.sprintResults }, FRESH_ROUND_TTL_MS);
+      cacheSet(`${year}/${last.round}/race`, {ok:true, raceName:last.raceName, results:last.raceResults}, FRESH_ROUND_TTL_MS);
+      cacheSet(`${year}/${last.round}/sprint/race`,
+        {ok: !!last.sprintResults, raceName:last.raceName, results:last.sprintResults||[]}, FRESH_ROUND_TTL_MS);
     }
     return rounds;
   }
