@@ -26,6 +26,13 @@ const F1Data = (() => {
   // Keyed as "season:round:driverId" -> true (treat as mechanical) or false (treat as not).
   const MANUAL_OVERRIDES = {};
 
+  // Hand corrections for f1api.dev's calendar sprint flag, for rounds where it's missing or wrong
+  // (seen in practice: an upcoming round on a live season whose schedule.sprintRace.date hadn't been
+  // populated yet). Keyed "year:round" -> true/false.
+  const SPRINT_OVERRIDES = {
+    '2026:17': true // Singapore — f1api.dev's calendar had no sprintRace.date as of Oct 2026
+  };
+
   function isMechanical(retiredText){
     if(!retiredText) return false;
     const t = retiredText.toLowerCase();
@@ -158,7 +165,7 @@ const F1Data = (() => {
   // are effectively static but can occasionally get revised (e.g. a postponed/relocated round).
   const CALENDAR_TTL_MS = 24*60*60*1000;
   async function getCalendar(year){
-    const key = `${year}/calendar`;
+    const key = `${year}/calendar2`; // bumped from /calendar — invalidates any pre-override cached copy
     const cached = cacheGet(key);
     if(cached !== undefined) return cached;
     let totalRounds=0, sprintRounds=[], raceNames={};
@@ -168,7 +175,10 @@ const F1Data = (() => {
       totalRounds = races.length;
       races.forEach(r=>{
         raceNames[r.round] = r.raceName;
-        if(r.schedule && r.schedule.sprintRace && r.schedule.sprintRace.date) sprintRounds.push(r.round);
+        const apiSaysSprint = !!(r.schedule && r.schedule.sprintRace && r.schedule.sprintRace.date);
+        const overrideKey = `${year}:${r.round}`;
+        const isSprint = overrideKey in SPRINT_OVERRIDES ? SPRINT_OVERRIDES[overrideKey] : apiSaysSprint;
+        if(isSprint) sprintRounds.push(r.round);
       });
     }catch(e){ /* leave zeros — callers fall back to their own default when totalRounds is 0 */ }
     const result = { totalRounds, sprintRounds, raceNames };
