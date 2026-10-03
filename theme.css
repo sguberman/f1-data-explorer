@@ -40,3 +40,9 @@ html,body{background:var(--bg);color:var(--ink);}
 .drag-handle:active{cursor:grabbing;background:var(--inset);}
 .drag-handle::after{content:"";position:absolute;left:50%;top:50%;width:6px;height:6px;
   transform:translate(-50%,-50%);border-left:2px solid var(--sub);border-right:2px solid var(--sub);box-sizing:border-box;}
+
+/* Small pill buttons — sort toggle, selection presets */
+.btnrow{display:flex;flex-wrap:wrap;gap:6px;}
+.pill{background:var(--inset);color:var(--ink2);border:1px solid var(--line);border-radius:6px;padding:4px 10px;font-size:11.5px;cursor:pointer;font:inherit;}
+.pill:hover{border-color:var(--ink2);}
+.pill.active{background:var(--ink);color:var(--on-ink);border-color:var(--ink);}

@@ -20,10 +20,24 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
 <div class="wrap">
 <div class="theme-bar" id="themeToggle"></div>
 <h1>F1 Drivers' Championship — Cumulative Points</h1>
-<p class="sub">Defaults to the top four teams by points, as of the selected round — pick any drivers below · knockout line shows the minimum points needed to still win the title · projections from each driver's last 5 races</p>
+<p class="sub">Defaults to the top 5 drivers as of the selected round — sort, use a preset, or pick anyone below · knockout line shows the minimum points needed to still win the title · projections from each driver's last 5 races</p>
 <div id="f1controls" class="f1c"></div>
 <div class="card" style="margin-bottom:16px;">
-<div style="font-size:12px;color:var(--sub);margin-bottom:8px;">Drivers shown</div>
+<div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:10px;">
+ <span style="font-size:12px;color:var(--sub);">Drivers shown</span>
+ <span style="flex:1;"></span>
+ <div class="btnrow" id="sortSeg">
+  <button type="button" class="pill active" data-sort="team">By team</button>
+  <button type="button" class="pill" data-sort="rank">By ranking</button>
+ </div>
+</div>
+<div class="btnrow" id="presetRow" style="margin-bottom:10px;">
+ <button type="button" class="pill" data-preset="all">All</button>
+ <button type="button" class="pill" data-preset="none">None</button>
+ <button type="button" class="pill" data-preset="2">Top 2</button>
+ <button type="button" class="pill" data-preset="5">Top 5</button>
+ <button type="button" class="pill" data-preset="10">Top 10</button>
+</div>
 <div id="driverPicker" style="display:flex;flex-wrap:wrap;gap:4px 16px;font-size:12.5px;"></div>
 </div>
 <div class="card">
@@ -60,28 +74,43 @@ const rgba=(h,a)=>{
 };
 
 let D=[], N=0, L=0, R=[], thr=[], lead=[], P, chart, usingRealCalendar=false;
-let currentYear=null, currentSeasonRounds=[], currentCalendar=null, selectedDriverIds=null;
+let currentYear=null, currentSeasonRounds=[], currentCalendar=null, selectedDriverIds=null, pickerSort='team';
 
 async function buildFromSelection(detail){
  currentYear = detail.year;
  currentSeasonRounds = detail.seasonRounds;
  if(!currentSeasonRounds.length){ D=[]; if(chart) chart.destroy(); return; }
  currentCalendar = await F1Data.getCalendar(currentYear);
- selectedDriverIds = null; // reset to "default to top 4 teams" whenever the season changes
- buildDriverPicker();
+ selectedDriverIds = null; // reset default whenever the season changes; round changes never touch this
+ L = detail.round; // so the default (top 5 "as of now") and the first picker render use the right round
+ const cum = F1Data.cumulative(currentSeasonRounds, L, 'include');
+ selectedDriverIds = rankedDriverIds(cum).slice(0,5);
  recompute(detail.round);
 }
 
-function buildDriverPicker(){
- const fullCum = F1Data.cumulative(currentSeasonRounds, currentSeasonRounds.length, 'include');
- const top4 = F1Data.topTeams(fullCum, 4);
- if(!selectedDriverIds) selectedDriverIds = Object.values(fullCum.drivers).filter(d=>top4.includes(d.teamId)).map(d=>d.driverId);
- const byTeam={};
- Object.values(fullCum.drivers).forEach(d=>{ (byTeam[d.teamId]=byTeam[d.teamId]||[]).push(d); });
- document.getElementById('driverPicker').innerHTML = Object.values(byTeam).map(drivers=>
-   drivers.map(d=>`<label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;">
-     <input type="checkbox" data-id="${d.driverId}" ${selectedDriverIds.includes(d.driverId)?'checked':''}>${d.code}</label>`).join('')
- ).join('');
+function rankedDriverIds(cum){
+ return Object.values(cum.drivers)
+   .map(d=>({driverId:d.driverId,total:d.rounds.reduce((s,x)=>s+x.points,0)}))
+   .sort((a,b)=>b.total-a.total).map(d=>d.driverId);
+}
+
+// Renders the checkbox list for the round currently in L. Called on season load, after sort/preset
+// changes, and at the end of every recompute() so a "by ranking" sort stays current while scrubbing.
+function renderDriverPicker(){
+ if(!currentSeasonRounds.length) return;
+ const cum = F1Data.cumulative(currentSeasonRounds, L, 'include');
+ let roster = Object.values(cum.drivers).map(d=>({...d,total:d.rounds.reduce((s,x)=>s+x.points,0)}));
+ if(pickerSort==='rank'){
+   roster.sort((a,b)=>b.total-a.total);
+ }else{
+   const teamTotal={};
+   roster.forEach(d=>{ teamTotal[d.teamId]=(teamTotal[d.teamId]||0)+d.total; });
+   roster.sort((a,b)=>(teamTotal[b.teamId]-teamTotal[a.teamId])||(b.total-a.total));
+ }
+ document.getElementById('driverPicker').innerHTML = roster.map(d=>`
+   <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;">
+     <input type="checkbox" data-id="${d.driverId}" ${selectedDriverIds.includes(d.driverId)?'checked':''}>${d.code}${
+     pickerSort==='rank'?`<span style="color:var(--sub);font-size:11px;">${Math.round(d.total)}</span>`:''}</label>`).join('');
  document.querySelectorAll('#driverPicker input').forEach(cb=>{
    cb.addEventListener('change', ()=>{
      const id=cb.dataset.id;
@@ -90,6 +119,21 @@ function buildDriverPicker(){
    });
  });
 }
+
+document.getElementById('sortSeg').addEventListener('click', e=>{
+ const btn=e.target.closest('button[data-sort]'); if(!btn) return;
+ pickerSort = btn.dataset.sort;
+ document.querySelectorAll('#sortSeg button').forEach(b=>b.classList.toggle('active', b===btn));
+ renderDriverPicker();
+});
+document.getElementById('presetRow').addEventListener('click', e=>{
+ const btn=e.target.closest('button[data-preset]'); if(!btn) return;
+ const cum = F1Data.cumulative(currentSeasonRounds, L, 'include'); // ranking as of the CURRENT round
+ const ranked = rankedDriverIds(cum);
+ const p = btn.dataset.preset;
+ selectedDriverIds = p==='all' ? Object.keys(cum.drivers) : p==='none' ? [] : ranked.slice(0,+p);
+ recompute(L);
+});
 
 // Pure recompute from already-loaded season data — no network, safe to call on every drag-handle move.
 function recompute(round){
@@ -113,33 +157,42 @@ function recompute(round){
    : (r => { const left=N-r; const sprintsSoFar=seasonRounds.filter(x=>x.round<=L && x.sprintResults).length;
        return 25*left + 8*Math.min(Math.max(0,meta.sprints-sprintsSoFar), left); });
 
+ // Per-driver cumulative + rest-of-season projection, shared by both the display set and the
+ // leader-tracking pass below (the knockout line must reflect the TRUE leader, not just whoever's
+ // currently selected — deselecting the actual points leader shouldn't understate what's needed to stay alive).
+ function projectedFull(dr){
+   const w=Array.from({length:L},(_,ri)=>{
+     const rnd=ri+1;
+     return dr.rounds.filter(x=>x.round===rnd).reduce((s,x)=>s+x.points,0);
+   });
+   let s=0; const cumArr=w.map(v=>s+=v);
+   const participated = dr.rounds.reduce((acc,x)=>{ if(!acc.includes(x.round)) acc.push(x.round); return acc; },[]).sort((a,b)=>a-b);
+   const last5rounds = participated.slice(-5);
+   const rate = last5rounds.length ? last5rounds.reduce((s,rnd)=>s+w[rnd-1],0)/last5rounds.length : 0;
+   const full = Array.from({length:N},(_,ri)=>ri<L?cumArr[ri]:cumArr[L-1]+rate*(ri-(L-1)));
+   return {cumArr, full, rate};
+ }
+
  const byTeam={};
  (selectedDriverIds||[]).forEach(id=>{ const dr=cum.drivers[id]; if(!dr) return; (byTeam[dr.teamId]=byTeam[dr.teamId]||[]).push(dr); });
  D = Object.entries(byTeam).flatMap(([teamId,teamDrivers])=>{
    teamDrivers = teamDrivers.map(dr=>({...dr,total:dr.rounds.reduce((s,x)=>s+x.points,0)})).sort((a,b)=>b.total-a.total);
    return teamDrivers.map((dr,i)=>{
-     const w=Array.from({length:L},(_,ri)=>{
-       const rnd=ri+1;
-       return dr.rounds.filter(x=>x.round===rnd).reduce((s,x)=>s+x.points,0);
-     });
-     let s=0; const cumArr=w.map(v=>s+=v);
-     const participated = dr.rounds.reduce((acc,x)=>{ if(!acc.includes(x.round)) acc.push(x.round); return acc; },[]).sort((a,b)=>a-b);
-     const last5rounds = participated.slice(-5);
-     const rate = last5rounds.length
-       ? last5rounds.reduce((s,rnd)=>s+w[rnd-1],0)/last5rounds.length : 0;
-     const full=Array.from({length:N},(_,ri)=>ri<L?cumArr[ri]:cumArr[L-1]+rate*(ri-(L-1)));
+     const {cumArr,full,rate}=projectedFull(dr);
      return {n:dr.code, c:teamColor(teamId), teamId, teamName:cum.teams[teamId].teamName, d:i===0?[]:[6,4], cum:cumArr, full, rate};
    });
  });
 
- lead=Array.from({length:N},(_,i)=>Math.max(...D.map(d=>d.full[i])));
+ const allFull = Object.values(cum.drivers).map(dr=>projectedFull(dr).full);
+ lead = Array.from({length:N},(_,i)=>Math.max(0,...allFull.map(f=>f[i])));
  thr=lead.map((v,i)=>Math.max(0,v-rem(i+1)));
  D.forEach(d=>{d.out=-1;for(let i=0;i<N;i++){if(thr[i]>0&&d.full[i]<thr[i]-1e-6){d.out=i;break;}}});
  draw();
+ renderDriverPicker();
 }
 
 function draw(){
- if(!D.length) return;
+ if(!D.length){ if(chart){ chart.destroy(); chart=null; } document.getElementById('lg').innerHTML=''; document.getElementById('sm').innerHTML='No drivers selected.'; return; }
 P=F1Theme.chart();Chart.defaults.color=P.text;
 const DC=D.map(d=>({...d,c:F1Theme.team(d.c)}));
 const ds=[];
