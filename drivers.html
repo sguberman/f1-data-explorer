@@ -14,6 +14,17 @@ body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Hel
 h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
 .sub{font-size:12.5px;color:var(--sub);margin:0 0 16px;}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 14px 10px;}
+#driverPicker{max-height:280px;overflow-y:auto;}
+.pickerTeamLabel{font-size:11px;color:var(--sub);padding:10px 2px 4px;}
+.pickerTeamLabel:first-child{padding-top:2px;}
+.pickerRow{display:flex;align-items:center;gap:10px;padding:6px 2px;border-bottom:0.5px solid var(--line);cursor:pointer;}
+.pickerRow:last-child{border-bottom:none;}
+.pickerRow input{margin:0;flex:0 0 auto;}
+.pickerRank{font-size:11px;color:var(--sub);width:16px;text-align:right;flex:0 0 auto;}
+.pickerDot{width:8px;height:8px;border-radius:50%;flex:0 0 auto;}
+.pickerCode{font-size:13px;font-weight:500;flex:1;}
+.pickerCode.off{color:var(--sub);font-weight:400;}
+.pickerPts{font-size:12px;color:var(--sub);font-variant-numeric:tabular-nums;flex:0 0 auto;}
 </style>
 </head>
 <body>
@@ -38,7 +49,7 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
  <button type="button" class="pill" data-preset="5">Top 5</button>
  <button type="button" class="pill" data-preset="10">Top 10</button>
 </div>
-<div id="driverPicker" style="display:flex;flex-wrap:wrap;gap:4px 16px;font-size:12.5px;"></div>
+<div id="driverPicker"></div>
 </div>
 <div class="card">
 <div id="lg" style="display:flex;flex-wrap:wrap;gap:8px 20px;margin:0 0 10px;font-size:12px;color:var(--ink2);"></div>
@@ -94,23 +105,38 @@ function rankedDriverIds(cum){
    .sort((a,b)=>b.total-a.total).map(d=>d.driverId);
 }
 
-// Renders the checkbox list for the round currently in L. Called on season load, after sort/preset
+function pickerRowHTML(d, rank){
+ const checked = selectedDriverIds.includes(d.driverId);
+ return `<label class="pickerRow">
+   <input type="checkbox" data-id="${d.driverId}" ${checked?'checked':''}>
+   ${rank!=null?`<span class="pickerRank">${rank}</span>`:''}
+   <span class="pickerDot" style="background:${F1Theme.team(teamColor(d.teamId))}"></span>
+   <span class="pickerCode${checked?'':' off'}">${d.code}</span>
+   <span class="pickerPts">${Math.round(d.total)}</span>
+ </label>`;
+}
+
+// Renders the picker for the round currently in L. Called on season load, after sort/preset/checkbox
 // changes, and at the end of every recompute() so a "by ranking" sort stays current while scrubbing.
 function renderDriverPicker(){
  if(!currentSeasonRounds.length) return;
  const cum = F1Data.cumulative(currentSeasonRounds, L, 'include');
  let roster = Object.values(cum.drivers).map(d=>({...d,total:d.rounds.reduce((s,x)=>s+x.points,0)}));
+ roster.sort((a,b)=>b.total-a.total);
+ let html;
  if(pickerSort==='rank'){
-   roster.sort((a,b)=>b.total-a.total);
+   html = roster.map((d,i)=>pickerRowHTML(d,i+1)).join('');
  }else{
    const teamTotal={};
    roster.forEach(d=>{ teamTotal[d.teamId]=(teamTotal[d.teamId]||0)+d.total; });
-   roster.sort((a,b)=>(teamTotal[b.teamId]-teamTotal[a.teamId])||(b.total-a.total));
+   const teamsOrdered=[...new Set(roster.map(d=>d.teamId))].sort((a,b)=>teamTotal[b]-teamTotal[a]);
+   html = teamsOrdered.map(teamId=>{
+     const teamDrivers = roster.filter(d=>d.teamId===teamId);
+     return `<div class="pickerTeamLabel">${teamDrivers[0].teamName||teamId}</div>`
+       + teamDrivers.map(d=>pickerRowHTML(d,null)).join('');
+   }).join('');
  }
- document.getElementById('driverPicker').innerHTML = roster.map(d=>`
-   <label style="display:inline-flex;align-items:center;gap:4px;cursor:pointer;">
-     <input type="checkbox" data-id="${d.driverId}" ${selectedDriverIds.includes(d.driverId)?'checked':''}>${d.code}${
-     pickerSort==='rank'?`<span style="color:var(--sub);font-size:11px;">${Math.round(d.total)}</span>`:''}</label>`).join('');
+ document.getElementById('driverPicker').innerHTML = html;
  document.querySelectorAll('#driverPicker input').forEach(cb=>{
    cb.addEventListener('change', ()=>{
      const id=cb.dataset.id;
