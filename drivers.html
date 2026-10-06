@@ -34,6 +34,14 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
 <p class="sub">Defaults to the top 5 drivers as of the selected round — sort, use a preset, or pick anyone below · knockout line shows the minimum points needed to still win the title · projections from each driver's last 5 races</p>
 <div id="f1controls" class="f1c"></div>
 <div class="card" style="margin-bottom:16px;">
+<div id="lg" style="display:flex;flex-wrap:wrap;gap:8px 20px;margin:0 0 10px;font-size:12px;color:var(--ink2);"></div>
+<div style="position:relative;width:100%;height:440px;" id="chartWrap">
+<canvas id="c" role="img" aria-label="Line chart of cumulative 2026 F1 driver points by round with a knockout line showing the minimum points a driver needs to still be mathematically able to win the championship. The area below the line is shaded as eliminated. After round 15 the line is at 94 points and HAD, at 86, is eliminated.">After round 15 the knockout line is at 94 points. HAD (86) is below it and mathematically eliminated. All other drivers shown are still alive.</canvas>
+<div class="drag-handle" id="dragHandle" title="Drag to change the as-of round"></div>
+</div>
+<div id="sm" style="font-size:12px;color:var(--muted);line-height:1.6;margin:10px 2px 2px;"></div>
+</div>
+<div class="card">
 <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:10px;">
  <span style="font-size:12px;color:var(--sub);">Drivers shown</span>
  <span style="flex:1;"></span>
@@ -50,14 +58,6 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
  <button type="button" class="pill" data-preset="10">Top 10</button>
 </div>
 <div id="driverPicker"></div>
-</div>
-<div class="card">
-<div id="lg" style="display:flex;flex-wrap:wrap;gap:8px 20px;margin:0 0 10px;font-size:12px;color:var(--ink2);"></div>
-<div style="position:relative;width:100%;height:440px;" id="chartWrap">
-<canvas id="c" role="img" aria-label="Line chart of cumulative 2026 F1 driver points by round with a knockout line showing the minimum points a driver needs to still be mathematically able to win the championship. The area below the line is shaded as eliminated. After round 15 the line is at 94 points and HAD, at 86, is eliminated.">After round 15 the knockout line is at 94 points. HAD (86) is below it and mathematically eliminated. All other drivers shown are still alive.</canvas>
-<div class="drag-handle" id="dragHandle" title="Drag to change the as-of round"></div>
-</div>
-<div id="sm" style="font-size:12px;color:var(--muted);line-height:1.6;margin:10px 2px 2px;"></div>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script>
