@@ -54,29 +54,36 @@ const F1Data = (() => {
     catch(e){ /* storage full or unavailable — fail silently, just refetches next time */ }
   }
 
-  async function fetchJSON(url){
-    const res = await fetch(url);
-    if(!res.ok) throw new Error('HTTP '+res.status+' for '+url);
-    return res.json();
+  async function fetchJSON(url, attempt=0){
+    try{
+      const res = await fetch(url);
+      if(!res.ok) throw new Error('HTTP '+res.status+' for '+url);
+      return await res.json();
+    }catch(e){
+      if(attempt===0){ await new Promise(r=>setTimeout(r,300)); return fetchJSON(url,1); } // one retry — batched requests can trip transient rate limits
+      throw e;
+    }
   }
 
   // Always resolves to the SAME normalized shape whether it came from cache or the network:
-  // { ok, raceName, results, _fresh, _key } — ok=false covers both "no sprint this round" and
-  // "round hasn't happened yet", both of which are safe to cache (the latter gets a short TTL by the caller).
+  // { ok, raceName, results, failed, _fresh, _key } — ok=false covers both "no sprint this round" and
+  // "round hasn't happened yet". `failed` marks an actual fetch error (network issue, rate limit, bad
+  // JSON) as distinct from a confirmed empty response — callers must NOT permanently cache a failure,
+  // since that would silently and permanently lock in "no sprint" for a round that may have had one.
   async function fetchSession(season, round, kind){
     const path = kind==='sprint' ? `${season}/${round}/sprint/race` : `${season}/${round}/race`;
     const cached = cacheGet(path);
-    if(cached !== undefined) return { ...cached, _fresh:false, _key:path };
-    let race = null;
+    if(cached !== undefined) return { ...cached, failed:false, _fresh:false, _key:path };
+    let race = null, failed = false;
     try{
       const data = await fetchJSON(`${API}/${path}`);
       race = data && data.races ? data.races : null;
-    }catch(e){ race = null; }
+    }catch(e){ race = null; failed = true; }
     const hasResults = race && Array.isArray(race.results) && race.results.length>0;
     const norm = hasResults
       ? { ok:true, raceName: race.raceName, results: normalizeResults(race, season, round, kind) }
       : { ok:false, raceName:null, results:[] };
-    return { ...norm, _fresh:true, _key:path };
+    return { ...norm, failed, _fresh:true, _key:path };
   }
 
   function normalizeResults(race, season, round, kind){
@@ -127,34 +134,46 @@ const F1Data = (() => {
         break; // a genuine network failure — stop here rather than hang, keep whatever loaded so far
       }
 
-      let hitEnd = false;
+      let hitEnd = false, stoppedOnFailure = false;
       for(const {r, raceR, sprintR} of pairs){
-        // cache every freshly-fetched round permanently, including negative results (no sprint that
-        // round, or round hasn't happened yet) so we stop re-asking the same question on every load.
-        // A round that hasn't happened yet gets a short TTL — it needs rechecking as the season moves on.
+        // A failed fetch (network hiccup, rate limit) is NOT the same as a confirmed negative — never
+        // cache it, and never conclude the season ended because of one. Just stop collecting for this
+        // load; nothing was cached, so the next load retries this round fresh.
+        if(raceR.failed){ stoppedOnFailure = true; break; }
+        // cache every freshly-fetched, CONFIRMED round permanently, including negative results (no
+        // sprint that round, or round hasn't happened yet) so we stop re-asking the same question on
+        // every load. A round that hasn't happened yet gets a short TTL — it needs rechecking as the season moves on.
         if(raceR._fresh) cacheSet(raceR._key, {ok:raceR.ok, raceName:raceR.raceName, results:raceR.results}, raceR.ok ? null : FRESH_ROUND_TTL_MS);
-        if(!raceR.ok){ hitEnd = true; break; } // first un-run round — season data ends here
-        if(sprintR._fresh) cacheSet(sprintR._key, {ok:sprintR.ok, raceName:sprintR.raceName, results:sprintR.results}, null);
+        if(!raceR.ok){ hitEnd = true; break; } // confirmed: first un-run round — season data ends here
+        if(sprintR._fresh && !sprintR.failed) cacheSet(sprintR._key, {ok:sprintR.ok, raceName:sprintR.raceName, results:sprintR.results}, null);
 
         rounds.push({
           round: r,
           raceName: raceR.raceName,
           raceResults: raceR.results,
-          sprintResults: sprintR.ok ? sprintR.results : null
+          // If the sprint fetch itself failed, this reads as "no sprint" just for this one render —
+          // nothing was cached for it, so the next load retries and self-corrects.
+          sprintResults: sprintR.ok ? sprintR.results : null,
+          _sprintFailed: sprintR.failed // only used below, to avoid re-stamping a failure as confirmed
         });
         if(onProgress) onProgress(r, rounds.length);
       }
-      if(hitEnd) break;
+      if(hitEnd || stoppedOnFailure) break;
       round += BATCH_SIZE;
     }
 
     // Shorten the TTL on just the last round, so post-race penalty corrections get re-checked soon —
-    // rewriting the SAME correct value, not a placeholder (that was the earlier bug).
+    // rewriting the SAME correct value, not a placeholder (that was an earlier bug). If that round's
+    // sprint fetch had failed, leave its cache entry alone rather than re-stamping a failure as a
+    // confirmed "no sprint" (that was a second instance of the same class of bug).
     if(rounds.length){
       const last = rounds[rounds.length-1];
       cacheSet(`${year}/${last.round}/race`, {ok:true, raceName:last.raceName, results:last.raceResults}, FRESH_ROUND_TTL_MS);
-      cacheSet(`${year}/${last.round}/sprint/race`,
-        {ok: !!last.sprintResults, raceName:last.raceName, results:last.sprintResults||[]}, FRESH_ROUND_TTL_MS);
+      if(!last._sprintFailed){
+        cacheSet(`${year}/${last.round}/sprint/race`,
+          {ok: !!last.sprintResults, raceName:last.raceName, results:last.sprintResults||[]}, FRESH_ROUND_TTL_MS);
+      }
+      delete last._sprintFailed;
     }
     return rounds;
   }
