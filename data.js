@@ -79,16 +79,19 @@ const F1Data = (() => {
       const data = await fetchJSON(`${API}/${path}`);
       race = data && data.races ? data.races : null;
     }catch(e){ race = null; failed = true; }
-    const hasResults = race && Array.isArray(race.results) && race.results.length>0;
+    // f1api.dev uses a DIFFERENT key for sprint results than race results — "sprintRaceResults" vs
+    // "results". Using the wrong key silently finds nothing, every time, for every sprint round.
+    const resultsArr = race ? (kind==='sprint' ? race.sprintRaceResults : race.results) : null;
+    const hasResults = Array.isArray(resultsArr) && resultsArr.length>0;
     const norm = hasResults
-      ? { ok:true, raceName: race.raceName, results: normalizeResults(race, season, round, kind) }
+      ? { ok:true, raceName: race.raceName, results: normalizeResults(resultsArr, season, round, kind) }
       : { ok:false, raceName:null, results:[] };
     return { ...norm, failed, _fresh:true, _key:path };
   }
 
-  function normalizeResults(race, season, round, kind){
-    if(!race) return [];
-    return race.results.map(r=>{
+  function normalizeResults(resultsArr, season, round, kind){
+    if(!resultsArr) return [];
+    return resultsArr.map(r=>{
       const retiredText = r.retired || null;
       const overrideKey = `${season}:${round}:${r.driver.driverId}`;
       let mechanical = overrideKey in MANUAL_OVERRIDES ? MANUAL_OVERRIDES[overrideKey] : isMechanical(retiredText);
