@@ -63,6 +63,12 @@ function teamColor(teamId){
  let h=0; for(const ch of teamId) h=(h*31+ch.charCodeAt(0))>>>0;
  return `hsl(${h%360} 55% 45%)`;
 }
+// Short display names by teamId — f1api.dev's own teamName is the full official sponsor-laden version
+// ("Mercedes Formula 1 Team", "Scuderia Ferrari", "Audi Revolut F1 Team"...), too long for a legend.
+const SHORT_TEAM_NAMES={mercedes:'Mercedes',ferrari:'Ferrari',mclaren:'McLaren',red_bull:'Red Bull',redbull:'Red Bull',
+ alpine:'Alpine',haas:'Haas',williams:'Williams',audi:'Audi',sauber:'Audi',
+ aston_martin:'Aston Martin',astonmartin:'Aston Martin',rb:'Racing Bulls',racing_bulls:'Racing Bulls',visa_rb:'Racing Bulls',cadillac:'Cadillac'};
+function shortTeamName(teamId, fallback){ return SHORT_TEAM_NAMES[teamId] || fallback || teamId; }
 const SEASON_META={2026:{rounds:23,sprints:6},2025:{rounds:24,sprints:6},2024:{rounds:24,sprints:6},
  2023:{rounds:22,sprints:6},2022:{rounds:22,sprints:3},2021:{rounds:22,sprints:3}};
 function seasonMeta(year){ return SEASON_META[year] || {rounds:24,sprints:6}; }
@@ -99,7 +105,7 @@ function pickerRowHTML(t, rank){
    <input type="checkbox" data-id="${t.teamId}" ${checked?'checked':''}>
    <span class="pickerRank">${rank}</span>
    <span class="pickerDot" style="background:${F1Theme.team(teamColor(t.teamId))}"></span>
-   <span class="pickerName${checked?'':' off'}">${t.teamName||t.teamId}</span>
+   <span class="pickerName${checked?'':' off'}">${shortTeamName(t.teamId,t.teamName)}</span>
    <span class="pickerPts">${Math.round(t.total)}</span>
  </label>`;
 }
@@ -164,7 +170,7 @@ function recompute(round){
    const last5rounds = participated.slice(-5);
    const rate = last5rounds.length ? last5rounds.reduce((s,rnd)=>s+w[rnd-1],0)/last5rounds.length : 0;
    const full = Array.from({length:N},(_,ri)=>ri<L?cumArr[ri]:cumArr[L-1]+rate*(ri-(L-1)));
-   return {n:t.teamName||id, c:teamColor(id), teamId:id, cum:cumArr, full, rate};
+   return {n:shortTeamName(id,t.teamName), c:teamColor(id), teamId:id, cum:cumArr, full, rate};
  }).filter(Boolean);
 
  // Per your call: the knockout line tracks the highest-ranked SELECTED team, not the true overall

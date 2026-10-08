@@ -73,6 +73,12 @@ function teamColor(teamId){
  let h=0; for(const ch of teamId) h=(h*31+ch.charCodeAt(0))>>>0;
  return `hsl(${h%360} 55% 45%)`;
 }
+// Short display names by teamId — f1api.dev's own teamName is the full official sponsor-laden version
+// ("Mercedes Formula 1 Team", "Scuderia Ferrari", "Audi Revolut F1 Team"...), too long for a legend.
+const SHORT_TEAM_NAMES={mercedes:'Mercedes',ferrari:'Ferrari',mclaren:'McLaren',red_bull:'Red Bull',redbull:'Red Bull',
+ alpine:'Alpine',haas:'Haas',williams:'Williams',audi:'Audi',sauber:'Audi',
+ aston_martin:'Aston Martin',astonmartin:'Aston Martin',rb:'Racing Bulls',racing_bulls:'Racing Bulls',visa_rb:'Racing Bulls',cadillac:'Cadillac'};
+function shortTeamName(teamId, fallback){ return SHORT_TEAM_NAMES[teamId] || fallback || teamId; }
 // Approximate season shape — f1api.dev doesn't expose a full future calendar, so total rounds/sprints
 // per year are a lookup rather than fetched. Refine this table as needed for other seasons.
 const SEASON_META={2026:{rounds:23,sprints:6},2025:{rounds:24,sprints:6},2024:{rounds:24,sprints:6},
@@ -132,7 +138,7 @@ function renderDriverPicker(){
    const teamsOrdered=[...new Set(roster.map(d=>d.teamId))].sort((a,b)=>teamTotal[b]-teamTotal[a]);
    html = teamsOrdered.map(teamId=>{
      const teamDrivers = roster.filter(d=>d.teamId===teamId);
-     return `<div class="pickerTeamLabel">${teamDrivers[0].teamName||teamId}</div>`
+     return `<div class="pickerTeamLabel">${shortTeamName(teamId,teamDrivers[0].teamName)}</div>`
        + teamDrivers.map(d=>pickerRowHTML(d,null)).join('');
    }).join('');
  }
@@ -261,7 +267,7 @@ const sw=(c,d,w)=>`<svg width="22" height="8" aria-hidden="true"><line x1="1" y1
 const byTeam={};
 DC.forEach(d=>{ (byTeam[d.teamId] = byTeam[d.teamId]||[]).push(d); });
 document.getElementById('lg').innerHTML=Object.values(byTeam).map(drivers=>{
- const label=drivers[0].teamName||drivers[0].teamId;
+ const label=shortTeamName(drivers[0].teamId,drivers[0].teamName);
  const items=drivers.map((d,i)=>sw(d.c,i>0)+d.n).join('');
  return `<span style="display:flex;align-items:center;gap:6px;"><span style="font-weight:500;">${label}</span>${items}</span>`;
 }).join('')
