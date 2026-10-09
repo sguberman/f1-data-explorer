@@ -7,9 +7,17 @@
      depending on a separate calendar endpoint, so this keeps working even if that endpoint's shape differs
      from what's documented.
    - Sprint results are fetched from the separate /sprint/race endpoint — no guessing at race/sprint splits.
-   - DNF cause (mechanical vs not) is inferred from the API's `retired` text via keyword matching. This is a
-     best-effort classifier, not a certainty — see MANUAL_OVERRIDES below to hand-correct specific rounds,
-     the same way we did by hand via web search before this existed. */
+   - DNF cause (mechanical vs not): f1api.dev's `retired` field (documented as boolean|null in its own SDK
+     types) comes back `null` for every single result we've checked, finishers and DNFs alike — the API
+     currently gives no retirement reason at all, just `position` (null/"-"/"NC" for an unclassified result)
+     and a `time` field like "DNF (44)". So isMechanical()'s keyword matching below has nothing to match
+     against and is effectively dead with live data (issue #36). MANUAL_OVERRIDES is therefore the ONLY
+     real source of mechanical-vs-not classification right now, hand-researched per round from real 2026
+     race reports (Wikipedia's season recaps, Motorsport/PlanetF1/F1.com/crash.net/pitdebrief articles) —
+     not inferred from this site's own data. This needs manual upkeep: add an entry here whenever a new
+     DNF's cause gets reported after a future round. A driver with a REAL classified position (even a bad
+     one, e.g. lapped many times) who isn't listed here is correctly left uncategorized — only enter a
+     driver here when their retirement's actual cause has been found. */
 const F1Data = (() => {
   const API = 'https://f1api.dev/api';
   const CACHE_NS = 'f1cache:v1:';
@@ -22,9 +30,89 @@ const F1Data = (() => {
   const NON_MECHANICAL_KEYWORDS = ['collision','accident','crash','spun','spin','contact','puncture',
     'disqualified','did not start','withdrew','black flag','illness'];
 
-  // Hand corrections for specific rounds where the keyword guess is known to be wrong.
-  // Keyed as "season:round:driverId" -> true (treat as mechanical) or false (treat as not).
-  const MANUAL_OVERRIDES = {};
+  // Hand-researched mechanical-vs-not classification for 2026 DNFs (issue #36 — see note above; this is
+  // the primary classification source, not a correction layer, since the API gives us nothing to correct).
+  // Keyed as "season:round:driverId" -> true (mechanical) or false (not mechanical, e.g. a crash/collision/
+  // driver error). A handful of drivers retired with no reported cause found anywhere researched and are
+  // deliberately left out (defaults to non-mechanical): 2026 round 5 (Alonso, Lindblad), round 6 (Sainz),
+  // round 7 (Bearman, Albon, Bottas, Stroll), round 14 (Sainz).
+  const MANUAL_OVERRIDES = {
+    // Round 1 — Australia: Piastri crashed on the way to the grid (non-mechanical). Hadjar (power unit),
+    // Hulkenberg (DNS, unfixed technical problem), Bottas (fuel system) and the Aston Martins (Alonso,
+    // Stroll — car vibration/reliability woes) were all mechanical.
+    '2026:1:piastri': false, '2026:1:hadjar': true, '2026:1:hulkenberg': true,
+    '2026:1:bottas': true, '2026:1:alonso': true, '2026:1:stroll': true,
+
+    // Round 2 — China: every retirement was mechanical — Norris/Piastri (McLaren electrical/power unit,
+    // both DNS), Bortoleto (hydraulics, DNS), Albon (suspension, DNS), Verstappen (late-race mechanical),
+    // Stroll (battery), Alonso (same Aston Martin vibration issue as round 1).
+    '2026:2:norris': true, '2026:2:piastri': true, '2026:2:bortoleto': true, '2026:2:albon': true,
+    '2026:2:max_verstappen': true, '2026:2:alonso': true, '2026:2:stroll': true,
+
+    // Round 3 — Japan: Bearman crashed heavily (non-mechanical). Stroll retired with a suspected water
+    // pressure issue (mechanical).
+    '2026:3:bearman': false, '2026:3:stroll': true,
+
+    // Round 4 — Miami: Hadjar crashed into the wall at the chicane; Gasly and Lawson collided with each
+    // other (all three non-mechanical). Hulkenberg retired with an overheating drivetrain (mechanical).
+    '2026:4:hadjar': false, '2026:4:gasly': false, '2026:4:lawson': false, '2026:4:hulkenberg': true,
+
+    // Round 5 — Canada: Russell (power unit), Norris (gearbox) and Pérez (suspension) were mechanical;
+    // Albon was taken out by a Piastri collision (non-mechanical).
+    '2026:5:russell': true, '2026:5:norris': true, '2026:5:perez': true, '2026:5:albon': false,
+
+    // Round 6 — Monaco: Verstappen, Bottas, Bearman and Norris retired to reliability issues (mechanical);
+    // Stroll and Leclerc crashed (non-mechanical).
+    '2026:6:max_verstappen': true, '2026:6:bottas': true, '2026:6:bearman': true, '2026:6:norris': true,
+    '2026:6:stroll': false, '2026:6:leclerc': false,
+
+    // Round 7 — Barcelona: Alonso (battery) and Antonelli (power unit) were mechanical. Leclerc's late DNF
+    // was a brake-by-wire failure plus loss of power steering (mechanical). Hulkenberg's retirement was a
+    // freak track-debris incident (a stone triggered his car's emergency shutoff cord) — not a reliability
+    // failure, classified non-mechanical.
+    '2026:7:alonso': true, '2026:7:antonelli': true, '2026:7:leclerc': true, '2026:7:hulkenberg': false,
+
+    // Round 8 — Austria: Sainz (electrical) and both Cadillacs, Pérez and Bottas (brake overheating), were
+    // mechanical. Stroll also retired with brake failure (mechanical).
+    '2026:8:sainz': true, '2026:8:perez': true, '2026:8:bottas': true, '2026:8:stroll': true,
+
+    // Round 9 — Britain: Verstappen (rear wing failure) and Hulkenberg (gearbox) were mechanical. Albon and
+    // Sainz were both taken out in separate collisions (non-mechanical).
+    '2026:9:max_verstappen': true, '2026:9:hulkenberg': true, '2026:9:albon': false, '2026:9:sainz': false,
+
+    // Round 10 — Belgium: Russell retired after an opening-lap collision with Hamilton (non-mechanical).
+    // Pérez (rear suspension) and Stroll (gearbox) were mechanical.
+    '2026:10:russell': false, '2026:10:perez': true, '2026:10:stroll': true,
+
+    // Round 11 — Hungary: Piastri (gearbox), Pérez (suspected internal/gearbox issue) and Bottas (brake
+    // cooling — a recurring Cadillac problem) were all mechanical.
+    '2026:11:piastri': true, '2026:11:perez': true, '2026:11:bottas': true,
+
+    // Round 12 — Netherlands: Verstappen crashed on the opening lap (non-mechanical). Ocon (power unit),
+    // Bearman (full car shutdown) and Bottas (hydraulics) were mechanical. Stroll retired after picking up
+    // early-race damage (non-mechanical, cause of the damage itself unclear).
+    '2026:12:max_verstappen': false, '2026:12:ocon': true, '2026:12:bearman': true, '2026:12:bottas': true,
+    '2026:12:stroll': false,
+
+    // Round 13 — Italy (Monza): Leclerc crashed (his own mistake, non-mechanical). Alonso retired after
+    // kerb-strike/underbody damage (non-mechanical). Stroll retired with a hydraulic issue (mechanical).
+    '2026:13:leclerc': false, '2026:13:alonso': false, '2026:13:stroll': true,
+
+    // Round 14 — Spain (Madrid): Hamilton (brakes) and Pérez (cooling system) were mechanical. Stroll also
+    // retired with brake failure (mechanical, same "pedal to the floor" issue as round 8).
+    '2026:14:hamilton': true, '2026:14:perez': true, '2026:14:stroll': true,
+
+    // Round 15 — Azerbaijan: Norris, Gasly and Colapinto were all taken out in separate collisions
+    // (non-mechanical). Albon and Bottas also crashed (non-mechanical). Stroll retired with a water
+    // pressure issue (mechanical); Alonso pitted himself over a suspected engine problem (mechanical).
+    '2026:15:norris': false, '2026:15:gasly': false, '2026:15:colapinto': false, '2026:15:albon': false,
+    '2026:15:bottas': false, '2026:15:stroll': true, '2026:15:alonso': true,
+
+    // Round 16 — Bahrain (Malaysia): Russell retired with a suspected power unit issue (mechanical, even
+    // though he was still scored P20 — a mechanical failure shouldn't count as a real finishing position).
+    // Albon retired with a Williams technical issue (mechanical); Bottas crashed (non-mechanical).
+    '2026:16:russell': true, '2026:16:albon': true, '2026:16:bottas': false
+  };
 
   // Hand corrections for f1api.dev's calendar sprint flag, for rounds where it's missing or wrong
   // (seen in practice: an upcoming round on a live season whose schedule.sprintRace.date hadn't been
@@ -34,7 +122,9 @@ const F1Data = (() => {
   };
 
   function isMechanical(retiredText){
-    if(!retiredText) return false;
+    // r.retired is documented as boolean|null (not text) — we've only ever observed null in practice, but
+    // guard against a future true/false value reaching here and crashing on .toLowerCase().
+    if(!retiredText || typeof retiredText !== 'string') return false;
     const t = retiredText.toLowerCase();
     if(NON_MECHANICAL_KEYWORDS.some(k=>t.includes(k))) return false;
     return MECHANICAL_KEYWORDS.some(k=>t.includes(k));
