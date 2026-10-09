@@ -311,6 +311,7 @@ function positionHandle(){
 })();
 
 window.addEventListener('f1selection', e=>buildFromSelection(e.detail));
+window.addEventListener('f1roundchange', e=>{ if(currentSeasonRounds.length) recompute(e.detail.round); });
 window.addEventListener('themechange',draw);
 window.addEventListener('resize', ()=>{ if(chart) positionHandle(); });
 F1Controls.mount('f1controls', {defaultYear:2026});

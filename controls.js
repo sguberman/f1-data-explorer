@@ -61,8 +61,11 @@ const F1Controls = (() => {
       const r = state.seasonRounds[state.round-1];
       container.querySelector('.f1c-roundlabel').textContent =
         `Round ${state.round} of ${state.maxRound}${r?(' — '+r.raceName):''}`;
+      // Live update on every drag step, same as the on-chart drag handle — a lightweight event
+      // (not `f1selection`) so pages can just recompute from already-loaded data, with no network
+      // call and without resetting the driver/team selection the way a full f1selection rebuild would.
+      window.dispatchEvent(new CustomEvent('f1roundchange', { detail: { round: state.round } }));
     });
-    roundSlider.addEventListener('change', emit); // only re-render charts once the user releases the slider
 
     try{ localStorage.setItem(SEASON_KEY, defaultYear); }catch(e){}
     loadYear(container, defaultYear, statusEl);
