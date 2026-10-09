@@ -176,11 +176,31 @@ async function buildFromSelection(detail){
  recompute(detail.round);
 }
 
-// Per-driver current points, pace (avg points/round with mechanical DNFs excluded), and this
-// season's mechanical-DNF rate — for literally every driver who has appeared, not just tracked ones.
+// Per-driver race-finish histogram (buckets: P1..P10, then "11+/other" — same convention as the
+// finishing-position chart): mechanical DNFs are fully excluded (not even counted), a non-mechanical
+// DNF or a finish outside the top 10 both land in the last bucket, which is fine since both score 0.
+// Built straight from the raw race results, not F1Data.cumulative (which strips the position field).
+function buildPosHist(){
+ const hist = {};
+ currentSeasonRounds.forEach(r=>{
+   if(r.round > L) return;
+   (r.raceResults||[]).forEach(res=>{
+     if(res.mechanical) return;
+     if(!hist[res.driverId]) hist[res.driverId]=new Array(11).fill(0);
+     const pos=res.position;
+     const idx = (pos!=null && pos>=1 && pos<=10) ? pos-1 : 10;
+     hist[res.driverId][idx]++;
+   });
+ });
+ return hist;
+}
+
+// Per-driver current points and this season's mechanical-DNF rate — for literally every driver who
+// has appeared, not just tracked ones — plus the finish histogram above that drives simulated results.
 function recomputeRoster(){
  const cumInc = F1Data.cumulative(currentSeasonRounds, L, 'include');
  const cumExc = F1Data.cumulative(currentSeasonRounds, L, 'exclude');
+ const posHist = buildPosHist();
  fullRoster = Object.keys(cumInc.drivers).map(id=>{
    const di = cumInc.drivers[id], de = cumExc.drivers[id];
    const now = di.rounds.reduce((s,x)=>s+x.points,0);
@@ -188,9 +208,9 @@ function recomputeRoster(){
    const excByRound = {};
    (de?de.rounds:[]).forEach(x=>{ excByRound[x.round]=(excByRound[x.round]||0)+x.points; });
    const excCounts = Object.values(excByRound);
-   const pace = excCounts.length ? excCounts.reduce((a,b)=>a+b,0)/excCounts.length : 0;
    const mechRate = incRoundSet.size ? Math.max(0, incRoundSet.size-excCounts.length)/incRoundSet.size : 0;
-   return { driverId:id, code:di.code, name:di.name, teamId:di.teamId, teamName:di.teamName, now, pace, mechRate };
+   return { driverId:id, code:di.code, name:di.name, teamId:di.teamId, teamName:di.teamName, now, mechRate,
+            posHist: posHist[id] || new Array(11).fill(0) };
  });
 }
 
@@ -263,10 +283,26 @@ function randomRounds(k, E){
  }
  return new Set(a.slice(0,k));
 }
-function sampleOrder(alive, weights){
- // Gumbel-max trick: log(w) - log(-log(U)) ranked desc = a draw from Plackett-Luce(w), restricted to survivors
- return alive.map(i=>({i,k:Math.log(weights[i])-Math.log(-Math.log(Math.random()))}))
-             .sort((a,b)=>b.k-a.k).map(x=>x.i);
+// issue #30: draw a race order from each driver's own finish-position histogram, not a single pace
+// number — slot by slot (who takes P1, then P2, ...), weighting the still-unplaced drivers by their
+// own probability mass at that exact position and removing the winner before moving to the next slot.
+// A small flat smoothing constant keeps a position from being impossible just because it hasn't
+// happened yet in a small sample, and guarantees the weights never all go to zero.
+const HIST_SMOOTH = 0.5;
+function sampleOrder(alive, posHist){
+ const remaining = alive.slice();
+ const order = [];
+ const nSlots = Math.min(10, remaining.length); // only the top 10 need an exact order — the rest all score 0
+ for(let slot=0; slot<nSlots; slot++){
+   const weights = remaining.map(i => (posHist[i][slot]||0) + HIST_SMOOTH);
+   const total = weights.reduce((a,b)=>a+b,0);
+   let r = Math.random()*total, pick=weights.length-1;
+   for(let w=0; w<weights.length; w++){ if((r-=weights[w])<=0){ pick=w; break; } }
+   order.push(remaining[pick]);
+   remaining.splice(pick,1);
+ }
+ order.push(...remaining); // anyone left over is unordered among themselves — all score 0 regardless
+ return order;
 }
 function quantile(arr,q){
  const s=[...arr].sort((a,b)=>a-b);
@@ -372,7 +408,7 @@ document.getElementById('run').addEventListener('click',()=>{
  setTimeout(()=>{
    const N=+document.getElementById('n').value;
    const roster=fullRoster, n=roster.length, E=remainingEvents.length;
-   const weights=roster.map(d=>Math.max(d.pace,0.25)); // floor so a zero-pace driver can still be placed, just rarely
+   const posHist=roster.map(d=>d.posHist);
    const nowPts=roster.map(d=>d.now);
    const trackedSet=new Set(selectedDriverIds||[]);
    const trackedIdx=[]; roster.forEach((d,i)=>{ if(trackedSet.has(d.driverId)) trackedIdx.push(i); });
@@ -389,7 +425,7 @@ document.getElementById('run').addEventListener('click',()=>{
      for(let e=0;e<E;e++){
        const alive=[];
        for(let i=0;i<n;i++) if(!dnfSet[i].has(e)) alive.push(i);
-       const order=sampleOrder(alive, weights);
+       const order=sampleOrder(alive, posHist);
        const pts = remainingEvents[e].type==='sprint' ? PTS_SPRINT : PTS_GP;
        order.forEach((idx,rank)=>{ if(rank<pts.length) totals[idx]+=pts[rank]; });
      }
