@@ -118,6 +118,12 @@ canvas{max-width:100%;}
     <div class="note" id="oddsNote"></div>
   </div>
 
+  <div class="card" id="posCard" style="display:none;">
+    <h2>Projected final championship position</h2>
+    <div style="overflow-x:auto;"><table id="posTable"></table></div>
+    <div class="note">Position is each tracked driver's rank in the full simulated standings — every driver who's scored this season, not just the tracked set — so finishing behind an untracked driver is possible even for a driver tracked here.</div>
+  </div>
+
   <div class="card" id="rangeCard" style="display:none;">
     <h2>Projected final points (5th–95th percentile range)</h2>
     <table>
@@ -157,7 +163,7 @@ const PTS_SPRINT=[8,7,6,5,4,3,2,1];
 let currentYear=null, currentSeasonRounds=[], currentCalendar=null;
 let L=0, fullRoster=[], remainingEvents=[];
 let selectedDriverIds=null, pickerSort='team', dnfState={};
-let lastOdds=null, lastFinals=null, lastTrackedRoster=null;
+let lastOdds=null, lastFinals=null, lastTrackedRoster=null, lastPosCounts=null, lastK=0, lastN=0;
 
 async function buildFromSelection(detail){
  currentYear = detail.year;
@@ -268,9 +274,10 @@ function updateReadiness(){
 
 function hideResults(){
  document.getElementById('oddsCard').style.display='none';
+ document.getElementById('posCard').style.display='none';
  document.getElementById('rangeCard').style.display='none';
  document.getElementById('distCard').style.display='none';
- lastOdds=null; lastFinals=null; lastTrackedRoster=null;
+ lastOdds=null; lastFinals=null; lastTrackedRoster=null; lastPosCounts=null; lastK=0; lastN=0;
 }
 
 // pick k distinct event indices out of E (partial Fisher-Yates)
@@ -414,6 +421,11 @@ document.getElementById('run').addEventListener('click',()=>{
    const trackedIdx=[]; roster.forEach((d,i)=>{ if(trackedSet.has(d.driverId)) trackedIdx.push(i); });
    const finals=trackedIdx.map(()=>[]);
    const wins=new Array(n).fill(0);
+   const k=trackedIdx.length;
+   // issue #31: posCounts[ti][p] = how many simulated seasons tracked driver ti finished at that exact
+   // championship rank (p=0 → 1st, ... p=k-1 → kth), with the last slot catching "outside the top k" —
+   // k being the tracked-set size, so the buckets adapt to however many drivers are being tracked.
+   const posCounts=trackedIdx.map(()=>new Array(k+1).fill(0));
    for(let s=0;s<N;s++){
      const totals=nowPts.slice();
      const dnfSet=roster.map(d=>{
@@ -429,17 +441,27 @@ document.getElementById('run').addEventListener('click',()=>{
        const pts = remainingEvents[e].type==='sprint' ? PTS_SPRINT : PTS_GP;
        order.forEach((idx,rank)=>{ if(rank<pts.length) totals[idx]+=pts[rank]; });
      }
-     let best=0; for(let i=1;i<n;i++) if(totals[i]>totals[best]) best=i;
-     wins[best]++;
-     trackedIdx.forEach((idx,ti)=>finals[ti].push(totals[idx]));
+     // full standings order this simulated season, to get both the winner and every tracked driver's rank
+     const standing=Array.from({length:n},(_,i)=>i).sort((a,b)=>totals[b]-totals[a]);
+     wins[standing[0]]++;
+     const rankOf=new Array(n);
+     standing.forEach((idx,r)=>{ rankOf[idx]=r+1; });
+     trackedIdx.forEach((idx,ti)=>{
+       finals[ti].push(totals[idx]);
+       const r=rankOf[idx];
+       posCounts[ti][ r<=k ? r-1 : k ]++;
+     });
    }
    const trackedRoster=trackedIdx.map(i=>roster[i]);
    const odds=trackedIdx.map(i=>100*wins[i]/N);
    lastTrackedRoster=trackedRoster; lastOdds=odds; lastFinals=finals;
+   lastPosCounts=posCounts; lastK=k; lastN=N;
    renderOdds(trackedRoster, odds);
+   renderPositions(trackedRoster, posCounts, k, N);
    renderRange(trackedRoster, finals);
    renderDist(trackedRoster, finals);
    document.getElementById('oddsCard').style.display='block';
+   document.getElementById('posCard').style.display='block';
    document.getElementById('rangeCard').style.display='block';
    document.getElementById('distCard').style.display='block';
    document.getElementById('status').textContent=`${N.toLocaleString()} seasons simulated.`;
@@ -491,6 +513,20 @@ function renderOdds(roster, odds){
    ? `Tracked drivers total ${total.toFixed(1)}% — the other ${rest.toFixed(1)}% of simulated seasons were won by a driver outside the tracked set.`
    : `Tracked drivers won effectively every simulated season.`;
 }
+function renderPositions(roster, posCounts, k, N){
+ const headers = Array.from({length:k},(_,i)=>'P'+(i+1)).concat([(k+1)+'th or lower']);
+ const rows = roster.map((d,i)=>({d,c:F1Theme.team(teamColor(d.teamId)),counts:posCounts[i]}))
+   .sort((a,b)=>(b.counts[0]/N)-(a.counts[0]/N));
+ const thead = '<tr><th>Driver</th>'+headers.map(h=>`<th>${h}</th>`).join('')+'</tr>';
+ const tbody = rows.map(({d,c,counts})=>{
+   const cells = counts.map(cnt=>{
+     const pct=100*cnt/N;
+     return `<td>${pct<0.1 && pct>0 ? '<0.1' : pct.toFixed(1)}%</td>`;
+   }).join('');
+   return `<tr><td style="color:${c};font-weight:600;">${d.code}</td>${cells}</tr>`;
+ }).join('');
+ document.getElementById('posTable').innerHTML = `<thead>${thead}</thead><tbody>${tbody}</tbody>`;
+}
 function renderRange(roster, finals){
  const rows=roster.map((d,i)=>{
    const f=finals[i];
@@ -512,6 +548,7 @@ window.addEventListener('themechange', ()=>{
  recolorDnfTags();
  renderDriverPicker();
  if(lastOdds) renderOdds(lastTrackedRoster,lastOdds);
+ if(lastPosCounts) renderPositions(lastTrackedRoster,lastPosCounts,lastK,lastN);
  if(lastFinals) renderRange(lastTrackedRoster,lastFinals);
  if(lastFinals) renderDist(lastTrackedRoster,lastFinals);
 });
