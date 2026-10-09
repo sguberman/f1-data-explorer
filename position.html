@@ -33,9 +33,23 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
 <div class="wrap">
 <div class="theme-bar" id="themeToggle"></div>
 <h1>2026 F1 Drivers — Race Finishing Position</h1>
-<p class="sub" id="pageSub">Defaults to the top 8 drivers as of the selected round — sort, use a preset, or pick anyone below · mechanical DNFs excluded · Grand Prix classification only (sprint sessions not included)</p>
+<p class="sub" id="pageSub">Defaults to the top 8 drivers as of the selected round — sort, use a preset, or pick anyone below</p>
 <div id="f1controls" class="f1c"></div>
 <div class="card" style="margin-bottom:16px;">
+<div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:10px;">
+ <span style="font-size:12px;color:var(--sub);">Sort</span>
+ <div class="btnrow" id="chartSortRow">
+  <button type="button" class="pill active" data-sort="median">Median</button>
+  <button type="button" class="pill" data-sort="champ">Championship</button>
+  <button type="button" class="pill" data-sort="team">Team</button>
+ </div>
+ <span style="flex:1;"></span>
+ <div class="btnrow" id="chartOptRow">
+  <button type="button" class="pill" data-opt="below10">Below P10</button>
+  <button type="button" class="pill" data-opt="mech">Mechanical DNFs</button>
+  <button type="button" class="pill active" data-opt="sprint">Sprints</button>
+ </div>
+</div>
 <div class="ridgeWrap" id="ridgeWrap"><canvas id="ridgeCanvas"></canvas></div>
 <div id="empty" style="font-size:12.5px;color:var(--sub);display:none;">No drivers selected.</div>
 <div class="note" id="ridgeNote"></div>
@@ -78,9 +92,19 @@ const SHORT_TEAM_NAMES={mercedes:'Mercedes',ferrari:'Ferrari',mclaren:'McLaren',
  aston_martin:'Aston Martin',astonmartin:'Aston Martin',rb:'Racing Bulls',racing_bulls:'Racing Bulls',visa_rb:'Racing Bulls',cadillac:'Cadillac'};
 function shortTeamName(teamId, fallback){ return SHORT_TEAM_NAMES[teamId] || fallback || teamId; }
 
-const LAB=['P1','P2','P3','P4','P5','P6','P7','P8','P9','P10','11+/DNF'];
+let LAB=['P1','P2','P3','P4','P5','P6','P7','P8','P9','P10','11+/DNF'];
 
 let D=[], L=0, P;
+// issue #35: chart display options — all computed purely from already-loaded season data, no network.
+// chartSort: 'median' (default, best typical finish on top), 'champ' (current drivers' standings order),
+// 'team' (teams grouped by constructors' standings order, drivers within a team by standings order).
+// showBelowP10: false (default) folds everything below P10 into one "11+/DNF" bucket, same as before;
+// true expands individual positions down to the worst classified finish seen, plus a separate DNF bucket.
+// includeMechanical: false (default, matches the site's usual convention) excludes mechanical DNFs
+// entirely (not even counted as a start); true counts them as a start, bucketed as a DNF/no-position.
+// includeSprints: true (default, new as of #35) folds sprint-session results into the same histogram as
+// Grand Prix results; false restricts the chart to Grand Prix classification only, as it was before.
+let chartSort='median', showBelowP10=false, includeMechanical=false, includeSprints=true;
 
 // issue #33: single ridgeline (joyplot) chart for the selected drivers — same mechanism as the
 // simulator's ridgeline plots (#32): each driver gets a baseline row (invisible flat dataset) and a
@@ -126,31 +150,71 @@ function rankedDriverIds(cum){
    .sort((a,b)=>b.total-a.total).map(d=>d.driverId);
 }
 
-// Non-mechanical-DNF-excluded finishing-position histogram for one driver, Grand Prix sessions only
-// (no sprints), through round L — pure in-memory aggregation, safe to call on every drag/slider step.
-function bucketsFor(driverId){
- const v = Array(11).fill(0);
+// Sessions (race, plus sprint if included) contributing to the histogram for a round, respecting the
+// current includeSprints toggle.
+function sessionRowsFor(r){
+ return includeSprints && r.sprintResults ? [...(r.raceResults||[]), ...r.sprintResults] : (r.raceResults||[]);
+}
+
+// Worst classified position seen across all loaded rounds (through L), respecting the current
+// mechanical/sprint toggles — used to size the expanded "show positions below P10" bucket range.
+function maxClassifiedPosition(){
+ let max = 10;
+ currentSeasonRounds.forEach(r=>{
+   if(r.round > L) return;
+   sessionRowsFor(r).forEach(res=>{
+     if(res.mechanical && !includeMechanical) return;
+     if(res.position!=null && res.position>max) max = res.position;
+   });
+ });
+ return max;
+}
+
+function buildLabels(){
+ if(!showBelowP10) return ['P1','P2','P3','P4','P5','P6','P7','P8','P9','P10','11+/DNF'];
+ const max = maxClassifiedPosition();
+ const labs = []; for(let p=1; p<=max; p++) labs.push('P'+p);
+ labs.push('DNF');
+ return labs;
+}
+
+// Finishing-position histogram for one driver through round L, honoring the current mechanical/sprint/
+// below-P10 toggles — pure in-memory aggregation over already-loaded data, safe on every drag/slider step.
+function bucketsFor(driverId, labels){
+ const n = labels.length, dnfIdx = n-1;
+ const v = Array(n).fill(0);
  let starts = 0;
  currentSeasonRounds.forEach(r=>{
    if(r.round > L) return;
-   const res = (r.raceResults||[]).find(x=>x.driverId===driverId);
-   if(!res || res.mechanical) return; // didn't take part, or a mechanical DNF — excluded per this page's rule
-   starts++;
-   const pos = res.position;
-   const idx = (pos!=null && pos>=1 && pos<=10) ? pos-1 : 10; // finished 11th+, or a non-mechanical DNF
-   v[idx]++;
+   sessionRowsFor(r).forEach(res=>{
+     if(res.driverId !== driverId) return;
+     if(res.mechanical && !includeMechanical) return; // excluded entirely, not even counted as a start
+     starts++;
+     const pos = res.position;
+     const idx = (pos!=null && pos>=1 && pos<=dnfIdx) ? pos-1 : dnfIdx;
+     v[idx]++;
+   });
  });
  return { v, starts };
 }
 
-// Pure recompute from already-loaded season data — no network, safe to call on every slider step.
+// Pure recompute from already-loaded season data — no network, safe to call on every slider step or
+// option toggle.
 function recompute(round){
  L = round;
  const cum = F1Data.cumulative(currentSeasonRounds, L, 'include');
+ const driverRanked = rankedDriverIds(cum);
+ const driverRank = {}; driverRanked.forEach((id,i)=>{ driverRank[id]=i; });
+ const teamRanked = Object.values(cum.teams)
+   .map(t=>({teamId:t.teamId,total:t.rounds.reduce((s,x)=>s+x.points,0)}))
+   .sort((a,b)=>b.total-a.total).map(t=>t.teamId);
+ const teamRank = {}; teamRanked.forEach((id,i)=>{ teamRank[id]=i; });
+ LAB = buildLabels();
  D = (selectedDriverIds||[]).map(id=>{
    const dr = cum.drivers[id]; if(!dr) return null;
-   const {v,starts} = bucketsFor(id);
-   return { n:dr.code, teamId:dr.teamId, teamName:dr.teamName, c:teamColor(dr.teamId), v, starts };
+   const {v,starts} = bucketsFor(id, LAB);
+   return { n:dr.code, teamId:dr.teamId, teamName:dr.teamName, c:teamColor(dr.teamId), v, starts,
+     driverRank:driverRank[id]??999, teamRank:teamRank[dr.teamId]??999 };
  }).filter(Boolean);
  draw();
  renderDriverPicker();
@@ -163,8 +227,13 @@ function draw(){
  wrap.style.display='block'; empty.style.display='none';
  P=F1Theme.chart();
  Chart.defaults.font.family=ff; Chart.defaults.color=P.text;
- const order=D.map(d=>({code:d.n, color:F1Theme.team(d.c), counts:d.v, starts:d.starts}))
-   .sort((a,b)=>medianBucket(a.counts)-medianBucket(b.counts));
+ const order=D.map(d=>({code:d.n, color:F1Theme.team(d.c), counts:d.v, starts:d.starts,
+     driverRank:d.driverRank, teamRank:d.teamRank}))
+   .sort((a,b)=>{
+     if(chartSort==='champ') return a.driverRank-b.driverRank;
+     if(chartSort==='team') return (a.teamRank-b.teamRank) || (a.driverRank-b.driverRank);
+     return medianBucket(a.counts)-medianBucket(b.counts); // 'median' (default)
+   });
  const n=order.length;
  wrap.style.height=(n*RIDGE_ROW_PX+RIDGE_PAD_PX)+'px';
  const datasets=[];
@@ -191,13 +260,13 @@ function draw(){
            label:ctx=>{
              const cnt=ctx.dataset._counts[ctx.dataIndex], starts=ctx.dataset._starts;
              const pct=starts?100*cnt/starts:0;
-             return ` ${ctx.dataset._code}: ${cnt} round${cnt===1?'':'s'} (${pct.toFixed(0)}%)`;
+             return ` ${ctx.dataset._code}: ${cnt} start${cnt===1?'':'s'} (${pct.toFixed(0)}%)`;
            }
          }
        }
      },
      scales:{
-       x:{grid:{color:P.grid}, ticks:{color:P.text, maxRotation:0, autoSkip:false}},
+       x:{grid:{color:P.grid}, ticks:{color:P.text, maxRotation:0, autoSkip:LAB.length>12}},
        y:{
          min:-0.15, max:(n-1)*RIDGE_ROW+RIDGE_PEAK+0.25,
          grid:{display:false},
@@ -211,14 +280,20 @@ function draw(){
      }
    }
  });
- note.textContent = 'Rounds counted — ' + order.map(o=>`${o.code}: ${o.starts}`).join(' · ');
+ note.textContent = 'Starts counted — ' + order.map(o=>`${o.code}: ${o.starts}`).join(' · ');
  updateSub();
 }
 
 function updateSub(){
  const r=currentSeasonRounds.find(x=>x.round===L);
- document.getElementById('pageSub').textContent =
-   `${D.length} driver${D.length===1?'':'s'} selected · through Round ${L}${r?(' — '+r.raceName):''} · mechanical DNFs excluded · Grand Prix classification only (sprint sessions not included)`;
+ const bits = [
+   `${D.length} driver${D.length===1?'':'s'} selected`,
+   `through Round ${L}${r?(' — '+r.raceName):''}`,
+   includeSprints ? 'Grand Prix + sprint sessions' : 'Grand Prix classification only',
+   includeMechanical ? 'mechanical DNFs included' : 'mechanical DNFs excluded',
+   showBelowP10 ? 'full finishing order shown' : 'below P10 folded into one bucket'
+ ];
+ document.getElementById('pageSub').textContent = bits.join(' · ');
 }
 
 function pickerRowHTML(d, rank){
@@ -260,6 +335,21 @@ function renderDriverPicker(){
  });
 }
 
+document.getElementById('chartSortRow').addEventListener('click', e=>{
+ const btn=e.target.closest('button[data-sort]'); if(!btn) return;
+ chartSort = btn.dataset.sort;
+ document.querySelectorAll('#chartSortRow button').forEach(b=>b.classList.toggle('active', b===btn));
+ draw(); // sort only changes row order within already-computed D — no need to recompute buckets
+});
+document.getElementById('chartOptRow').addEventListener('click', e=>{
+ const btn=e.target.closest('button[data-opt]'); if(!btn) return;
+ const opt=btn.dataset.opt;
+ if(opt==='below10') showBelowP10=!showBelowP10;
+ else if(opt==='mech') includeMechanical=!includeMechanical;
+ else if(opt==='sprint') includeSprints=!includeSprints;
+ btn.classList.toggle('active');
+ recompute(L); // these all change what the buckets count — rebuild from already-loaded data, no network
+});
 document.getElementById('sortSeg').addEventListener('click', e=>{
  const btn=e.target.closest('button[data-sort]'); if(!btn) return;
  pickerSort = btn.dataset.sort;
