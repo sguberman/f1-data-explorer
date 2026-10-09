@@ -55,14 +55,27 @@ const F1Data = (() => {
   }
 
   async function fetchJSON(url, attempt=0){
+    let res;
     try{
-      const res = await fetch(url);
-      if(!res.ok) throw new Error('HTTP '+res.status+' for '+url);
-      return await res.json();
+      res = await fetch(url);
     }catch(e){
-      if(attempt===0){ await new Promise(r=>setTimeout(r,300)); return fetchJSON(url,1); } // one retry — batched requests can trip transient rate limits
+      // network-level failure (offline, DNS, CORS) — always transient, worth one retry
+      if(attempt===0){ await new Promise(r=>setTimeout(r,300)); return fetchJSON(url,1); }
       throw e;
     }
+    if(res.status===404){
+      // A clean 404 is the API's deliberate "this doesn't exist" signal (e.g. no sprint this round) —
+      // not a transient failure, so no point retrying it. Thrown as a distinct, recognizable error so
+      // callers can tell "confirmed not found" apart from a genuine fetch problem.
+      const err = new Error('HTTP 404 for '+url);
+      err.notFound = true;
+      throw err;
+    }
+    if(!res.ok){
+      if(attempt===0){ await new Promise(r=>setTimeout(r,300)); return fetchJSON(url,1); } // one retry — batched requests can trip transient rate limits
+      throw new Error('HTTP '+res.status+' for '+url);
+    }
+    return await res.json();
   }
 
   // Always resolves to the SAME normalized shape whether it came from cache or the network:
@@ -78,7 +91,13 @@ const F1Data = (() => {
     try{
       const data = await fetchJSON(`${API}/${path}`);
       race = data && data.races ? data.races : null;
-    }catch(e){ race = null; failed = true; }
+    }catch(e){
+      race = null;
+      // A 404 is a confirmed "not found" (e.g. no sprint this round), not a fetch failure — leave
+      // `failed` false so the caller caches this as a real negative result instead of refusing to
+      // cache it and re-checking (and re-404ing) on every single future load.
+      if(!(e && e.notFound)) failed = true;
+    }
     // f1api.dev uses a DIFFERENT key for sprint results than race results — "sprintRaceResults" vs
     // "results". Using the wrong key silently finds nothing, every time, for every sprint round.
     const resultsArr = race ? (kind==='sprint' ? race.sprintRaceResults : race.results) : null;
