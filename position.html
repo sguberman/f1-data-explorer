@@ -6,58 +6,217 @@
 <title>2026 F1 Drivers — Race Finishing Position</title>
 <link rel="stylesheet" href="theme.css">
 <script src="theme.js"></script>
+<script src="data.js"></script>
+<script src="controls.js"></script>
 <style>
 body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;padding:24px 16px 40px;}
 .wrap{max-width:820px;margin:0 auto;}
 h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
 .sub{font-size:12.5px;color:var(--sub);margin:0 0 16px;}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;}
-.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;}
 .panel h3{font-size:12px;font-weight:600;margin:0 0 2px;}
+.panelSub{font-size:10.5px;color:var(--sub);margin:0 0 6px;}
+#driverPicker{max-height:280px;overflow-y:auto;}
+.pickerTeamLabel{font-size:11px;color:var(--sub);padding:10px 2px 4px;}
+.pickerTeamLabel:first-child{padding-top:2px;}
+.pickerRow{display:flex;align-items:center;gap:10px;padding:6px 2px;border-bottom:0.5px solid var(--line);cursor:pointer;}
+.pickerRow:last-child{border-bottom:none;}
+.pickerRow input{margin:0;flex:0 0 auto;}
+.pickerRank{font-size:11px;color:var(--sub);width:16px;text-align:right;flex:0 0 auto;}
+.pickerDot{width:8px;height:8px;border-radius:50%;flex:0 0 auto;}
+.pickerCode{font-size:13px;font-weight:500;flex:1;}
+.pickerCode.off{color:var(--sub);font-weight:400;}
+.pickerPts{font-size:12px;color:var(--sub);font-variant-numeric:tabular-nums;flex:0 0 auto;}
 </style>
 </head>
 <body>
 <div class="wrap">
 <div class="theme-bar" id="themeToggle"></div>
 <h1>2026 F1 Drivers — Race Finishing Position</h1>
-<p class="sub">Top four teams · all 15 rounds · mechanical DNFs excluded · Grand Prix classification only (sprint sessions not included)</p>
-<div class="card">
+<p class="sub" id="pageSub">Defaults to the top 8 drivers as of the selected round — sort, use a preset, or pick anyone below · mechanical DNFs excluded · Grand Prix classification only (sprint sessions not included)</p>
+<div id="f1controls" class="f1c"></div>
+<div class="card" style="margin-bottom:16px;">
 <div id="grid" class="grid"></div>
+<div id="empty" style="font-size:12.5px;color:var(--sub);display:none;">No drivers selected.</div>
+</div>
+<div class="card">
+<div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:10px;">
+ <span style="font-size:12px;color:var(--sub);">Drivers shown</span>
+ <span style="flex:1;"></span>
+ <div class="btnrow" id="sortSeg">
+  <button type="button" class="pill active" data-sort="team">By team</button>
+  <button type="button" class="pill" data-sort="rank">By ranking</button>
+ </div>
+</div>
+<div class="btnrow" id="presetRow" style="margin-bottom:10px;">
+ <button type="button" class="pill" data-preset="all">All</button>
+ <button type="button" class="pill" data-preset="none">None</button>
+ <button type="button" class="pill" data-preset="2">Top 2</button>
+ <button type="button" class="pill" data-preset="5">Top 5</button>
+ <button type="button" class="pill" data-preset="8">Top 8</button>
+ <button type="button" class="pill" data-preset="10">Top 10</button>
+</div>
+<div id="driverPicker"></div>
 </div>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script>
 const ff=getComputedStyle(document.body).fontFamily;
-const T={mer:'#00A79D',mcl:'#FF8000',fer:'#DC0000',rb:'#1B2A6B'};
-const LAB=['P1','P2','P3','P4','P5','P6','P7','P8','P9','P10','11+/DNF'];
-const D=[
-{n:'ANT',c:T.mer,v:[8,2,2,0,1,0,0,0,0,0,0]},
-{n:'RUS',c:T.mer,v:[3,4,1,2,1,0,1,0,0,0,2]},
-{n:'NOR',c:T.mcl,v:[2,1,2,2,2,0,2,0,0,0,1]},
-{n:'PIA',c:T.mcl,v:[0,1,1,2,4,0,0,1,1,0,4]},
-{n:'HAM',c:T.fer,v:[1,2,2,2,3,4,0,0,0,0,0]},
-{n:'LEC',c:T.fer,v:[1,1,2,6,0,0,0,2,0,0,2]},
-{n:'VER',c:T.rb,v:[0,4,3,1,1,1,0,1,0,0,2]},
-{n:'HAD',c:T.rb,v:[0,0,2,0,1,5,0,1,0,0,3]}
-];
-const grid=document.getElementById('grid');
-grid.innerHTML=D.map((d,i)=>`<div class="panel"><h3 id="lbl${i}"></h3><div style="position:relative;height:130px;"><canvas id="qc${i}"></canvas></div></div>`).join('');
-let charts=[];
-function draw(){
-  const P=F1Theme.chart();
-  Chart.defaults.font.family=ff;Chart.defaults.font.size=9.5;Chart.defaults.color=P.text;
-  charts.forEach(c=>c.destroy());charts=[];
-  D.forEach((d,i)=>{
-    const c=F1Theme.team(d.c);
-    document.getElementById('lbl'+i).style.color=c;
-    document.getElementById('lbl'+i).textContent=d.n;
-    charts.push(new Chart(document.getElementById('qc'+i),{type:'bar',data:{labels:LAB,datasets:[{data:d.v,backgroundColor:c,borderRadius:2,maxBarThickness:18}]},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:t=>t.raw+' round(s)'}}},
-    scales:{x:{grid:{display:false},ticks:{color:P.text,font:{size:8.5}}},y:{beginAtZero:true,max:8,ticks:{color:P.text,stepSize:1,precision:0},grid:{color:P.grid}}}}}));
-  });
+
+// Team colors by f1api.dev teamId. Unlisted teams get a stable hashed color instead of breaking.
+const TEAM_COLORS={mercedes:'#00A79D',ferrari:'#DC0000',mclaren:'#FF8000',red_bull:'#1B2A6B',redbull:'#1B2A6B',
+ alpine:'#FF1493',haas:'#1A1A1A',williams:'#00A3E0',audi:'#E8534D',sauber:'#E8534D',
+ aston_martin:'#229971',astonmartin:'#229971',rb:'#2B4EE6',racing_bulls:'#2B4EE6',visa_rb:'#2B4EE6',cadillac:'#B8860B'};
+function teamColor(teamId){
+ if(TEAM_COLORS[teamId]) return TEAM_COLORS[teamId];
+ let h=0; for(const ch of teamId) h=(h*31+ch.charCodeAt(0))>>>0;
+ return `hsl(${h%360} 55% 45%)`;
 }
-draw();
-window.addEventListener('themechange',draw);
+const SHORT_TEAM_NAMES={mercedes:'Mercedes',ferrari:'Ferrari',mclaren:'McLaren',red_bull:'Red Bull',redbull:'Red Bull',
+ alpine:'Alpine',haas:'Haas',williams:'Williams',audi:'Audi',sauber:'Audi',
+ aston_martin:'Aston Martin',astonmartin:'Aston Martin',rb:'Racing Bulls',racing_bulls:'Racing Bulls',visa_rb:'Racing Bulls',cadillac:'Cadillac'};
+function shortTeamName(teamId, fallback){ return SHORT_TEAM_NAMES[teamId] || fallback || teamId; }
+
+const LAB=['P1','P2','P3','P4','P5','P6','P7','P8','P9','P10','11+/DNF'];
+
+let D=[], L=0, P, charts=[];
+let currentYear=null, currentSeasonRounds=[], selectedDriverIds=null, pickerSort='team';
+
+async function buildFromSelection(detail){
+ currentYear = detail.year;
+ currentSeasonRounds = detail.seasonRounds;
+ if(!currentSeasonRounds.length){ D=[]; draw(); renderDriverPicker(); return; }
+ selectedDriverIds = null; // reset default whenever the season changes; round changes never touch this
+ L = detail.round;
+ const cum = F1Data.cumulative(currentSeasonRounds, L, 'include');
+ selectedDriverIds = rankedDriverIds(cum).slice(0,8); // top 8 — roughly "top four teams" from the old static page
+ recompute(detail.round);
+}
+
+function rankedDriverIds(cum){
+ return Object.values(cum.drivers)
+   .map(d=>({driverId:d.driverId,total:d.rounds.reduce((s,x)=>s+x.points,0)}))
+   .sort((a,b)=>b.total-a.total).map(d=>d.driverId);
+}
+
+// Non-mechanical-DNF-excluded finishing-position histogram for one driver, Grand Prix sessions only
+// (no sprints), through round L — pure in-memory aggregation, safe to call on every drag/slider step.
+function bucketsFor(driverId){
+ const v = Array(11).fill(0);
+ let starts = 0;
+ currentSeasonRounds.forEach(r=>{
+   if(r.round > L) return;
+   const res = (r.raceResults||[]).find(x=>x.driverId===driverId);
+   if(!res || res.mechanical) return; // didn't take part, or a mechanical DNF — excluded per this page's rule
+   starts++;
+   const pos = res.position;
+   const idx = (pos!=null && pos>=1 && pos<=10) ? pos-1 : 10; // finished 11th+, or a non-mechanical DNF
+   v[idx]++;
+ });
+ return { v, starts };
+}
+
+// Pure recompute from already-loaded season data — no network, safe to call on every slider step.
+function recompute(round){
+ L = round;
+ const cum = F1Data.cumulative(currentSeasonRounds, L, 'include');
+ D = (selectedDriverIds||[]).map(id=>{
+   const dr = cum.drivers[id]; if(!dr) return null;
+   const {v,starts} = bucketsFor(id);
+   return { n:dr.code, teamId:dr.teamId, teamName:dr.teamName, c:teamColor(dr.teamId), v, starts };
+ }).filter(Boolean);
+ draw();
+ renderDriverPicker();
+}
+
+function draw(){
+ const grid=document.getElementById('grid'), empty=document.getElementById('empty');
+ charts.forEach(c=>c.destroy()); charts=[];
+ if(!D.length){ grid.innerHTML=''; grid.style.display='none'; empty.style.display='block'; updateSub(); return; }
+ grid.style.display='grid'; empty.style.display='none';
+ P=F1Theme.chart();
+ Chart.defaults.font.family=ff;Chart.defaults.font.size=9.5;Chart.defaults.color=P.text;
+ grid.innerHTML=D.map((d,i)=>`<div class="panel"><h3 id="lbl${i}"></h3><div class="panelSub" id="sub${i}"></div><div style="position:relative;height:130px;"><canvas id="qc${i}"></canvas></div></div>`).join('');
+ const peak=Math.max(1,...D.flatMap(d=>d.v));
+ const yMax=Math.max(4,peak+1);
+ const yStep=yMax<=8?1:yMax<=20?2:5;
+ D.forEach((d,i)=>{
+   const c=F1Theme.team(d.c);
+   document.getElementById('lbl'+i).style.color=c;
+   document.getElementById('lbl'+i).textContent=d.n;
+   document.getElementById('sub'+i).textContent=`${d.starts} round${d.starts===1?'':'s'} counted`;
+   charts.push(new Chart(document.getElementById('qc'+i),{type:'bar',data:{labels:LAB,datasets:[{data:d.v,backgroundColor:c,borderRadius:2,maxBarThickness:18}]},
+   options:{responsive:true,maintainAspectRatio:false,animation:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:t=>t.raw+' round(s)'}}},
+   scales:{x:{grid:{display:false},ticks:{color:P.text,font:{size:8.5}}},y:{beginAtZero:true,max:yMax,ticks:{color:P.text,stepSize:yStep,precision:0},grid:{color:P.grid}}}}}));
+ });
+ updateSub();
+}
+
+function updateSub(){
+ const r=currentSeasonRounds.find(x=>x.round===L);
+ document.getElementById('pageSub').textContent =
+   `${D.length} driver${D.length===1?'':'s'} selected · through Round ${L}${r?(' — '+r.raceName):''} · mechanical DNFs excluded · Grand Prix classification only (sprint sessions not included)`;
+}
+
+function pickerRowHTML(d, rank){
+ const checked = selectedDriverIds.includes(d.driverId);
+ return `<label class="pickerRow">
+   <input type="checkbox" data-id="${d.driverId}" ${checked?'checked':''}>
+   ${rank!=null?`<span class="pickerRank">${rank}</span>`:''}
+   <span class="pickerDot" style="background:${F1Theme.team(teamColor(d.teamId))}"></span>
+   <span class="pickerCode${checked?'':' off'}">${d.code}</span>
+   <span class="pickerPts">${Math.round(d.total)}</span>
+ </label>`;
+}
+
+function renderDriverPicker(){
+ if(!currentSeasonRounds.length) return;
+ const cum = F1Data.cumulative(currentSeasonRounds, L, 'include');
+ let roster = Object.values(cum.drivers).map(d=>({...d,total:d.rounds.reduce((s,x)=>s+x.points,0)}));
+ roster.sort((a,b)=>b.total-a.total);
+ let html;
+ if(pickerSort==='rank'){
+   html = roster.map((d,i)=>pickerRowHTML(d,i+1)).join('');
+ }else{
+   const teamTotal={};
+   roster.forEach(d=>{ teamTotal[d.teamId]=(teamTotal[d.teamId]||0)+d.total; });
+   const teamsOrdered=[...new Set(roster.map(d=>d.teamId))].sort((a,b)=>teamTotal[b]-teamTotal[a]);
+   html = teamsOrdered.map(teamId=>{
+     const teamDrivers = roster.filter(d=>d.teamId===teamId);
+     return `<div class="pickerTeamLabel">${shortTeamName(teamId,teamDrivers[0].teamName)}</div>`
+       + teamDrivers.map(d=>pickerRowHTML(d,null)).join('');
+   }).join('');
+ }
+ document.getElementById('driverPicker').innerHTML = html;
+ document.querySelectorAll('#driverPicker input').forEach(cb=>{
+   cb.addEventListener('change', ()=>{
+     const id=cb.dataset.id;
+     selectedDriverIds = cb.checked ? [...selectedDriverIds, id] : selectedDriverIds.filter(x=>x!==id);
+     recompute(L);
+   });
+ });
+}
+
+document.getElementById('sortSeg').addEventListener('click', e=>{
+ const btn=e.target.closest('button[data-sort]'); if(!btn) return;
+ pickerSort = btn.dataset.sort;
+ document.querySelectorAll('#sortSeg button').forEach(b=>b.classList.toggle('active', b===btn));
+ renderDriverPicker();
+});
+document.getElementById('presetRow').addEventListener('click', e=>{
+ const btn=e.target.closest('button[data-preset]'); if(!btn) return;
+ const cum = F1Data.cumulative(currentSeasonRounds, L, 'include');
+ const ranked = rankedDriverIds(cum);
+ const p = btn.dataset.preset;
+ selectedDriverIds = p==='all' ? Object.keys(cum.drivers) : p==='none' ? [] : ranked.slice(0,+p);
+ recompute(L);
+});
+
+window.addEventListener('f1selection', e=>buildFromSelection(e.detail));
+window.addEventListener('f1roundchange', e=>{ if(currentSeasonRounds.length) recompute(e.detail.round); });
+window.addEventListener('themechange', draw);
+F1Controls.mount('f1controls', {defaultYear:2026});
 </script>
 </body>
 </html>
