@@ -189,9 +189,7 @@ function recompute(round){
    : (r => { const left=N-r; const sprintsSoFar=seasonRounds.filter(x=>x.round<=L && x.sprintResults).length;
        return 25*left + 8*Math.min(Math.max(0,meta.sprints-sprintsSoFar), left); });
 
- // Per-driver cumulative + rest-of-season projection, shared by both the display set and the
- // leader-tracking pass below (the knockout line must reflect the TRUE leader, not just whoever's
- // currently selected — deselecting the actual points leader shouldn't understate what's needed to stay alive).
+ // Per-driver cumulative + rest-of-season projection for the currently selected/displayed drivers.
  function projectedFull(dr){
    const w=Array.from({length:L},(_,ri)=>{
      const rnd=ri+1;
@@ -215,8 +213,10 @@ function recompute(round){
    });
  });
 
- const allFull = Object.values(cum.drivers).map(dr=>projectedFull(dr).full);
- lead = Array.from({length:N},(_,i)=>Math.max(0,...allFull.map(f=>f[i])));
+ // issue #26: the knockout line now tracks the highest-ranked SELECTED driver, not the true
+ // full-field leader — matching constructors.html's behavior. Deselecting the real points leader
+ // deliberately changes what "still in it" means here.
+ lead = Array.from({length:N},(_,i)=>Math.max(0,...D.map(d=>d.full[i])));
  thr=lead.map((v,i)=>Math.max(0,v-rem(i+1)));
  D.forEach(d=>{d.out=-1;for(let i=0;i<N;i++){if(thr[i]>0&&d.full[i]<thr[i]-1e-6){d.out=i;break;}}});
  draw();
@@ -275,7 +275,7 @@ document.getElementById('lg').innerHTML=Object.values(byTeam).map(drivers=>{
 const lab=d=>`${d.n} (R${d.out+1})`;
 const now=D.filter(d=>d.out>=0&&d.out<L).sort((a,b)=>a.out-b.out),proj=D.filter(d=>d.out>=L).sort((a,b)=>a.out-b.out);
 document.getElementById('sm').innerHTML=
- `<b>After round ${L}:</b> knockout line at ${Math.round(thr[L-1])} pts (leader ${Math.round(lead[L-1])} minus ${Math.round(lead[L-1]-thr[L-1])} still available over the rest of the season${usingRealCalendar?'':', estimated — the real calendar was not available this load'}).`
+ `<b>After round ${L}:</b> knockout line at ${Math.round(thr[L-1])} pts, based on the highest-ranked <i>selected</i> driver (${Math.round(lead[L-1])} pts, minus ${Math.round(lead[L-1]-thr[L-1])} still available over the rest of the season${usingRealCalendar?'':', estimated — the real calendar was not available this load'}).`
  +`<br><span style="color:var(--elim);">●</span> Eliminated: ${now.length?now.map(lab).join(', '):'none'} &nbsp; <span style="color:var(--elim);">○</span> Projected to be eliminated at current form: ${proj.length?proj.map(lab).join(', '):'none'}`;
 positionHandle();
 }
