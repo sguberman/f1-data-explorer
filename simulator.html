@@ -33,11 +33,8 @@ h2{font-size:14px;font-weight:650;margin:0 0 12px;color:var(--sub);text-transfor
 .bar-track{background:var(--inset);border-radius:5px;height:14px;overflow:hidden;}
 .bar-fill{height:100%;border-radius:5px;}
 .pct{font-variant-numeric:tabular-nums;font-size:13px;text-align:right;}
-table{width:100%;border-collapse:collapse;font-size:13px;}
-th,td{text-align:right;padding:7px 6px;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums;}
-th:first-child,td:first-child{text-align:left;}
-th{color:var(--sub);font-weight:600;font-size:11.5px;}
 .note{font-size:11.5px;color:var(--sub);line-height:1.5;margin-top:2px;}
+.ridgeWrap{position:relative;width:100%;margin-bottom:4px;}
 .dnf-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px 14px;}
 .dnf-item{display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--inset);border:1px solid var(--line);border-radius:7px;padding:7px 8px 7px 10px;}
 .dnf-item .tag{font-size:12.5px;}
@@ -118,25 +115,16 @@ canvas{max-width:100%;}
     <div class="note" id="oddsNote"></div>
   </div>
 
-  <div class="card" id="posCard" style="display:none;">
+  <div class="card" id="ridgePosCard" style="display:none;">
     <h2>Projected final championship position</h2>
-    <div style="overflow-x:auto;"><table id="posTable"></table></div>
-    <div class="note">Position is each tracked driver's rank in the full simulated standings — every driver who's scored this season, not just the tracked set — so finishing behind an untracked driver is possible even for a driver tracked here.</div>
+    <div class="ridgeWrap" id="ridgePosWrap"><canvas id="ridgePosCanvas"></canvas></div>
+    <div class="note">Each ridge is one tracked driver's share of simulated seasons landing at each final position, tallest at their most likely finish. Position is rank in the full simulated standings — every driver who's scored this season, not just the tracked set — so finishing behind an untracked driver is possible. Ordered by median finish, best on top.</div>
   </div>
 
-  <div class="card" id="rangeCard" style="display:none;">
-    <h2>Projected final points (5th–95th percentile range)</h2>
-    <table>
-      <thead><tr><th>Driver</th><th>Now</th><th>Median</th><th>Low (5%)</th><th>High (95%)</th></tr></thead>
-      <tbody id="rangeBody"></tbody>
-    </table>
-    <div class="note">Ranks shown here are among the tracked drivers only — the simulation itself models the full grid. Grands Prix use standard race points (25–1 for 1st–10th); sprint rounds use sprint points (8–1 for 1st–8th), with the same pace weighting as a normal round.</div>
-  </div>
-
-  <div class="card" id="distCard" style="display:none;">
-    <h2>Final points — distribution across all simulated seasons</h2>
-    <div style="position:relative;height:280px;"><canvas id="distChart"></canvas></div>
-    <div class="note">Each curve is one driver's spread of possible final totals. Overlap between two curves is a rough visual read on how contested that gap still is — heavy overlap means the sim sees the outcome as a toss-up.</div>
+  <div class="card" id="ridgePointsCard" style="display:none;">
+    <h2>Projected final points</h2>
+    <div class="ridgeWrap" id="ridgePointsWrap"><canvas id="ridgePointsCanvas"></canvas></div>
+    <div class="note">Each ridge is one tracked driver's spread of possible final point totals. Overlap between two ridges is a rough read on how contested that gap still is — heavy overlap means the sim sees it as a toss-up. Ordered by median final points, highest on top.</div>
   </div>
 </div>
 
@@ -274,9 +262,8 @@ function updateReadiness(){
 
 function hideResults(){
  document.getElementById('oddsCard').style.display='none';
- document.getElementById('posCard').style.display='none';
- document.getElementById('rangeCard').style.display='none';
- document.getElementById('distCard').style.display='none';
+ document.getElementById('ridgePosCard').style.display='none';
+ document.getElementById('ridgePointsCard').style.display='none';
  lastOdds=null; lastFinals=null; lastTrackedRoster=null; lastPosCounts=null; lastK=0; lastN=0;
 }
 
@@ -457,47 +444,108 @@ document.getElementById('run').addEventListener('click',()=>{
    lastTrackedRoster=trackedRoster; lastOdds=odds; lastFinals=finals;
    lastPosCounts=posCounts; lastK=k; lastN=N;
    renderOdds(trackedRoster, odds);
-   renderPositions(trackedRoster, posCounts, k, N);
-   renderRange(trackedRoster, finals);
-   renderDist(trackedRoster, finals);
+   renderRidgePosition(trackedRoster, posCounts, k, N);
+   renderRidgePoints(trackedRoster, finals);
    document.getElementById('oddsCard').style.display='block';
-   document.getElementById('posCard').style.display='block';
-   document.getElementById('rangeCard').style.display='block';
-   document.getElementById('distCard').style.display='block';
+   document.getElementById('ridgePosCard').style.display='block';
+   document.getElementById('ridgePointsCard').style.display='block';
    document.getElementById('status').textContent=`${N.toLocaleString()} seasons simulated.`;
    updateReadiness();
  },30);
 });
 
-let distChart=null;
-function renderDist(roster, finals){
+// issue #32: ridgeline (joyplot) rendering shared by the points and position cards — each driver gets
+// its own baseline row (a flat, invisible reference dataset) and a filled curve/step dataset drawn
+// with fill:'-1' back down to that baseline, offset vertically so the rows stack like a joyplot. Each
+// driver's curve is normalized to its OWN peak (not a shared scale), which is standard for a ridgeline:
+// it's a shape/spread comparison, not an absolute-count one — the win-probability bars already cover
+// the absolute comparison.
+const RIDGE_ROW=1, RIDGE_PEAK=0.82, RIDGE_ROW_PX=58, RIDGE_PAD_PX=34, RIDGE_FILL_ALPHA=0.35;
+const ridgeCharts={};
+// teamColor() returns either a hex string (explicit TEAM_COLORS entries) or an `hsl(H S% L%)` string
+// (the hashed fallback for an unmapped team id) — appending a hex alpha suffix only works for the
+// first form; on the second it produces invalid CSS that canvas silently drops to opaque black. This
+// handles both so an unrecognized/renamed team never renders as a black blob instead of its color.
+function withAlpha(color, alpha){
+ if(color[0]==='#'){
+   const a=Math.round(alpha*255).toString(16).padStart(2,'0');
+   return color+a;
+ }
+ const m=color.match(/^hsl\(\s*([\d.]+)\s+([\d.]+%)\s+([\d.]+%)\s*\)$/);
+ if(m) return `hsla(${m[1]}, ${m[2]}, ${m[3]}, ${alpha})`;
+ return color; // unrecognized format — leave opaque rather than risk another invalid-CSS case
+}
+function medianFromCounts(counts, N){
+ let cum=0;
+ for(let i=0;i<counts.length;i++){ cum+=counts[i]; if(cum>=N/2) return i; }
+ return counts.length-1;
+}
+function renderRidgeline(chartKey, canvasId, wrapId, order, categories, opts){
+ const n=order.length;
+ document.getElementById(wrapId).style.height=(n*RIDGE_ROW_PX+RIDGE_PAD_PX)+'px';
+ const datasets=[];
+ order.forEach(({code,color,counts},i)=>{
+   const baseline=(n-1-i)*RIDGE_ROW;
+   const total=counts.reduce((a,b)=>a+b,0)||1;
+   const peak=Math.max(...counts,1e-9);
+   const heights=counts.map(v=>baseline+(v/peak)*RIDGE_PEAK);
+   const pct=counts.map(v=>100*v/total);
+   datasets.push({ data:categories.map(()=>baseline), borderWidth:0, pointRadius:0, fill:false, _baseline:true });
+   datasets.push({ data:heights, borderColor:color, backgroundColor:withAlpha(color,RIDGE_FILL_ALPHA), borderWidth:1.6, pointRadius:0,
+     fill:'-1', tension:opts.tension||0, stepped:opts.stepped||false, _code:code, _pct:pct });
+ });
  const P=F1Theme.chart();
- const DC=roster.map(d=>({...d,c:F1Theme.team(teamColor(d.teamId))}));
+ if(ridgeCharts[chartKey]) ridgeCharts[chartKey].destroy();
+ ridgeCharts[chartKey]=new Chart(document.getElementById(canvasId),{
+   type:'line',
+   data:{labels:categories, datasets},
+   options:{
+     responsive:true, maintainAspectRatio:false,
+     interaction:{mode:'index', intersect:false},
+     plugins:{
+       legend:{display:false},
+       tooltip:{
+         filter:item=>!item.dataset._baseline,
+         callbacks:{
+           title:t=>opts.xTitle+': '+t[0].label,
+           label:ctx=>` ${ctx.dataset._code}: ${ctx.dataset._pct[ctx.dataIndex].toFixed(1)}%`
+         }
+       }
+     },
+     scales:{
+       x:{grid:{color:P.grid}, ticks:{color:P.text, maxRotation:0, autoSkip:true}, title:{display:true,text:opts.xTitle,color:P.text}},
+       y:{
+         min:-0.15, max:(n-1)*RIDGE_ROW+RIDGE_PEAK+0.25,
+         grid:{display:false},
+         afterBuildTicks:axis=>{ axis.ticks=Array.from({length:n},(_,i)=>({value:i})); },
+         ticks:{
+           color:ctx=>{ const i=n-1-Math.round(ctx.tick.value); return (order[i]&&order[i].color)||P.text; },
+           callback:value=>{ const i=n-1-Math.round(value); return (order[i]&&order[i].code)||''; },
+           font:{weight:'600'}
+         }
+       }
+     }
+   }
+ });
+}
+function renderRidgePoints(roster, finals){
  const all=finals.flat();
  if(!all.length) return;
  const min=Math.floor(Math.min(...all)/10)*10, max=Math.ceil(Math.max(...all)/10)*10;
  const binSize=10;
  const bins=[]; for(let b=min;b<=max;b+=binSize) bins.push(b);
- const datasets=DC.map((d,i)=>{
+ const order=roster.map((d,i)=>{
    const counts=new Array(bins.length).fill(0);
    finals[i].forEach(v=>{ const bi=Math.min(Math.floor((v-min)/binSize),bins.length-1); counts[bi]++; });
-   return {label:d.code,data:counts,backgroundColor:d.c+'55',borderColor:d.c,borderWidth:1.5};
- });
- if(distChart) distChart.destroy();
- distChart=new Chart(document.getElementById('distChart'),{
-   type:'bar',
-   data:{labels:bins.map(b=>b), datasets},
-   options:{
-     responsive:true,maintainAspectRatio:false,
-     interaction:{mode:'index',intersect:false},
-     plugins:{legend:{position:'bottom',labels:{color:P.text,boxWidth:12,font:{size:11}}},
-       tooltip:{callbacks:{title:t=>`~${t[0].label} pts`, label:t=>` ${t.dataset.label}: ${t.raw} seasons`}}},
-     scales:{
-       x:{stacked:false,grid:{display:false},ticks:{color:P.text,maxRotation:0,autoSkip:true},title:{display:true,text:'final points',color:P.text}},
-       y:{stacked:false,grid:{color:P.grid},ticks:{color:P.text},title:{display:true,text:'simulated seasons',color:P.text}}
-     }
-   }
- });
+   return {code:d.code, color:F1Theme.team(teamColor(d.teamId)), counts, med:quantile(finals[i],.5)};
+ }).sort((a,b)=>b.med-a.med);
+ renderRidgeline('points','ridgePointsCanvas','ridgePointsWrap', order, bins.map(String), {tension:0.35, xTitle:'final points'});
+}
+function renderRidgePosition(roster, posCounts, k, N){
+ const labels=Array.from({length:k},(_,i)=>'P'+(i+1)).concat([(k+1)+'th or lower']);
+ const order=roster.map((d,i)=>({code:d.code, color:F1Theme.team(teamColor(d.teamId)), counts:posCounts[i],
+   med:medianFromCounts(posCounts[i],N)})).sort((a,b)=>a.med-b.med);
+ renderRidgeline('pos','ridgePosCanvas','ridgePosWrap', order, labels, {stepped:'middle', xTitle:'final championship position'});
 }
 
 function renderOdds(roster, odds){
@@ -513,34 +561,6 @@ function renderOdds(roster, odds){
    ? `Tracked drivers total ${total.toFixed(1)}% — the other ${rest.toFixed(1)}% of simulated seasons were won by a driver outside the tracked set.`
    : `Tracked drivers won effectively every simulated season.`;
 }
-function renderPositions(roster, posCounts, k, N){
- const headers = Array.from({length:k},(_,i)=>'P'+(i+1)).concat([(k+1)+'th or lower']);
- const rows = roster.map((d,i)=>({d,c:F1Theme.team(teamColor(d.teamId)),counts:posCounts[i]}))
-   .sort((a,b)=>(b.counts[0]/N)-(a.counts[0]/N));
- const thead = '<tr><th>Driver</th>'+headers.map(h=>`<th>${h}</th>`).join('')+'</tr>';
- const tbody = rows.map(({d,c,counts})=>{
-   const cells = counts.map(cnt=>{
-     const pct=100*cnt/N;
-     return `<td>${pct<0.1 && pct>0 ? '<0.1' : pct.toFixed(1)}%</td>`;
-   }).join('');
-   return `<tr><td style="color:${c};font-weight:600;">${d.code}</td>${cells}</tr>`;
- }).join('');
- document.getElementById('posTable').innerHTML = `<thead>${thead}</thead><tbody>${tbody}</tbody>`;
-}
-function renderRange(roster, finals){
- const rows=roster.map((d,i)=>{
-   const f=finals[i];
-   return {d,c:F1Theme.team(teamColor(d.teamId)),med:quantile(f,.5),lo:quantile(f,.05),hi:quantile(f,.95)};
- }).sort((a,b)=>b.med-a.med);
- document.getElementById('rangeBody').innerHTML=rows.map(({d,c,med,lo,hi})=>`
-   <tr>
-     <td style="color:${c};font-weight:600;">${d.code}</td>
-     <td>${d.now}</td>
-     <td>${Math.round(med)}</td>
-     <td>${Math.round(lo)}</td>
-     <td>${Math.round(hi)}</td>
-   </tr>`).join('');
-}
 
 window.addEventListener('f1selection', e=>buildFromSelection(e.detail));
 window.addEventListener('f1roundchange', e=>{ if(currentSeasonRounds.length) recompute(e.detail.round); });
@@ -548,9 +568,8 @@ window.addEventListener('themechange', ()=>{
  recolorDnfTags();
  renderDriverPicker();
  if(lastOdds) renderOdds(lastTrackedRoster,lastOdds);
- if(lastPosCounts) renderPositions(lastTrackedRoster,lastPosCounts,lastK,lastN);
- if(lastFinals) renderRange(lastTrackedRoster,lastFinals);
- if(lastFinals) renderDist(lastTrackedRoster,lastFinals);
+ if(lastPosCounts) renderRidgePosition(lastTrackedRoster,lastPosCounts,lastK,lastN);
+ if(lastFinals) renderRidgePoints(lastTrackedRoster,lastFinals);
 });
 F1Controls.mount('f1controls', {defaultYear:2026});
 </script>
