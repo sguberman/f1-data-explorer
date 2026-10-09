@@ -14,9 +14,8 @@ body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Hel
 h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
 .sub{font-size:12.5px;color:var(--sub);margin:0 0 16px;}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;}
-.panel h3{font-size:12px;font-weight:600;margin:0 0 2px;}
-.panelSub{font-size:10.5px;color:var(--sub);margin:0 0 6px;}
+.note{font-size:11.5px;color:var(--sub);line-height:1.5;margin-top:10px;}
+.ridgeWrap{position:relative;width:100%;}
 #driverPicker{max-height:280px;overflow-y:auto;}
 .pickerTeamLabel{font-size:11px;color:var(--sub);padding:10px 2px 4px;}
 .pickerTeamLabel:first-child{padding-top:2px;}
@@ -37,8 +36,9 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
 <p class="sub" id="pageSub">Defaults to the top 8 drivers as of the selected round — sort, use a preset, or pick anyone below · mechanical DNFs excluded · Grand Prix classification only (sprint sessions not included)</p>
 <div id="f1controls" class="f1c"></div>
 <div class="card" style="margin-bottom:16px;">
-<div id="grid" class="grid"></div>
+<div class="ridgeWrap" id="ridgeWrap"><canvas id="ridgeCanvas"></canvas></div>
 <div id="empty" style="font-size:12.5px;color:var(--sub);display:none;">No drivers selected.</div>
+<div class="note" id="ridgeNote"></div>
 </div>
 <div class="card">
 <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:10px;">
@@ -80,7 +80,33 @@ function shortTeamName(teamId, fallback){ return SHORT_TEAM_NAMES[teamId] || fal
 
 const LAB=['P1','P2','P3','P4','P5','P6','P7','P8','P9','P10','11+/DNF'];
 
-let D=[], L=0, P, charts=[];
+let D=[], L=0, P;
+
+// issue #33: single ridgeline (joyplot) chart for the selected drivers — same mechanism as the
+// simulator's ridgeline plots (#32): each driver gets a baseline row (invisible flat dataset) and a
+// stepped curve dataset filled down to it with fill:'-1', offset vertically so rows stack, normalized
+// to each driver's OWN peak bucket (a shape comparison, not an absolute-count one).
+const RIDGE_ROW=1, RIDGE_PEAK=0.82, RIDGE_ROW_PX=58, RIDGE_PAD_PX=34, RIDGE_FILL_ALPHA=0.35;
+let ridgeChart=null;
+// teamColor() returns either a hex string or an `hsl(H S% L%)` hashed-fallback string — appending a
+// hex alpha suffix only works on the first form; on the second it's invalid CSS that canvas silently
+// renders as opaque black instead of the driver's color. This handles both.
+function withAlpha(color, alpha){
+ if(color[0]==='#'){
+   const a=Math.round(alpha*255).toString(16).padStart(2,'0');
+   return color+a;
+ }
+ const m=color.match(/^hsl\(\s*([\d.]+)\s+([\d.]+%)\s+([\d.]+%)\s*\)$/);
+ if(m) return `hsla(${m[1]}, ${m[2]}, ${m[3]}, ${alpha})`;
+ return color;
+}
+function medianBucket(counts){
+ const total=counts.reduce((a,b)=>a+b,0);
+ if(!total) return counts.length-1;
+ let cum=0;
+ for(let i=0;i<counts.length;i++){ cum+=counts[i]; if(cum>=total/2) return i; }
+ return counts.length-1;
+}
 let currentYear=null, currentSeasonRounds=[], selectedDriverIds=null, pickerSort='team';
 
 async function buildFromSelection(detail){
@@ -131,25 +157,61 @@ function recompute(round){
 }
 
 function draw(){
- const grid=document.getElementById('grid'), empty=document.getElementById('empty');
- charts.forEach(c=>c.destroy()); charts=[];
- if(!D.length){ grid.innerHTML=''; grid.style.display='none'; empty.style.display='block'; updateSub(); return; }
- grid.style.display='grid'; empty.style.display='none';
+ const wrap=document.getElementById('ridgeWrap'), empty=document.getElementById('empty'), note=document.getElementById('ridgeNote');
+ if(ridgeChart){ ridgeChart.destroy(); ridgeChart=null; }
+ if(!D.length){ wrap.style.display='none'; empty.style.display='block'; note.textContent=''; updateSub(); return; }
+ wrap.style.display='block'; empty.style.display='none';
  P=F1Theme.chart();
- Chart.defaults.font.family=ff;Chart.defaults.font.size=9.5;Chart.defaults.color=P.text;
- grid.innerHTML=D.map((d,i)=>`<div class="panel"><h3 id="lbl${i}"></h3><div class="panelSub" id="sub${i}"></div><div style="position:relative;height:130px;"><canvas id="qc${i}"></canvas></div></div>`).join('');
- const peak=Math.max(1,...D.flatMap(d=>d.v));
- const yMax=Math.max(4,peak+1);
- const yStep=yMax<=8?1:yMax<=20?2:5;
- D.forEach((d,i)=>{
-   const c=F1Theme.team(d.c);
-   document.getElementById('lbl'+i).style.color=c;
-   document.getElementById('lbl'+i).textContent=d.n;
-   document.getElementById('sub'+i).textContent=`${d.starts} round${d.starts===1?'':'s'} counted`;
-   charts.push(new Chart(document.getElementById('qc'+i),{type:'bar',data:{labels:LAB,datasets:[{data:d.v,backgroundColor:c,borderRadius:2,maxBarThickness:18}]},
-   options:{responsive:true,maintainAspectRatio:false,animation:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:t=>t.raw+' round(s)'}}},
-   scales:{x:{grid:{display:false},ticks:{color:P.text,font:{size:8.5}}},y:{beginAtZero:true,max:yMax,ticks:{color:P.text,stepSize:yStep,precision:0},grid:{color:P.grid}}}}}));
+ Chart.defaults.font.family=ff; Chart.defaults.color=P.text;
+ const order=D.map(d=>({code:d.n, color:F1Theme.team(d.c), counts:d.v, starts:d.starts}))
+   .sort((a,b)=>medianBucket(a.counts)-medianBucket(b.counts));
+ const n=order.length;
+ wrap.style.height=(n*RIDGE_ROW_PX+RIDGE_PAD_PX)+'px';
+ const datasets=[];
+ order.forEach(({code,color,counts,starts},i)=>{
+   const baseline=(n-1-i)*RIDGE_ROW;
+   const peak=Math.max(...counts,1e-9);
+   const heights=counts.map(v=>baseline+(v/peak)*RIDGE_PEAK);
+   datasets.push({ data:LAB.map(()=>baseline), borderWidth:0, pointRadius:0, fill:false, _baseline:true });
+   datasets.push({ data:heights, borderColor:color, backgroundColor:withAlpha(color,RIDGE_FILL_ALPHA), borderWidth:1.6, pointRadius:0,
+     fill:'-1', stepped:'middle', _code:code, _counts:counts, _starts:starts });
  });
+ ridgeChart=new Chart(document.getElementById('ridgeCanvas'),{
+   type:'line',
+   data:{labels:LAB, datasets},
+   options:{
+     responsive:true, maintainAspectRatio:false,
+     interaction:{mode:'index', intersect:false},
+     plugins:{
+       legend:{display:false},
+       tooltip:{
+         filter:item=>!item.dataset._baseline,
+         callbacks:{
+           title:t=>t[0].label,
+           label:ctx=>{
+             const cnt=ctx.dataset._counts[ctx.dataIndex], starts=ctx.dataset._starts;
+             const pct=starts?100*cnt/starts:0;
+             return ` ${ctx.dataset._code}: ${cnt} round${cnt===1?'':'s'} (${pct.toFixed(0)}%)`;
+           }
+         }
+       }
+     },
+     scales:{
+       x:{grid:{color:P.grid}, ticks:{color:P.text, maxRotation:0, autoSkip:false}},
+       y:{
+         min:-0.15, max:(n-1)*RIDGE_ROW+RIDGE_PEAK+0.25,
+         grid:{display:false},
+         afterBuildTicks:axis=>{ axis.ticks=Array.from({length:n},(_,i)=>({value:i})); },
+         ticks:{
+           color:ctx=>{ const i=n-1-Math.round(ctx.tick.value); return (order[i]&&order[i].color)||P.text; },
+           callback:value=>{ const i=n-1-Math.round(value); return (order[i]&&order[i].code)||''; },
+           font:{weight:'600'}
+         }
+       }
+     }
+   }
+ });
+ note.textContent = 'Rounds counted — ' + order.map(o=>`${o.code}: ${o.starts}`).join(' · ');
  updateSub();
 }
 
