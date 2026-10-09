@@ -6,9 +6,10 @@
 <title>2026 Title Simulator</title>
 <link rel="stylesheet" href="theme.css">
 <script src="theme.js"></script>
+<script src="data.js"></script>
+<script src="controls.js"></script>
 <style>
 :root{
-  --mer:#00A79D;--mcl:#FF8000;--fer:#DC0000;--rb:#1B2A6B;
   box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
 }
 *{box-sizing:border-box;}
@@ -47,21 +48,55 @@ th{color:var(--sub);font-weight:600;font-size:11.5px;}
 .stepper .val{width:20px;text-align:center;font-variant-numeric:tabular-nums;font-size:13px;}
 .reset{background:transparent;color:var(--sub);border:1px solid var(--line);border-radius:6px;padding:7px 12px;font-size:12.5px;cursor:pointer;}
 canvas{max-width:100%;}
+#driverPicker{max-height:280px;overflow-y:auto;}
+.pickerTeamLabel{font-size:11px;color:var(--sub);padding:10px 2px 4px;}
+.pickerTeamLabel:first-child{padding-top:2px;}
+.pickerRow{display:flex;align-items:center;gap:10px;padding:6px 2px;border-bottom:0.5px solid var(--line);cursor:pointer;}
+.pickerRow:last-child{border-bottom:none;}
+.pickerRow input{margin:0;flex:0 0 auto;}
+.pickerRank{font-size:11px;color:var(--sub);width:16px;text-align:right;flex:0 0 auto;}
+.pickerDot{width:8px;height:8px;border-radius:50%;flex:0 0 auto;}
+.pickerCode{font-size:13px;font-weight:500;flex:1;}
+.pickerCode.off{color:var(--sub);font-weight:400;}
+.pickerPts{font-size:12px;color:var(--sub);font-variant-numeric:tabular-nums;flex:0 0 auto;}
 </style>
 </head>
 <body>
 <div class="wrap">
   <div class="theme-bar" id="themeToggle"></div>
-  <h1>2026 Drivers' title — rest-of-season simulation</h1>
-  <p class="lede">Monte Carlo projection for the rest of the season: 8 remaining Grands Prix plus the Singapore sprint. Pace comes from each driver's actual finishing-position distribution through round 15 (mechanical DNFs excluded from that pace read); reliability is set manually below as a number of DNFs out of all 9 remaining events, with the specific event(s) randomized per simulation. Not a prediction — a range of plausible outcomes if current form holds.</p>
+  <h1>Drivers' title — rest-of-season simulation</h1>
+  <p class="lede" id="lede">Loading season data…</p>
+
+  <div id="f1controls" class="f1c"></div>
 
   <div class="card">
     <div class="row" style="margin-bottom:12px;">
-      <h2 style="margin:0;">DNFs in the remaining 8 rounds</h2>
+      <span style="font-size:12px;color:var(--sub);">Drivers tracked</span>
+      <span style="flex:1;"></span>
+      <div class="btnrow" id="sortSeg">
+        <button type="button" class="pill active" data-sort="team">By team</button>
+        <button type="button" class="pill" data-sort="rank">By ranking</button>
+      </div>
+    </div>
+    <div class="btnrow" id="presetRow" style="margin-bottom:10px;">
+      <button type="button" class="pill" data-preset="all">All</button>
+      <button type="button" class="pill" data-preset="none">None</button>
+      <button type="button" class="pill" data-preset="2">Top 2</button>
+      <button type="button" class="pill" data-preset="5">Top 5</button>
+      <button type="button" class="pill" data-preset="8">Top 8</button>
+      <button type="button" class="pill" data-preset="10">Top 10</button>
+    </div>
+    <div id="driverPicker"></div>
+    <div class="note">The simulation itself always models every driver who has scored this season — this just controls who's reported on below.</div>
+  </div>
+
+  <div class="card">
+    <div class="row" style="margin-bottom:12px;">
+      <h2 style="margin:0;">DNFs in the remaining events, for tracked drivers</h2>
       <button class="reset" id="resetDnf">Reset to 0</button>
     </div>
     <div class="dnf-grid" id="dnfGrid"></div>
-    <div class="note">Set how many of the remaining 9 events (8 Grands Prix + the Singapore sprint) each driver fails to finish. Which specific event(s) each DNF lands on is randomized fresh in every simulated season.</div>
+    <div class="note">Set how many of the remaining events each tracked driver fails to finish. Which specific event(s) each DNF lands on is randomized fresh in every simulated season. Every other driver on the grid uses their own mechanical-DNF rate from this season so far.</div>
   </div>
 
   <div class="card row">
@@ -75,11 +110,12 @@ canvas{max-width:100%;}
     </div>
     <button id="run">Run simulation</button>
   </div>
-  <div class="status" id="status">Ready — click run.</div>
+  <div class="status" id="status">Loading…</div>
 
   <div class="card" id="oddsCard" style="display:none;">
     <h2>Championship win probability</h2>
     <div id="odds"></div>
+    <div class="note" id="oddsNote"></div>
   </div>
 
   <div class="card" id="rangeCard" style="display:none;">
@@ -88,7 +124,7 @@ canvas{max-width:100%;}
       <thead><tr><th>Driver</th><th>Now</th><th>Median</th><th>Low (5%)</th><th>High (95%)</th></tr></thead>
       <tbody id="rangeBody"></tbody>
     </table>
-    <div class="note">Ranks among these 8 drivers only. Grands Prix use standard race points (25–4 for 1st–8th); the Singapore sprint uses sprint points (8–1 for 1st–8th), using the same pace weighting as a normal round.</div>
+    <div class="note">Ranks shown here are among the tracked drivers only — the simulation itself models the full grid. Grands Prix use standard race points (25–1 for 1st–10th); sprint rounds use sprint points (8–1 for 1st–8th), with the same pace weighting as a normal round.</div>
   </div>
 
   <div class="card" id="distCard" style="display:none;">
@@ -100,179 +136,350 @@ canvas{max-width:100%;}
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script>
-const T={mer:'#00A79D',mcl:'#FF8000',fer:'#DC0000',rb:'#1B2A6B'};
-// weight = average race points/weekend through round 15 (mechanical DNFs excluded) — pace when the car survives
-// dnf  = share of this driver's rounds this season lost to a mechanical/reliability issue — risk of not surviving
-const D=[
- {n:'ANT',c:T.mer,now:302,w:21.23},
- {n:'RUS',c:T.mer,now:236,w:14.43},
- {n:'HAM',c:T.fer,now:199,w:12.64},
- {n:'NOR',c:T.mcl,now:186,w:12.83},
- {n:'LEC',c:T.fer,now:179,w:10.93},
- {n:'VER',c:T.rb, now:163,w:11.62},
- {n:'PIA',c:T.mcl,now:120,w:7.36},
- {n:'HAD',c:T.rb, now:86, w:7.00}
-];
-const ROUNDS_LEFT=8; // remaining Grands Prix
-const EVENTS=9; // 8 GPs + 1 sprint (Singapore) — DNF risk applies equally to all 9
-const EVENT_TYPES=['gp','gp','gp','gp','gp','gp','gp','gp','sprint'];
-const PTS_GP=[25,18,15,12,10,8,6,4];       // 8 tracked drivers only, ranked among survivors
+// Team colors by f1api.dev teamId. Unlisted teams get a stable hashed color instead of breaking.
+const TEAM_COLORS={mercedes:'#00A79D',ferrari:'#DC0000',mclaren:'#FF8000',red_bull:'#1B2A6B',redbull:'#1B2A6B',
+ alpine:'#FF1493',haas:'#1A1A1A',williams:'#00A3E0',audi:'#E8534D',sauber:'#E8534D',
+ aston_martin:'#229971',astonmartin:'#229971',rb:'#2B4EE6',racing_bulls:'#2B4EE6',visa_rb:'#2B4EE6',cadillac:'#B8860B'};
+function teamColor(teamId){
+ if(TEAM_COLORS[teamId]) return TEAM_COLORS[teamId];
+ let h=0; for(const ch of teamId) h=(h*31+ch.charCodeAt(0))>>>0;
+ return `hsl(${h%360} 55% 45%)`;
+}
+const SHORT_TEAM_NAMES={mercedes:'Mercedes',ferrari:'Ferrari',mclaren:'McLaren',red_bull:'Red Bull',redbull:'Red Bull',
+ alpine:'Alpine',haas:'Haas',williams:'Williams',audi:'Audi',sauber:'Audi',
+ aston_martin:'Aston Martin',astonmartin:'Aston Martin',rb:'Racing Bulls',racing_bulls:'Racing Bulls',visa_rb:'Racing Bulls',cadillac:'Cadillac'};
+function shortTeamName(teamId, fallback){ return SHORT_TEAM_NAMES[teamId] || fallback || teamId; }
+
+// Real F1 scoring. GP pays the top 10; sprint pays the top 8.
+const PTS_GP=[25,18,15,12,10,8,6,4,2,1];
 const PTS_SPRINT=[8,7,6,5,4,3,2,1];
 
-function dnfCounts(){ return dnfState.slice(); }
+let currentYear=null, currentSeasonRounds=[], currentCalendar=null;
+let L=0, fullRoster=[], remainingEvents=[];
+let selectedDriverIds=null, pickerSort='team', dnfState={};
+let lastOdds=null, lastFinals=null, lastTrackedRoster=null;
 
-// pick k distinct event indices out of EVENTS (partial Fisher-Yates)
-function randomRounds(k){
-  const a=Array.from({length:EVENTS},(_,i)=>i);
-  for(let i=0;i<k;i++){
-    const j=i+Math.floor(Math.random()*(EVENTS-i));
-    [a[i],a[j]]=[a[j],a[i]];
-  }
-  return new Set(a.slice(0,k));
+async function buildFromSelection(detail){
+ currentYear = detail.year;
+ currentSeasonRounds = detail.seasonRounds;
+ if(!currentSeasonRounds.length){
+   fullRoster=[]; remainingEvents=[]; selectedDriverIds=[];
+   document.getElementById('driverPicker').innerHTML='';
+   document.getElementById('dnfGrid').innerHTML='';
+   updateLede(); updateReadiness(); hideResults();
+   return;
+ }
+ L = detail.round;
+ currentCalendar = await F1Data.getCalendar(currentYear);
+ recomputeRoster();
+ selectedDriverIds = [...fullRoster].sort((a,b)=>b.now-a.now).slice(0,8).map(d=>d.driverId);
+ recompute(detail.round);
 }
 
-function sampleOrder(alive){
-  // Gumbel-max trick: log(w) - log(-log(U)) ranked desc = a draw from Plackett-Luce(w), restricted to survivors
-  return alive.map(i=>({i,k:Math.log(D[i].w)-Math.log(-Math.log(Math.random()))}))
-              .sort((a,b)=>b.k-a.k).map(x=>x.i);
+// Per-driver current points, pace (avg points/round with mechanical DNFs excluded), and this
+// season's mechanical-DNF rate — for literally every driver who has appeared, not just tracked ones.
+function recomputeRoster(){
+ const cumInc = F1Data.cumulative(currentSeasonRounds, L, 'include');
+ const cumExc = F1Data.cumulative(currentSeasonRounds, L, 'exclude');
+ fullRoster = Object.keys(cumInc.drivers).map(id=>{
+   const di = cumInc.drivers[id], de = cumExc.drivers[id];
+   const now = di.rounds.reduce((s,x)=>s+x.points,0);
+   const incRoundSet = new Set(di.rounds.map(x=>x.round));
+   const excByRound = {};
+   (de?de.rounds:[]).forEach(x=>{ excByRound[x.round]=(excByRound[x.round]||0)+x.points; });
+   const excCounts = Object.values(excByRound);
+   const pace = excCounts.length ? excCounts.reduce((a,b)=>a+b,0)/excCounts.length : 0;
+   const mechRate = incRoundSet.size ? Math.max(0, incRoundSet.size-excCounts.length)/incRoundSet.size : 0;
+   return { driverId:id, code:di.code, name:di.name, teamId:di.teamId, teamName:di.teamName, now, pace, mechRate };
+ });
+}
+
+// The real remaining schedule from the live calendar — each GP, plus a separate "event" for any
+// round that also has a sprint (same pace weights, its own draw and point table).
+function recomputeRemainingEvents(){
+ const total = currentCalendar ? currentCalendar.totalRounds : 0;
+ remainingEvents = [];
+ if(!total) return;
+ for(let r=L+1; r<=total; r++){
+   const raceName = (currentCalendar.raceNames && currentCalendar.raceNames[r]) || ('Round '+r);
+   remainingEvents.push({round:r, type:'gp', raceName});
+   if(currentCalendar.sprintRounds && currentCalendar.sprintRounds.includes(r)) remainingEvents.push({round:r, type:'sprint', raceName});
+ }
+}
+
+// Pure recompute from already-loaded season + calendar data — no network, safe on every round-slider step.
+function recompute(round){
+ L = round;
+ recomputeRoster();
+ recomputeRemainingEvents();
+ buildDnfInputs();
+ renderDriverPicker();
+ updateLede();
+ updateReadiness();
+ hideResults();
+}
+
+function onSelectionChanged(){
+ buildDnfInputs();
+ renderDriverPicker();
+ updateLede();
+ updateReadiness();
+ hideResults();
+}
+
+function updateLede(){
+ const nGP = remainingEvents.filter(e=>e.type==='gp').length;
+ const nSprint = remainingEvents.filter(e=>e.type==='sprint').length;
+ const totalRounds = currentCalendar ? currentCalendar.totalRounds : null;
+ document.getElementById('lede').textContent =
+   `Monte Carlo projection for the rest of the season: ${nGP} remaining ${nGP===1?'Grand Prix':'Grands Prix'}`
+   + (nSprint ? ` plus ${nSprint} sprint${nSprint===1?'':'s'}` : '')
+   + ` (as of Round ${L}${totalRounds?(' of '+totalRounds):''}). Pace comes from each driver's actual finishing-position distribution this season so far (mechanical DNFs excluded from that read). Every driver who has scored this season is simulated, not just the ones tracked below, so a result outside the tracked set can still take points or the title — reliability for tracked drivers is set manually below; everyone else uses their own mechanical-DNF rate from this season. Not a prediction — a range of plausible outcomes if current form holds.`;
+}
+
+function updateReadiness(){
+ const btn=document.getElementById('run'), status=document.getElementById('status');
+ if(!currentSeasonRounds.length){ btn.disabled=true; status.textContent='No data loaded for this season.'; return; }
+ if(!currentCalendar || !currentCalendar.totalRounds){ btn.disabled=true; status.textContent="Couldn't determine the remaining calendar for this season — try reloading."; return; }
+ if(remainingEvents.length===0){ btn.disabled=true; status.textContent='Season complete as of this round — nothing left to simulate.'; return; }
+ if(!selectedDriverIds || !selectedDriverIds.length){ btn.disabled=true; status.textContent='Select at least one driver to track below.'; return; }
+ btn.disabled=false; status.textContent='Ready — click run.';
+}
+
+function hideResults(){
+ document.getElementById('oddsCard').style.display='none';
+ document.getElementById('rangeCard').style.display='none';
+ document.getElementById('distCard').style.display='none';
+ lastOdds=null; lastFinals=null; lastTrackedRoster=null;
+}
+
+// pick k distinct event indices out of E (partial Fisher-Yates)
+function randomRounds(k, E){
+ k=Math.max(0,Math.min(k,E));
+ const a=Array.from({length:E},(_,i)=>i);
+ for(let i=0;i<k;i++){
+   const j=i+Math.floor(Math.random()*(E-i));
+   [a[i],a[j]]=[a[j],a[i]];
+ }
+ return new Set(a.slice(0,k));
+}
+function sampleOrder(alive, weights){
+ // Gumbel-max trick: log(w) - log(-log(U)) ranked desc = a draw from Plackett-Luce(w), restricted to survivors
+ return alive.map(i=>({i,k:Math.log(weights[i])-Math.log(-Math.log(Math.random()))}))
+             .sort((a,b)=>b.k-a.k).map(x=>x.i);
 }
 function quantile(arr,q){
-  const s=[...arr].sort((a,b)=>a-b);
-  const pos=(s.length-1)*q, lo=Math.floor(pos), hi=Math.ceil(pos);
-  return lo===hi ? s[lo] : s[lo]+(s[hi]-s[lo])*(pos-lo);
+ const s=[...arr].sort((a,b)=>a-b);
+ const pos=(s.length-1)*q, lo=Math.floor(pos), hi=Math.ceil(pos);
+ return lo===hi ? s[lo] : s[lo]+(s[hi]-s[lo])*(pos-lo);
 }
 
 function buildDnfInputs(){
-  document.getElementById('dnfGrid').innerHTML=D.map((d,i)=>`
-    <div class="dnf-item">
-      <span class="tag" data-i="${i}" style="color:${F1Theme.team(d.c)}">${d.n}</span>
-      <div class="stepper">
-        <button type="button" data-i="${i}" data-dir="-1" aria-label="Decrease ${d.n} DNFs">−</button>
-        <span class="val" id="dnfVal${i}">0</span>
-        <button type="button" data-i="${i}" data-dir="1" aria-label="Increase ${d.n} DNFs">+</button>
-      </div>
-    </div>`).join('');
-  dnfState=D.map(()=>0);
-  syncStepperDisabled();
-  document.querySelectorAll('.stepper button').forEach(btn=>{
-    btn.addEventListener('click',()=>{
-      const i=+btn.dataset.i, dir=+btn.dataset.dir;
-      dnfState[i]=Math.min(EVENTS,Math.max(0,dnfState[i]+dir));
-      document.getElementById('dnfVal'+i).textContent=dnfState[i];
-      syncStepperDisabled();
-    });
-  });
+ const E=remainingEvents.length;
+ const newState={};
+ (selectedDriverIds||[]).forEach(id=>{ newState[id]=Math.min(E, dnfState[id]||0); });
+ dnfState=newState;
+ const roster = fullRoster.filter(d=>(selectedDriverIds||[]).includes(d.driverId)).sort((a,b)=>b.now-a.now);
+ document.getElementById('dnfGrid').innerHTML=roster.map(d=>`
+   <div class="dnf-item">
+     <span class="tag" data-id="${d.driverId}" style="color:${F1Theme.team(teamColor(d.teamId))}">${d.code}</span>
+     <div class="stepper">
+       <button type="button" data-id="${d.driverId}" data-dir="-1" aria-label="Decrease ${d.code} DNFs">−</button>
+       <span class="val" id="dnfVal-${d.driverId}">${dnfState[d.driverId]}</span>
+       <button type="button" data-id="${d.driverId}" data-dir="1" aria-label="Increase ${d.code} DNFs">+</button>
+     </div>
+   </div>`).join('');
+ syncStepperDisabled();
+ document.querySelectorAll('#dnfGrid .stepper button').forEach(btn=>{
+   btn.addEventListener('click',()=>{
+     const id=btn.dataset.id, dir=+btn.dataset.dir, E=remainingEvents.length;
+     dnfState[id]=Math.min(E,Math.max(0,(dnfState[id]||0)+dir));
+     document.getElementById('dnfVal-'+id).textContent=dnfState[id];
+     syncStepperDisabled();
+   });
+ });
 }
 function recolorDnfTags(){
-  document.querySelectorAll('#dnfGrid .tag[data-i]').forEach(el=>{ el.style.color=F1Theme.team(D[+el.dataset.i].c); });
+ document.querySelectorAll('#dnfGrid .tag[data-id]').forEach(el=>{
+   const d=fullRoster.find(x=>x.driverId===el.dataset.id);
+   if(d) el.style.color=F1Theme.team(teamColor(d.teamId));
+ });
 }
 function syncStepperDisabled(){
-  document.querySelectorAll('.stepper button').forEach(btn=>{
-    const i=+btn.dataset.i, dir=+btn.dataset.dir;
-    btn.disabled = dir<0 ? dnfState[i]<=0 : dnfState[i]>=EVENTS;
-  });
+ const E=remainingEvents.length;
+ document.querySelectorAll('#dnfGrid .stepper button').forEach(btn=>{
+   const id=btn.dataset.id, dir=+btn.dataset.dir, v=dnfState[id]||0;
+   btn.disabled = dir<0 ? v<=0 : v>=E;
+ });
 }
-let dnfState=D.map(()=>0);
-buildDnfInputs();
-document.getElementById('resetDnf').addEventListener('click',buildDnfInputs);
+document.getElementById('resetDnf').addEventListener('click', ()=>{
+ (selectedDriverIds||[]).forEach(id=>{ dnfState[id]=0; });
+ buildDnfInputs();
+});
+
+function pickerRowHTML(d, rank){
+ const checked = (selectedDriverIds||[]).includes(d.driverId);
+ return `<label class="pickerRow">
+   <input type="checkbox" data-id="${d.driverId}" ${checked?'checked':''}>
+   ${rank!=null?`<span class="pickerRank">${rank}</span>`:''}
+   <span class="pickerDot" style="background:${F1Theme.team(teamColor(d.teamId))}"></span>
+   <span class="pickerCode${checked?'':' off'}">${d.code}</span>
+   <span class="pickerPts">${Math.round(d.now)}</span>
+ </label>`;
+}
+function renderDriverPicker(){
+ if(!fullRoster.length){ document.getElementById('driverPicker').innerHTML=''; return; }
+ let roster=[...fullRoster].sort((a,b)=>b.now-a.now);
+ let html;
+ if(pickerSort==='rank'){
+   html = roster.map((d,i)=>pickerRowHTML(d,i+1)).join('');
+ }else{
+   const teamTotal={};
+   roster.forEach(d=>{ teamTotal[d.teamId]=(teamTotal[d.teamId]||0)+d.now; });
+   const teamsOrdered=[...new Set(roster.map(d=>d.teamId))].sort((a,b)=>teamTotal[b]-teamTotal[a]);
+   html = teamsOrdered.map(teamId=>{
+     const teamDrivers = roster.filter(d=>d.teamId===teamId);
+     return `<div class="pickerTeamLabel">${shortTeamName(teamId,teamDrivers[0].teamName)}</div>`
+       + teamDrivers.map(d=>pickerRowHTML(d,null)).join('');
+   }).join('');
+ }
+ document.getElementById('driverPicker').innerHTML = html;
+ document.querySelectorAll('#driverPicker input').forEach(cb=>{
+   cb.addEventListener('change', ()=>{
+     const id=cb.dataset.id;
+     selectedDriverIds = cb.checked ? [...(selectedDriverIds||[]), id] : (selectedDriverIds||[]).filter(x=>x!==id);
+     onSelectionChanged();
+   });
+ });
+}
+document.getElementById('sortSeg').addEventListener('click', e=>{
+ const btn=e.target.closest('button[data-sort]'); if(!btn) return;
+ pickerSort = btn.dataset.sort;
+ document.querySelectorAll('#sortSeg button').forEach(b=>b.classList.toggle('active', b===btn));
+ renderDriverPicker();
+});
+document.getElementById('presetRow').addEventListener('click', e=>{
+ const btn=e.target.closest('button[data-preset]'); if(!btn) return;
+ const ranked=[...fullRoster].sort((a,b)=>b.now-a.now).map(d=>d.driverId);
+ const p=btn.dataset.preset;
+ selectedDriverIds = p==='all' ? fullRoster.map(d=>d.driverId) : p==='none' ? [] : ranked.slice(0,+p);
+ onSelectionChanged();
+});
 
 document.getElementById('run').addEventListener('click',()=>{
-  const btn=document.getElementById('run'); btn.disabled=true;
-  document.getElementById('status').textContent='Simulating…';
-  setTimeout(()=>{
-    const N=+document.getElementById('n').value;
-    const counts=dnfCounts();
-    const finals=D.map(()=>[]);
-    const wins=new Array(D.length).fill(0);
-    for(let s=0;s<N;s++){
-      const totals=D.map(d=>d.now);
-      const dnfRounds=counts.map(k=>randomRounds(k)); // which of the 9 events each driver misses, this season
-      for(let r=0;r<EVENTS;r++){
-        const alive=[];
-        for(let i=0;i<D.length;i++) if(!dnfRounds[i].has(r)) alive.push(i);
-        const order=sampleOrder(alive);
-        const pts = EVENT_TYPES[r]==='sprint' ? PTS_SPRINT : PTS_GP;
-        order.forEach((driverIdx,rank)=>{ if(rank<pts.length) totals[driverIdx]+=pts[rank]; });
-      }
-      let best=0;
-      for(let i=1;i<D.length;i++) if(totals[i]>totals[best]) best=i;
-      wins[best]++;
-      totals.forEach((t,i)=>finals[i].push(t));
-    }
-    const odds=wins.map(w=>100*w/N);
-    renderOdds(odds);
-    renderRange(finals);
-    renderDist(finals);
-    document.getElementById('oddsCard').style.display='block';
-    document.getElementById('rangeCard').style.display='block';
-    document.getElementById('distCard').style.display='block';
-    document.getElementById('status').textContent=`${N.toLocaleString()} seasons simulated.`;
-    btn.disabled=false;
-  },30);
+ const btn=document.getElementById('run'); btn.disabled=true;
+ document.getElementById('status').textContent='Simulating…';
+ setTimeout(()=>{
+   const N=+document.getElementById('n').value;
+   const roster=fullRoster, n=roster.length, E=remainingEvents.length;
+   const weights=roster.map(d=>Math.max(d.pace,0.25)); // floor so a zero-pace driver can still be placed, just rarely
+   const nowPts=roster.map(d=>d.now);
+   const trackedSet=new Set(selectedDriverIds||[]);
+   const trackedIdx=[]; roster.forEach((d,i)=>{ if(trackedSet.has(d.driverId)) trackedIdx.push(i); });
+   const finals=trackedIdx.map(()=>[]);
+   const wins=new Array(n).fill(0);
+   for(let s=0;s<N;s++){
+     const totals=nowPts.slice();
+     const dnfSet=roster.map(d=>{
+       if(trackedSet.has(d.driverId)) return randomRounds(dnfState[d.driverId]||0, E);
+       const p=d.mechRate, set=new Set();
+       for(let e=0;e<E;e++) if(Math.random()<p) set.add(e);
+       return set;
+     });
+     for(let e=0;e<E;e++){
+       const alive=[];
+       for(let i=0;i<n;i++) if(!dnfSet[i].has(e)) alive.push(i);
+       const order=sampleOrder(alive, weights);
+       const pts = remainingEvents[e].type==='sprint' ? PTS_SPRINT : PTS_GP;
+       order.forEach((idx,rank)=>{ if(rank<pts.length) totals[idx]+=pts[rank]; });
+     }
+     let best=0; for(let i=1;i<n;i++) if(totals[i]>totals[best]) best=i;
+     wins[best]++;
+     trackedIdx.forEach((idx,ti)=>finals[ti].push(totals[idx]));
+   }
+   const trackedRoster=trackedIdx.map(i=>roster[i]);
+   const odds=trackedIdx.map(i=>100*wins[i]/N);
+   lastTrackedRoster=trackedRoster; lastOdds=odds; lastFinals=finals;
+   renderOdds(trackedRoster, odds);
+   renderRange(trackedRoster, finals);
+   renderDist(trackedRoster, finals);
+   document.getElementById('oddsCard').style.display='block';
+   document.getElementById('rangeCard').style.display='block';
+   document.getElementById('distCard').style.display='block';
+   document.getElementById('status').textContent=`${N.toLocaleString()} seasons simulated.`;
+   updateReadiness();
+ },30);
 });
 
-let distChart=null, lastFinals=null;
-function renderDist(finals){
-  lastFinals=finals;
-  const P=F1Theme.chart();
-  const DC=D.map(d=>({...d,c:F1Theme.team(d.c)}));
-  const all=finals.flat();
-  const min=Math.floor(Math.min(...all)/10)*10, max=Math.ceil(Math.max(...all)/10)*10;
-  const binSize=10;
-  const bins=[]; for(let b=min;b<=max;b+=binSize) bins.push(b);
-  const datasets=DC.map((d,i)=>{
-    const counts=new Array(bins.length).fill(0);
-    finals[i].forEach(v=>{ const bi=Math.min(Math.floor((v-min)/binSize),bins.length-1); counts[bi]++; });
-    return {label:d.n,data:counts,backgroundColor:d.c+'55',borderColor:d.c,borderWidth:1.5};
-  });
-  if(distChart) distChart.destroy();
-  distChart=new Chart(document.getElementById('distChart'),{
-    type:'bar',
-    data:{labels:bins.map(b=>b), datasets},
-    options:{
-      responsive:true,maintainAspectRatio:false,
-      interaction:{mode:'index',intersect:false},
-      plugins:{legend:{position:'bottom',labels:{color:P.text,boxWidth:12,font:{size:11}}},
-        tooltip:{callbacks:{title:t=>`~${t[0].label} pts`, label:t=>` ${t.dataset.label}: ${t.raw} seasons`}}},
-      scales:{
-        x:{stacked:false,grid:{display:false},ticks:{color:P.text,maxRotation:0,autoSkip:true},title:{display:true,text:'final points',color:P.text}},
-        y:{stacked:false,grid:{color:P.grid},ticks:{color:P.text},title:{display:true,text:'simulated seasons',color:P.text}}
-      }
-    }
-  });
+let distChart=null;
+function renderDist(roster, finals){
+ const P=F1Theme.chart();
+ const DC=roster.map(d=>({...d,c:F1Theme.team(teamColor(d.teamId))}));
+ const all=finals.flat();
+ if(!all.length) return;
+ const min=Math.floor(Math.min(...all)/10)*10, max=Math.ceil(Math.max(...all)/10)*10;
+ const binSize=10;
+ const bins=[]; for(let b=min;b<=max;b+=binSize) bins.push(b);
+ const datasets=DC.map((d,i)=>{
+   const counts=new Array(bins.length).fill(0);
+   finals[i].forEach(v=>{ const bi=Math.min(Math.floor((v-min)/binSize),bins.length-1); counts[bi]++; });
+   return {label:d.code,data:counts,backgroundColor:d.c+'55',borderColor:d.c,borderWidth:1.5};
+ });
+ if(distChart) distChart.destroy();
+ distChart=new Chart(document.getElementById('distChart'),{
+   type:'bar',
+   data:{labels:bins.map(b=>b), datasets},
+   options:{
+     responsive:true,maintainAspectRatio:false,
+     interaction:{mode:'index',intersect:false},
+     plugins:{legend:{position:'bottom',labels:{color:P.text,boxWidth:12,font:{size:11}}},
+       tooltip:{callbacks:{title:t=>`~${t[0].label} pts`, label:t=>` ${t.dataset.label}: ${t.raw} seasons`}}},
+     scales:{
+       x:{stacked:false,grid:{display:false},ticks:{color:P.text,maxRotation:0,autoSkip:true},title:{display:true,text:'final points',color:P.text}},
+       y:{stacked:false,grid:{color:P.grid},ticks:{color:P.text},title:{display:true,text:'simulated seasons',color:P.text}}
+     }
+   }
+ });
 }
-window.addEventListener('themechange',()=>{ if(lastFinals) renderDist(lastFinals); });
 
-function renderOdds(odds){
-  lastOdds=odds;
-  const rows=D.map((d,i)=>({d,c:F1Theme.team(d.c),pct:odds[i]})).sort((a,b)=>b.pct-a.pct);
-  document.getElementById('odds').innerHTML=rows.map(({d,c,pct})=>`
-    <div class="driver-row">
-      <div class="tag" style="color:${c}">${d.n}</div>
-      <div class="bar-track"><div class="bar-fill" style="width:${Math.max(pct,0.4)}%;background:${c}"></div></div>
-      <div class="pct">${pct<0.1 && pct>0 ? '<0.1' : pct.toFixed(1)}%</div>
-    </div>`).join('');
+function renderOdds(roster, odds){
+ const rows=roster.map((d,i)=>({d,c:F1Theme.team(teamColor(d.teamId)),pct:odds[i]})).sort((a,b)=>b.pct-a.pct);
+ document.getElementById('odds').innerHTML=rows.map(({d,c,pct})=>`
+   <div class="driver-row">
+     <div class="tag" style="color:${c}">${d.code}</div>
+     <div class="bar-track"><div class="bar-fill" style="width:${Math.max(pct,0.4)}%;background:${c}"></div></div>
+     <div class="pct">${pct<0.1 && pct>0 ? '<0.1' : pct.toFixed(1)}%</div>
+   </div>`).join('');
+ const total=odds.reduce((a,b)=>a+b,0), rest=Math.max(0,100-total);
+ document.getElementById('oddsNote').textContent = rest>=0.1
+   ? `Tracked drivers total ${total.toFixed(1)}% — the other ${rest.toFixed(1)}% of simulated seasons were won by a driver outside the tracked set.`
+   : `Tracked drivers won effectively every simulated season.`;
 }
-function renderRange(finals){
-  const rows=D.map((d,i)=>{
-    const f=finals[i];
-    return {d,c:F1Theme.team(d.c),med:quantile(f,.5),lo:quantile(f,.05),hi:quantile(f,.95)};
-  }).sort((a,b)=>b.med-a.med);
-  document.getElementById('rangeBody').innerHTML=rows.map(({d,c,med,lo,hi})=>`
-    <tr>
-      <td style="color:${c};font-weight:600;">${d.n}</td>
-      <td>${d.now}</td>
-      <td>${Math.round(med)}</td>
-      <td>${Math.round(lo)}</td>
-      <td>${Math.round(hi)}</td>
-    </tr>`).join('');
+function renderRange(roster, finals){
+ const rows=roster.map((d,i)=>{
+   const f=finals[i];
+   return {d,c:F1Theme.team(teamColor(d.teamId)),med:quantile(f,.5),lo:quantile(f,.05),hi:quantile(f,.95)};
+ }).sort((a,b)=>b.med-a.med);
+ document.getElementById('rangeBody').innerHTML=rows.map(({d,c,med,lo,hi})=>`
+   <tr>
+     <td style="color:${c};font-weight:600;">${d.code}</td>
+     <td>${d.now}</td>
+     <td>${Math.round(med)}</td>
+     <td>${Math.round(lo)}</td>
+     <td>${Math.round(hi)}</td>
+   </tr>`).join('');
 }
-let lastOdds=null;
-window.addEventListener('themechange',()=>{
-  recolorDnfTags();
-  if(lastOdds) renderOdds(lastOdds);
-  if(lastFinals) renderRange(lastFinals);
+
+window.addEventListener('f1selection', e=>buildFromSelection(e.detail));
+window.addEventListener('f1roundchange', e=>{ if(currentSeasonRounds.length) recompute(e.detail.round); });
+window.addEventListener('themechange', ()=>{
+ recolorDnfTags();
+ renderDriverPicker();
+ if(lastOdds) renderOdds(lastTrackedRoster,lastOdds);
+ if(lastFinals) renderRange(lastTrackedRoster,lastFinals);
+ if(lastFinals) renderDist(lastTrackedRoster,lastFinals);
 });
+F1Controls.mount('f1controls', {defaultYear:2026});
 </script>
 </body>
 </html>
