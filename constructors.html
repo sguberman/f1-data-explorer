@@ -105,7 +105,7 @@ function pickerRowHTML(t, rank){
    <input type="checkbox" data-id="${t.teamId}" ${checked?'checked':''}>
    <span class="pickerRank">${rank}</span>
    <span class="pickerDot" style="background:${F1Theme.team(teamColor(t.teamId))}"></span>
-   <span class="pickerName${checked?'':' off'}">${shortTeamName(t.teamId,t.teamName)}</span>
+   <span class="pickerName${checked?'':' off'}">${t.teamName||t.teamId}</span>
    <span class="pickerPts">${Math.round(t.total)}</span>
  </label>`;
 }

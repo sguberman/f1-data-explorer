@@ -24,6 +24,7 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
 .pickerDot{width:8px;height:8px;border-radius:50%;flex:0 0 auto;}
 .pickerCode{font-size:13px;font-weight:500;flex:1;}
 .pickerCode.off{color:var(--sub);font-weight:400;}
+.pickerCodeTag{font-size:10px;color:var(--sub);font-weight:400;margin-left:6px;}
 .pickerPts{font-size:12px;color:var(--sub);font-variant-numeric:tabular-nums;flex:0 0 auto;}
 </style>
 </head>
@@ -117,7 +118,7 @@ function pickerRowHTML(d, rank){
    <input type="checkbox" data-id="${d.driverId}" ${checked?'checked':''}>
    ${rank!=null?`<span class="pickerRank">${rank}</span>`:''}
    <span class="pickerDot" style="background:${F1Theme.team(teamColor(d.teamId))}"></span>
-   <span class="pickerCode${checked?'':' off'}">${d.code}</span>
+   <span class="pickerCode${checked?'':' off'}">${d.name}<span class="pickerCodeTag">${d.code}</span></span>
    <span class="pickerPts">${Math.round(d.total)}</span>
  </label>`;
 }
@@ -138,7 +139,7 @@ function renderDriverPicker(){
    const teamsOrdered=[...new Set(roster.map(d=>d.teamId))].sort((a,b)=>teamTotal[b]-teamTotal[a]);
    html = teamsOrdered.map(teamId=>{
      const teamDrivers = roster.filter(d=>d.teamId===teamId);
-     return `<div class="pickerTeamLabel">${shortTeamName(teamId,teamDrivers[0].teamName)}</div>`
+     return `<div class="pickerTeamLabel">${teamDrivers[0].teamName||teamId}</div>`
        + teamDrivers.map(d=>pickerRowHTML(d,null)).join('');
    }).join('');
  }
