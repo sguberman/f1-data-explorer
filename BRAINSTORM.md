@@ -27,15 +27,6 @@ The owner promotes ideas to numbered issues (see `TODO.md`) when they want them 
   the baseline) instead of one result at a time.
 - **All chart pages** — export the current chart as PNG, or the underlying data as CSV.
 
-## Tweaks and polish
-
-- **Standings movement indicators** — a small ▲/▼ in the picker rows showing position change since the
-  previous round, not just the current points total.
-- **Loading and error states** — a loading skeleton on first fetch, and a clear retry message when
-  f1api.dev is down or rate-limited, instead of a blank page.
-- **"Data last refreshed" timestamp** next to the cache status text, so staleness is visible without devtools.
-- **Keyboard support for the round slider and drag handle** — arrow keys to step rounds.
-
 ## Data and infrastructure
 
 - **Season-over-season pace comparison** — for example, "2026 points pace vs. 2025 at the same round", as a

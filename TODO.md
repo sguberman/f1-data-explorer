@@ -1,6 +1,6 @@
 # Open issues
 
-Numbered issues that are logged but not yet done. Numbers are permanent. New issues continue from #47.
+Numbered issues that are logged but not yet done. Numbers are permanent. New issues continue from #50.
 An issue moves to `DONE.md` **only when the owner explicitly says it is closed**. Finishing and verifying
 the work is not enough on its own.
 
@@ -19,6 +19,9 @@ the work is not enough on its own.
 | 41 | simulator.html | Changing which drivers are tracked should not require re-running the simulation. (Today `onSelectionChanged()` calls `hideResults()`, which discards results.) |
 | 42 | All pages | Add national flags to driver names, team names, and rounds (round names/numbers). Add driver numbers to driver names. |
 | 43 | data.js | Research mechanical-vs-other DNF causes for prior (pre-2026) seasons and add them to `MANUAL_OVERRIDES`, using the same hand-researched approach as issue #36. |
+| 47 | Pickers | Standings movement indicators: a small ▲/▼ in the picker rows showing position change since the previous round, next to the current points total. (From `BRAINSTORM.md`.) |
+| 48 | All pages | Loading and error states: a loading skeleton on first fetch, and a clear retry message when f1api.dev is down or rate-limited, instead of a blank page. (Today a mid-season fetch failure quietly shows fewer rounds.) (From `BRAINSTORM.md`.) |
+| 49 | All pages | Show a "Data last refreshed" timestamp next to the cache status text, so staleness is visible without devtools. Related to #23 (clear cached data). (From `BRAINSTORM.md`.) |
 
 ## Pending research inside a closed issue (#36)
 

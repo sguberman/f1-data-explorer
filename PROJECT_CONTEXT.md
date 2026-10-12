@@ -160,7 +160,7 @@ Note: requests for sprint rounds legitimately produce 404 console noise.
 ## Instructions to preserve (owner's standing workflow)
 
 1. **Track every request as a numbered issue**, including ones not being worked on yet. Numbers are
-   permanent; the next new issue is **#47**. Log new issues in `TODO.md`.
+   permanent; the next new issue is **#50**. Log new issues in `TODO.md`.
 2. **Never mark an issue closed unless the owner explicitly says so.** Finishing and verifying the work is
    not enough. Move it from `TODO.md` to `DONE.md` only after the owner confirms.
 3. After finishing work on an issue, give a **short git commit message starting with `issue #xx: `**.
