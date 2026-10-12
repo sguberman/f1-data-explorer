@@ -1,7 +1,8 @@
 # Brainstorm — candidate ideas (not tracked issues)
 
 Ideas generated for possible future work. None of these are tracked issues or approved work yet.
-The owner promotes ideas to numbered issues (see `TODO.md`) when they want them built.
+The owner promotes ideas to numbered issues (see `TODO.md`) when they want them built; a promoted idea
+is logged in `TODO.md` with the next issue number and removed from this file. Rejected ideas are removed too.
 
 ## New pages
 
