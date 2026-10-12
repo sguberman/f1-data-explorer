@@ -112,12 +112,7 @@ function updatePresetActive(){
  const cum = F1Data.cumulative(currentSeasonRounds, L, 'include');
  const ranked = rankedTeamIds(cum);
  const sets = { all: Object.keys(cum.teams), none: [], 2: ranked.slice(0,2), 5: ranked.slice(0,5) };
- const cur = new Set(selectedTeamIds||[]);
- let matched=null;
- for(const [key,ids] of Object.entries(sets)){
-   if(cur.size===ids.length && ids.every(id=>cur.has(id))){ matched=key; break; }
- }
- document.querySelectorAll('#presetRow button[data-preset]').forEach(b=>b.classList.toggle('active', b.dataset.preset===matched));
+ F1Common.markActivePreset(sets, selectedTeamIds);
 }
 
 document.getElementById('presetRow').addEventListener('click', e=>{

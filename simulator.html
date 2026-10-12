@@ -335,14 +335,7 @@ document.getElementById('resetDnf').addEventListener('click', ()=>{
 });
 
 function pickerRowHTML(d, rank){
- const checked = (selectedDriverIds||[]).includes(d.driverId);
- return `<label class="pickerRow">
-   <input type="checkbox" data-id="${d.driverId}" ${checked?'checked':''}>
-   ${rank!=null?`<span class="pickerRank">${rank}</span>`:''}
-   <span class="pickerDot" style="background:${F1Theme.team(F1Common.teamColor(d.teamId))}"></span>
-   <span class="pickerCode${checked?'':' off'}">${d.name}<span class="pickerCodeTag">${d.code}</span></span>
-   <span class="pickerPts">${Math.round(d.now)}</span>
- </label>`;
+ return F1Common.driverPickerRowHTML(d, {rank, checked:(selectedDriverIds||[]).includes(d.driverId), points:d.now});
 }
 function renderDriverPicker(){
  if(!fullRoster.length){ document.getElementById('driverPicker').innerHTML=''; return; }
@@ -376,12 +369,7 @@ function renderDriverPicker(){
 function updatePresetActive(){
  const ranked=[...fullRoster].sort((a,b)=>b.now-a.now).map(d=>d.driverId);
  const sets = { all: fullRoster.map(d=>d.driverId), none: [], 5: ranked.slice(0,5), 10: ranked.slice(0,10) };
- const cur = new Set(selectedDriverIds||[]);
- let matched=null;
- for(const [key,ids] of Object.entries(sets)){
-   if(cur.size===ids.length && ids.every(id=>cur.has(id))){ matched=key; break; }
- }
- document.querySelectorAll('#presetRow button[data-preset]').forEach(b=>b.classList.toggle('active', b.dataset.preset===matched));
+ F1Common.markActivePreset(sets, selectedDriverIds);
 }
 document.getElementById('sortSeg').addEventListener('change', e=>{
  pickerSort = e.target.value;
