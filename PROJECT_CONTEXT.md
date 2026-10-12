@@ -137,7 +137,7 @@ and final championship position, ranked against the full grid. Default tracked s
 - **index.html subtitle is hardcoded** to "through Round 15 (Azerbaijan)" and is stale. Card descriptions
   also predate later features (e.g. position.html now includes sprints by default). Covered by #39/#40.
 - **drivers.html "Eliminated: below the knockout line" label** is positioned at a hardcoded x index
-  (`x.getPixelForValue(18)`), not computed from the season length.
+  (`x.getPixelForValue(18)`), not computed from the season length, and is clipped on phone widths (#45).
 - position.html and simulator.html default to the **top 8**, which no longer matches any preset, so no
   preset is highlighted on first load (owner was told; no decision yet).
 - The simulator's histograms use **GP results only**, while position.html now includes sprints by
@@ -160,7 +160,7 @@ Note: requests for sprint rounds legitimately produce 404 console noise.
 ## Instructions to preserve (owner's standing workflow)
 
 1. **Track every request as a numbered issue**, including ones not being worked on yet. Numbers are
-   permanent; the next new issue is **#45**. Log new issues in `TODO.md`.
+   permanent; the next new issue is **#46**. Log new issues in `TODO.md`.
 2. **Never mark an issue closed unless the owner explicitly says so.** Finishing and verifying the work is
    not enough. Move it from `TODO.md` to `DONE.md` only after the owner confirms.
 3. After finishing work on an issue, give a **short git commit message starting with `issue #xx: `**.
