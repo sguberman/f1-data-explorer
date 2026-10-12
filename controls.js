@@ -12,11 +12,49 @@ const F1Controls = (() => {
     window.dispatchEvent(new CustomEvent('f1selection', { detail: { ...state } }));
   }
 
+  // issue #49: "updated 5 min ago"-style age of the newest data, from F1Data's fetch timestamps.
+  function relativeAge(ms){
+    const s = Math.max(0, Math.round((Date.now()-ms)/1000));
+    if(s < 60) return 'just now';
+    const m = Math.round(s/60); if(m < 60) return `${m} min ago`;
+    const h = Math.round(m/60); if(h < 24) return `${h} hr${h===1?'':'s'} ago`;
+    const d = Math.round(h/24); return `${d} day${d===1?'':'s'} ago`;
+  }
+  let fetchedAt = null, loadedMsg = '';
+  function renderStatus(container){
+    container.querySelector('.f1c-status').textContent = loadedMsg;
+    const age = container.querySelector('.f1c-age');
+    age.hidden = !fetchedAt;
+    if(fetchedAt){
+      age.textContent = ` · updated ${relativeAge(fetchedAt)}`;
+      age.title = 'Data fetched from f1api.dev ' + new Date(fetchedAt).toLocaleString();
+    }
+  }
+
+  // issue #48: a token per load, so a slow earlier load (e.g. before a season switch) can't overwrite a
+  // later one's status, error or loading state when it finally finishes.
+  let loadToken = 0;
   async function loadYear(container, year, statusEl){
+    const token = ++loadToken;
+    const root = document.documentElement, errorEl = container.querySelector('.f1c-error');
+    const refreshBtn = container.querySelector('.f1c-refresh');
+    root.classList.add('f1-loading'); // pages show a placeholder in their chart/picker slots (theme.css)
+    errorEl.hidden = true; refreshBtn.disabled = true;
+    fetchedAt = null; container.querySelector('.f1c-age').hidden = true;
     statusEl.textContent = `Loading ${year} season…`;
-    const rounds = await F1Data.loadSeason(year, {
-      onProgress:(round)=>{ statusEl.textContent = `Loading ${year} season… round ${round}`; }
+    const { rounds, failed, fetchedAt: newest } = await F1Data.loadSeason(year, {
+      onProgress:(round)=>{ if(token===loadToken) statusEl.textContent = `Loading ${year} season… round ${round}`; }
     });
+    if(token!==loadToken) return; // superseded by a newer load
+    root.classList.remove('f1-loading');
+    refreshBtn.disabled = false;
+    fetchedAt = newest;
+    if(failed){
+      container.querySelector('.f1c-errortext').textContent = rounds.length
+        ? `Couldn't load everything from f1api.dev — some results may be missing (showing rounds 1–${rounds.length}).`
+        : `Couldn't load the ${year} season from f1api.dev. It may be down or rate-limiting requests.`;
+      errorEl.hidden = false;
+    }
     state.year = year;
     state.seasonRounds = rounds;
     state.maxRound = rounds.length;
@@ -26,7 +64,8 @@ const F1Controls = (() => {
     slider.value = state.round || 1;
     container.querySelector('.f1c-roundlabel').textContent =
       state.maxRound ? `Round ${state.round} of ${state.maxRound}${rounds[state.round-1]?(' — '+rounds[state.round-1].raceName):''}` : 'No rounds found';
-    statusEl.textContent = state.maxRound ? `${state.maxRound} rounds loaded (cached locally).` : `Couldn't find any results for ${year}.`;
+    loadedMsg = state.maxRound ? `${state.maxRound} rounds loaded` : (failed ? 'No rounds loaded' : `Couldn't find any results for ${year}.`);
+    renderStatus(container);
     emit();
   }
 
@@ -40,8 +79,11 @@ const F1Controls = (() => {
         <label class="f1c-label">Season
           <select class="f1c-year">${YEARS.map(y=>`<option value="${y}" ${y===defaultYear?'selected':''}>${y}</option>`).join('')}</select>
         </label>
-        <span class="f1c-status"></span>
+        <span class="f1c-statusline"><span class="f1c-status"></span><span class="f1c-age" hidden></span>
+          · <button type="button" class="f1c-link f1c-refresh" title="Clear cached race data (all seasons) and reload from f1api.dev">Refresh data</button></span>
       </div>
+      <div class="f1c-error" role="alert" hidden><span class="f1c-errortext"></span>
+        <button type="button" class="f1c-link f1c-retry">Retry</button></div>
       <div class="f1c-row">
         <input type="range" class="f1c-round" min="1" max="1" value="1" step="1">
       </div>
@@ -50,6 +92,17 @@ const F1Controls = (() => {
     const yearSel = container.querySelector('.f1c-year');
     const roundSlider = container.querySelector('.f1c-round');
     const statusEl = container.querySelector('.f1c-status');
+    const currentYear = () => +yearSel.value;
+    // issue #23: wipe the cached f1api.dev data and reload the selected season. The only network request
+    // these controls make besides loading a season — and only on an explicit click.
+    container.querySelector('.f1c-refresh').addEventListener('click', ()=>{
+      F1Data.clearCache();
+      loadYear(container, currentYear(), statusEl);
+    });
+    // issue #48: failures are never cached, so retrying is just loading the season again.
+    container.querySelector('.f1c-retry').addEventListener('click', ()=>loadYear(container, currentYear(), statusEl));
+    // Keep the "updated … ago" text current without any network requests.
+    setInterval(()=>{ if(fetchedAt) renderStatus(container); }, 60*1000);
 
     yearSel.addEventListener('change', ()=>{
       const y = +yearSel.value;

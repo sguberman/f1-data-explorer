@@ -44,11 +44,16 @@ Move something into `common.js` only once it's genuinely identical on every page
 - Endpoints: `/api/{year}/{round}/race` (results under `results`) and `/api/{year}/{round}/sprint/race`
   (results under **`sprintRaceResults`**, not `results`). A **404 on the sprint endpoint means "no sprint
   this round"** and is cached as a confirmed negative, not treated as a failure (issue #28).
-- `F1Data.loadSeason(year, {onProgress})` walks rounds 1, 2, 3… until the API returns no results. Each round
-  becomes `{round, raceName, raceResults, sprintResults}`; result rows carry `driverId, code, name, teamId,
-  teamName, position, points, mechanical`.
-- Caching: completed rounds are cached permanently in `localStorage`; the most recent round has a short TTL
-  because post-race penalties can still change it. Fetch failures are never cached (issue #22).
+- `F1Data.loadSeason(year, {onProgress})` walks rounds 1, 2, 3… until the API returns no results, and
+  resolves to `{rounds, failed, fetchedAt}`. Each round becomes `{round, raceName, raceResults,
+  sprintResults}`; result rows carry `driverId, code, name, teamId, teamName, position, points, mechanical`.
+  `failed` is true if any fetch failed (the load stops at the first failed round; a failed sprint reads as
+  "no sprint"), issue #48. `fetchedAt` is the newest fetch time of the data used, issue #49.
+- Caching: completed rounds are cached permanently in `localStorage` under `f1cache:v1:`; the most recent
+  round has a short TTL because post-race penalties can still change it. Each entry is `{v, exp, t}`, where
+  `t` is when it was fetched (kept when re-stamping the TTL). Fetch failures are never cached (issue #22).
+  `F1Data.clearCache()` removes every `f1cache:v1:` entry (issue #23); the theme and the
+  `f1cache:selectedSeason` key are kept.
 - `F1Data.getCalendar(year)` gives total rounds, race names and sprint rounds for the full season.
 - `F1Data.cumulative(seasonRounds, throughRound, mode)` returns `{drivers, teams}` with per-round points;
   `mode` is `'include'` or `'exclude'` (exclude drops points from mechanical-DNF rounds).
@@ -69,6 +74,13 @@ persists the season in `localStorage`, and dispatches on `window`:
 - `f1roundchange` `{round}` — on every slider step. Pages only recompute from already-loaded data:
   **no network calls and no selection reset** (issue #24). `F1Controls.setRound(n)` syncs the slider when a
   page's on-chart drag handle moves.
+
+The status line reads "12 rounds loaded · updated 5 min ago · Refresh data" (issue #49: relative age of the
+newest data, exact time on hover, ticks every minute without fetching). **Refresh data** clears the whole
+cache and reloads the season (issue #23). If a load fails, an error message with **Retry** appears under
+the status line (issue #48). While a season loads, `<html>` has the class `f1-loading`; elements marked
+`.f1-skel` (each page's chart and picker slots) show a pulsing placeholder after 150ms, and the drag handle
+is hidden. A load token makes a newer load win over a slower older one.
 
 ## Current functionality by page
 
@@ -109,13 +121,15 @@ and final championship position, ranked against the full grid. Default tracked s
 - Charts: driver codes (VER, NOR…) on chart labels; **short team names** (`shortTeamName()`) in chart
   legends and end labels; **full names** in pickers (driver full name + small muted code tag; full official
   team names).
-- Pickers sit **below** the chart. Rows: checkbox, (rank), team-color dot, name, points.
+- Pickers sit **below** the chart. Rows: checkbox, (rank), team-color dot, name, movement, points. Movement
+  (issue #47) is a green ▲n / red ▼n for places gained/lost in the standings since the previous round
+  (`F1Common.standingsMoves()`), blank when unchanged and at round 1.
 - All sort controls are `<select class="ddSelect">` dropdowns at every screen size, preceded by "Sort by".
 - Display options are checkboxes, preceded by "Show" on its own line, styled like "Sort by"
   (`font-size:12px; color:var(--sub)`).
 - A preset button is highlighted (`.pill.active`) only when the selection exactly matches it.
 - Live interactions (slider drag, drag handle, toggles, sort) never trigger network requests; charts redraw
-  with `animation:false`.
+  with `animation:false`. The only fetches are loading a season, and the explicit Refresh data / Retry clicks.
 - Mobile: breakpoint 600px (`isNarrow()` in JS, media queries in CSS). Layout must work on a ~390px phone.
   `-webkit-text-size-adjust:100%` is set to stop Mobile Safari inflating text.
 - Static files only. No server-side code, no build step.

@@ -42,7 +42,7 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
   <label class="optCheck"><input type="checkbox" data-opt="sprint" checked> Sprints</label>
  </div>
 </div>
-<div class="ridgeWrap" id="ridgeWrap"><canvas id="ridgeCanvas"></canvas></div>
+<div class="ridgeWrap f1-skel" id="ridgeWrap"><canvas id="ridgeCanvas"></canvas></div>
 <div id="empty" style="font-size:12.5px;color:var(--sub);display:none;">No drivers selected.</div>
 <div class="note" id="ridgeNote"></div>
 </div>
@@ -62,7 +62,7 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
  <button type="button" class="pill" data-preset="5">Top 5</button>
  <button type="button" class="pill" data-preset="10">Top 10</button>
 </div>
-<div id="driverPicker"></div>
+<div id="driverPicker" class="f1-skel"></div>
 </div>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
@@ -258,8 +258,8 @@ function updateSub(){
  document.getElementById('pageSub').textContent = bits.join(' · ');
 }
 
-function pickerRowHTML(d, rank){
- return F1Common.driverPickerRowHTML(d, {rank, checked:selectedDriverIds.includes(d.driverId), points:d.total});
+function pickerRowHTML(d, rank, moves){
+ return F1Common.driverPickerRowHTML(d, {rank, checked:selectedDriverIds.includes(d.driverId), points:d.total, move:moves[d.driverId]});
 }
 
 function renderDriverPicker(){
@@ -267,9 +267,10 @@ function renderDriverPicker(){
  const cum = F1Data.cumulative(currentSeasonRounds, L, 'include');
  let roster = Object.values(cum.drivers).map(d=>({...d,total:d.rounds.reduce((s,x)=>s+x.points,0)}));
  roster.sort((a,b)=>b.total-a.total);
+ const moves = F1Common.standingsMoves(currentSeasonRounds, L, 'drivers'); // issue #47
  let html;
  if(pickerSort==='rank'){
-   html = roster.map((d,i)=>pickerRowHTML(d,i+1)).join('');
+   html = roster.map((d,i)=>pickerRowHTML(d,i+1,moves)).join('');
  }else{
    const teamTotal={};
    roster.forEach(d=>{ teamTotal[d.teamId]=(teamTotal[d.teamId]||0)+d.total; });
@@ -277,7 +278,7 @@ function renderDriverPicker(){
    html = teamsOrdered.map(teamId=>{
      const teamDrivers = roster.filter(d=>d.teamId===teamId);
      return `<div class="pickerTeamLabel">${teamDrivers[0].teamName||teamId}</div>`
-       + teamDrivers.map(d=>pickerRowHTML(d,null)).join('');
+       + teamDrivers.map(d=>pickerRowHTML(d,null,moves)).join('');
    }).join('');
  }
  document.getElementById('driverPicker').innerHTML = html;

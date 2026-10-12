@@ -130,18 +130,35 @@ const F1Data = (() => {
     return MECHANICAL_KEYWORDS.some(k=>t.includes(k));
   }
 
-  function cacheGet(key){
+  // Each entry is {v: value, exp: expiry ms or null, t: when it was fetched from f1api.dev}. `t` (issue #49)
+  // is missing on entries cached before it existed — those read as "fetch time unknown".
+  function cacheGetEntry(key){
     try{
       const raw=localStorage.getItem(CACHE_NS+key);
       if(!raw) return undefined;
-      const {v,exp}=JSON.parse(raw);
+      const {v,exp,t}=JSON.parse(raw);
       if(exp && Date.now()>exp){ localStorage.removeItem(CACHE_NS+key); return undefined; }
-      return v;
+      return {v, t: t||null};
     }catch(e){ return undefined; }
   }
-  function cacheSet(key,value,ttlMs){
-    try{ localStorage.setItem(CACHE_NS+key, JSON.stringify({v:value, exp: ttlMs?Date.now()+ttlMs:null})); }
+  function cacheGet(key){
+    const entry=cacheGetEntry(key);
+    return entry ? entry.v : undefined;
+  }
+  // `fetchedAt` defaults to now; pass the original fetch time when re-stamping an already-cached value.
+  function cacheSet(key,value,ttlMs,fetchedAt){
+    const t = fetchedAt===undefined ? Date.now() : fetchedAt;
+    try{ localStorage.setItem(CACHE_NS+key, JSON.stringify({v:value, exp: ttlMs?Date.now()+ttlMs:null, t})); }
     catch(e){ /* storage full or unavailable — fail silently, just refetches next time */ }
+  }
+  // issue #23: drop every cached f1api.dev response (all seasons). Leaves other localStorage keys — the
+  // theme and the selected season — alone, since they don't start with CACHE_NS.
+  function clearCache(){
+    try{
+      const keys=[];
+      for(let i=0;i<localStorage.length;i++){ const k=localStorage.key(i); if(k && k.startsWith(CACHE_NS)) keys.push(k); }
+      keys.forEach(k=>localStorage.removeItem(k));
+    }catch(e){ /* storage unavailable — nothing to clear */ }
   }
 
   async function fetchJSON(url, attempt=0){
@@ -169,14 +186,15 @@ const F1Data = (() => {
   }
 
   // Always resolves to the SAME normalized shape whether it came from cache or the network:
-  // { ok, raceName, results, failed, _fresh, _key } — ok=false covers both "no sprint this round" and
+  // { ok, raceName, results, failed, _fresh, _key, _t } — _t is when the data was fetched (null if unknown);
+  // ok=false covers both "no sprint this round" and
   // "round hasn't happened yet". `failed` marks an actual fetch error (network issue, rate limit, bad
   // JSON) as distinct from a confirmed empty response — callers must NOT permanently cache a failure,
   // since that would silently and permanently lock in "no sprint" for a round that may have had one.
   async function fetchSession(season, round, kind){
     const path = kind==='sprint' ? `${season}/${round}/sprint/race` : `${season}/${round}/race`;
-    const cached = cacheGet(path);
-    if(cached !== undefined) return { ...cached, failed:false, _fresh:false, _key:path };
+    const cached = cacheGetEntry(path);
+    if(cached !== undefined) return { ...cached.v, failed:false, _fresh:false, _key:path, _t:cached.t };
     let race = null, failed = false;
     try{
       const data = await fetchJSON(`${API}/${path}`);
@@ -195,7 +213,7 @@ const F1Data = (() => {
     const norm = hasResults
       ? { ok:true, raceName: race.raceName, results: normalizeResults(resultsArr, season, round, kind) }
       : { ok:false, raceName:null, results:[] };
-    return { ...norm, failed, _fresh:true, _key:path };
+    return { ...norm, failed, _fresh:true, _key:path, _t:Date.now() };
   }
 
   function normalizeResults(resultsArr, season, round, kind){
@@ -220,13 +238,19 @@ const F1Data = (() => {
   }
 
   // Walk rounds (in small parallel batches, for speed) until an empty race result is hit.
-  // Returns array of {round, raceName, raceResults:[...], sprintResults:[...]|null}
+  // Resolves to { rounds, failed, fetchedAt }:
+  // - rounds: array of {round, raceName, raceResults:[...], sprintResults:[...]|null}
+  // - failed (issue #48): true if any fetch failed, so some results may be missing — the load stops at
+  //   the first failed round, and a failed sprint fetch reads as "no sprint" for that round.
+  // - fetchedAt (issue #49): latest time any data used by this load was fetched from f1api.dev
+  //   (ms timestamp), or null if unknown.
   const BATCH_SIZE = 5;
 
   async function loadSeason(year, opts={}){
     const { onProgress } = opts;
     const rounds = [];
-    let round = 1;
+    let round = 1, failed = false, fetchedAt = null;
+    const noteFetch = t => { if(t && (fetchedAt===null || t>fetchedAt)) fetchedAt = t; };
 
     while(round <= MAX_ROUNDS){
       const batch = [];
@@ -243,6 +267,7 @@ const F1Data = (() => {
         }));
       }catch(e){
         console.warn('F1Data: batch fetch failed, stopping load at round', round, e);
+        failed = true;
         break; // a genuine network failure — stop here rather than hang, keep whatever loaded so far
       }
 
@@ -251,12 +276,14 @@ const F1Data = (() => {
         // A failed fetch (network hiccup, rate limit) is NOT the same as a confirmed negative — never
         // cache it, and never conclude the season ended because of one. Just stop collecting for this
         // load; nothing was cached, so the next load retries this round fresh.
-        if(raceR.failed){ stoppedOnFailure = true; break; }
+        if(raceR.failed){ stoppedOnFailure = true; failed = true; break; }
+        noteFetch(raceR._t);
         // cache every freshly-fetched, CONFIRMED round permanently, including negative results (no
         // sprint that round, or round hasn't happened yet) so we stop re-asking the same question on
         // every load. A round that hasn't happened yet gets a short TTL — it needs rechecking as the season moves on.
         if(raceR._fresh) cacheSet(raceR._key, {ok:raceR.ok, raceName:raceR.raceName, results:raceR.results}, raceR.ok ? null : FRESH_ROUND_TTL_MS);
         if(!raceR.ok){ hitEnd = true; break; } // confirmed: first un-run round — season data ends here
+        if(sprintR.failed) failed = true; else noteFetch(sprintR._t);
         if(sprintR._fresh && !sprintR.failed) cacheSet(sprintR._key, {ok:sprintR.ok, raceName:sprintR.raceName, results:sprintR.results}, null);
 
         rounds.push({
@@ -266,7 +293,8 @@ const F1Data = (() => {
           // If the sprint fetch itself failed, this reads as "no sprint" just for this one render —
           // nothing was cached for it, so the next load retries and self-corrects.
           sprintResults: sprintR.ok ? sprintR.results : null,
-          _sprintFailed: sprintR.failed // only used below, to avoid re-stamping a failure as confirmed
+          _sprintFailed: sprintR.failed, // only used below, to avoid re-stamping a failure as confirmed
+          _raceT: raceR._t, _sprintT: sprintR._t // original fetch times, kept when re-stamping below
         });
         if(onProgress) onProgress(r, rounds.length);
       }
@@ -280,14 +308,14 @@ const F1Data = (() => {
     // confirmed "no sprint" (that was a second instance of the same class of bug).
     if(rounds.length){
       const last = rounds[rounds.length-1];
-      cacheSet(`${year}/${last.round}/race`, {ok:true, raceName:last.raceName, results:last.raceResults}, FRESH_ROUND_TTL_MS);
+      cacheSet(`${year}/${last.round}/race`, {ok:true, raceName:last.raceName, results:last.raceResults}, FRESH_ROUND_TTL_MS, last._raceT);
       if(!last._sprintFailed){
         cacheSet(`${year}/${last.round}/sprint/race`,
-          {ok: !!last.sprintResults, raceName:last.raceName, results:last.sprintResults||[]}, FRESH_ROUND_TTL_MS);
+          {ok: !!last.sprintResults, raceName:last.raceName, results:last.sprintResults||[]}, FRESH_ROUND_TTL_MS, last._sprintT);
       }
-      delete last._sprintFailed;
     }
-    return rounds;
+    rounds.forEach(r=>{ delete r._sprintFailed; delete r._raceT; delete r._sprintT; });
+    return { rounds, failed, fetchedAt };
   }
 
   // Real season schedule from /api/[year] — every round for the year, including ones not yet run,
@@ -343,5 +371,5 @@ const F1Data = (() => {
       .sort((a,b)=>b.total-a.total).slice(0,n).map(t=>t.teamId);
   }
 
-  return { loadSeason, cumulative, topTeams, isMechanical, getCalendar };
+  return { loadSeason, cumulative, topTeams, isMechanical, getCalendar, clearCache };
 })();

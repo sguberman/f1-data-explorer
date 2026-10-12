@@ -72,7 +72,7 @@ canvas{max-width:100%;}
       <button type="button" class="pill" data-preset="5">Top 5</button>
       <button type="button" class="pill" data-preset="10">Top 10</button>
     </div>
-    <div id="driverPicker"></div>
+    <div id="driverPicker" class="f1-skel"></div>
     <div class="note">The simulation itself always models every driver who has scored this season — this just controls who's reported on below.</div>
   </div>
 
@@ -322,15 +322,16 @@ document.getElementById('resetDnf').addEventListener('click', ()=>{
  buildDnfInputs();
 });
 
-function pickerRowHTML(d, rank){
- return F1Common.driverPickerRowHTML(d, {rank, checked:(selectedDriverIds||[]).includes(d.driverId), points:d.now});
+function pickerRowHTML(d, rank, moves){
+ return F1Common.driverPickerRowHTML(d, {rank, checked:(selectedDriverIds||[]).includes(d.driverId), points:d.now, move:moves[d.driverId]});
 }
 function renderDriverPicker(){
  if(!fullRoster.length){ document.getElementById('driverPicker').innerHTML=''; return; }
  let roster=[...fullRoster].sort((a,b)=>b.now-a.now);
+ const moves = F1Common.standingsMoves(currentSeasonRounds, L, 'drivers'); // issue #47
  let html;
  if(pickerSort==='rank'){
-   html = roster.map((d,i)=>pickerRowHTML(d,i+1)).join('');
+   html = roster.map((d,i)=>pickerRowHTML(d,i+1,moves)).join('');
  }else{
    const teamTotal={};
    roster.forEach(d=>{ teamTotal[d.teamId]=(teamTotal[d.teamId]||0)+d.now; });
@@ -338,7 +339,7 @@ function renderDriverPicker(){
    html = teamsOrdered.map(teamId=>{
      const teamDrivers = roster.filter(d=>d.teamId===teamId);
      return `<div class="pickerTeamLabel">${teamDrivers[0].teamName||teamId}</div>`
-       + teamDrivers.map(d=>pickerRowHTML(d,null)).join('');
+       + teamDrivers.map(d=>pickerRowHTML(d,null,moves)).join('');
    }).join('');
  }
  document.getElementById('driverPicker').innerHTML = html;

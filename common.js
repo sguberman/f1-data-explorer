@@ -49,13 +49,35 @@ const F1Common = (() => {
      .sort((a,b)=>b.total-a.total).map(d=>d.driverId);
   }
 
-  // One driver row in a picker: checkbox, (rank), team-color dot, full name + code tag, points.
-  function driverPickerRowHTML(d, {rank=null, checked=false, points=0}={}){
+  // issue #47: places gained (+) or lost (-) in the standings since the previous round, by id. Ranks use
+  // the same points ordering as the pickers. Empty at round 1; an entry missing from the previous
+  // round's standings (e.g. a new driver) gets no value.
+  function standingsMoves(seasonRounds, round, kind){
+   if(round<=1) return {};
+   const order = r => Object.values(F1Data.cumulative(seasonRounds, r, 'include')[kind])
+     .map(e=>({id: kind==='teams' ? e.teamId : e.driverId, total: e.rounds.reduce((s,x)=>s+x.points,0)}))
+     .sort((a,b)=>b.total-a.total).map(e=>e.id);
+   const prevPos = {};
+   order(round-1).forEach((id,i)=>{ prevPos[id]=i; });
+   const moves = {};
+   order(round).forEach((id,i)=>{ if(id in prevPos) moves[id]=prevPos[id]-i; });
+   return moves;
+  }
+  // The ▲2 / ▼1 cell in a picker row (always rendered, empty when unchanged, so the points column lines up).
+  function moveHTML(delta){
+   if(!delta) return '<span class="pickerMove"></span>';
+   const n=Math.abs(delta), up=delta>0;
+   return `<span class="pickerMove ${up?'up':'down'}" title="${up?'Up':'Down'} ${n} place${n===1?'':'s'} since the previous round">${up?'▲':'▼'}${n}</span>`;
+  }
+
+  // One driver row in a picker: checkbox, (rank), team-color dot, full name + code tag, (movement), points.
+  function driverPickerRowHTML(d, {rank=null, checked=false, points=0, move=0}={}){
    return `<label class="pickerRow">
      <input type="checkbox" data-id="${d.driverId}" ${checked?'checked':''}>
      ${rank!=null?`<span class="pickerRank">${rank}</span>`:''}
      <span class="pickerDot" style="background:${F1Theme.team(teamColor(d.teamId))}"></span>
      <span class="pickerCode${checked?'':' off'}">${d.name}<span class="pickerCodeTag">${d.code}</span></span>
+     ${moveHTML(move)}
      <span class="pickerPts">${Math.round(points)}</span>
    </label>`;
   }
@@ -84,5 +106,5 @@ const F1Common = (() => {
   }
 
   return { TEAM_COLORS, teamColor, SHORT_TEAM_NAMES, shortTeamName, SEASON_META, seasonMeta, YEARS,
-    isNarrow, withAlpha, rankedDriverIds, driverPickerRowHTML, markActivePreset, drawKnockoutLabel };
+    isNarrow, withAlpha, rankedDriverIds, standingsMoves, moveHTML, driverPickerRowHTML, markActivePreset, drawKnockoutLabel };
 })();

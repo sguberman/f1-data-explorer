@@ -25,7 +25,7 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
 <div id="f1controls" class="f1c"></div>
 <div class="card" style="margin-bottom:16px;">
 <div id="lg" style="display:flex;flex-wrap:wrap;gap:8px 20px;margin:0 0 10px;font-size:12px;color:var(--ink2);"></div>
-<div style="position:relative;width:100%;height:440px;" id="chartWrap">
+<div style="position:relative;width:100%;height:440px;" id="chartWrap" class="f1-skel">
 <canvas id="c" role="img" aria-label="Line chart of cumulative 2026 F1 driver points by round with a knockout line showing the minimum points a driver needs to still be mathematically able to win the championship. The area below the line is shaded as eliminated. After round 15 the line is at 94 points and HAD, at 86, is eliminated.">After round 15 the knockout line is at 94 points. HAD (86) is below it and mathematically eliminated. All other drivers shown are still alive.</canvas>
 <div class="drag-handle" id="dragHandle" title="Drag to change the as-of round"></div>
 </div>
@@ -48,7 +48,7 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
  <button type="button" class="pill" data-preset="5">Top 5</button>
  <button type="button" class="pill" data-preset="10">Top 10</button>
 </div>
-<div id="driverPicker"></div>
+<div id="driverPicker" class="f1-skel"></div>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script>
@@ -70,8 +70,8 @@ async function buildFromSelection(detail){
  recompute(detail.round);
 }
 
-function pickerRowHTML(d, rank){
- return F1Common.driverPickerRowHTML(d, {rank, checked:selectedDriverIds.includes(d.driverId), points:d.total});
+function pickerRowHTML(d, rank, moves){
+ return F1Common.driverPickerRowHTML(d, {rank, checked:selectedDriverIds.includes(d.driverId), points:d.total, move:moves[d.driverId]});
 }
 
 // Renders the picker for the round currently in L. Called on season load, after sort/preset/checkbox
@@ -81,9 +81,10 @@ function renderDriverPicker(){
  const cum = F1Data.cumulative(currentSeasonRounds, L, 'include');
  let roster = Object.values(cum.drivers).map(d=>({...d,total:d.rounds.reduce((s,x)=>s+x.points,0)}));
  roster.sort((a,b)=>b.total-a.total);
+ const moves = F1Common.standingsMoves(currentSeasonRounds, L, 'drivers'); // issue #47
  let html;
  if(pickerSort==='rank'){
-   html = roster.map((d,i)=>pickerRowHTML(d,i+1)).join('');
+   html = roster.map((d,i)=>pickerRowHTML(d,i+1,moves)).join('');
  }else{
    const teamTotal={};
    roster.forEach(d=>{ teamTotal[d.teamId]=(teamTotal[d.teamId]||0)+d.total; });
@@ -91,7 +92,7 @@ function renderDriverPicker(){
    html = teamsOrdered.map(teamId=>{
      const teamDrivers = roster.filter(d=>d.teamId===teamId);
      return `<div class="pickerTeamLabel">${teamDrivers[0].teamName||teamId}</div>`
-       + teamDrivers.map(d=>pickerRowHTML(d,null)).join('');
+       + teamDrivers.map(d=>pickerRowHTML(d,null,moves)).join('');
    }).join('');
  }
  document.getElementById('driverPicker').innerHTML = html;

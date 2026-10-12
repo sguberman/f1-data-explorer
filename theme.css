@@ -5,6 +5,7 @@
   --ink:#222;--ink2:#444;--sub:#777;--muted:#666;
   --inset:#f1efe8;--ctrl:#fff;--ctrl-active:#e8e6de;--on-ink:#fff;
   --shadow:rgba(0,0,0,.06);--elim:#c62828;
+  --up:#2e7d32;--down:#c62828;
 }
 :root[data-theme="dark"]{
   color-scheme:dark;
@@ -12,6 +13,7 @@
   --ink:#eef0f2;--ink2:#c4cad2;--sub:#9aa3af;--muted:#9aa3af;
   --inset:#0f1216;--ctrl:#1c2029;--ctrl-active:#262b35;--on-ink:#0f1216;
   --shadow:rgba(0,0,0,.35);--elim:#ef5350;
+  --up:#66bb6a;--down:#ef5350;
 }
 /* Prevents Mobile Safari from auto-inflating the font size of short, isolated text (like a lone
    row label next to a wrapped control) beyond what its CSS actually specifies. */
@@ -43,7 +45,16 @@ html,body{background:var(--bg);color:var(--ink);}
 .f1c-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:6px 0;}
 .f1c-label{font-size:12.5px;color:var(--sub);display:flex;align-items:center;gap:6px;}
 .f1c-year{font:inherit;background:var(--inset);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:5px 8px;}
-.f1c-status{font-size:11.5px;color:var(--sub);}
+.f1c-status,.f1c-statusline{font-size:11.5px;color:var(--sub);}
+/* issue #23/#48: small text buttons in the status line and error message (Refresh data, Retry) */
+.f1c-link{font:inherit;font-size:11.5px;font-weight:400;background:none;border:none;border-radius:0;padding:0;color:var(--ink2);
+  text-decoration:underline;text-underline-offset:2px;cursor:pointer;transform:none;opacity:1;}
+.f1c-link:hover{color:var(--ink);}
+.f1c-link:disabled{color:var(--sub);text-decoration:none;cursor:default;}
+/* issue #48: shown when f1api.dev couldn't be reached — failures are never cached, so Retry just reloads */
+.f1c-error{font-size:12px;color:var(--elim);margin:6px 0;line-height:1.5;}
+.f1c-error[hidden]{display:none;}
+.f1c-error .f1c-link{font-size:12px;margin-left:4px;color:var(--elim);}
 .f1c-round{flex:1;width:100%;accent-color:var(--ink);}
 .f1c-roundlabel{display:block;font-size:12px;color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;height:16px;}
 
@@ -98,3 +109,22 @@ html,body{background:var(--bg);color:var(--ink);}
 .pickerCode.off,.pickerName.off{color:var(--sub);font-weight:400;}
 .pickerCodeTag{font-size:10px;color:var(--sub);font-weight:400;margin-left:6px;}
 .pickerPts{font-size:12px;color:var(--sub);font-variant-numeric:tabular-nums;flex:0 0 auto;}
+
+/* issue #48: loading placeholder. controls.js puts .f1-loading on <html> while a season loads; each page
+   marks its chart and picker slots with .f1-skel. The placeholder only appears if loading takes longer
+   than 150ms, so instant loads from the cache don't flash. */
+.f1-skel{position:relative;}
+html.f1-loading .f1-skel{min-height:200px;}
+html.f1-loading .drag-handle{visibility:hidden;} /* it'd sit on the placeholder at round 1 */
+html.f1-loading .f1-skel::after{content:"";position:absolute;inset:0;z-index:6;border-radius:8px;background:var(--inset);
+  animation:f1skel-show 0s linear .15s both, f1skel-pulse 1.4s ease-in-out .15s infinite;}
+@keyframes f1skel-show{from{visibility:hidden;}to{visibility:visible;}}
+@keyframes f1skel-pulse{0%,100%{opacity:1;}50%{opacity:.45;}}
+@media (prefers-reduced-motion:reduce){
+  html.f1-loading .f1-skel::after{animation:f1skel-show 0s linear .15s both;}
+}
+
+/* issue #47: places gained/lost in the standings since the previous round, just before the points */
+.pickerMove{font-size:11px;font-weight:600;font-variant-numeric:tabular-nums;width:26px;text-align:right;flex:0 0 auto;}
+.pickerMove.up{color:var(--up);}
+.pickerMove.down{color:var(--down);}
