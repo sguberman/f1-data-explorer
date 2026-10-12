@@ -19,7 +19,6 @@ the work is not enough on its own.
 | 41 | simulator.html | Changing which drivers are tracked should not require re-running the simulation. (Today `onSelectionChanged()` calls `hideResults()`, which discards results.) |
 | 42 | All pages | Add national flags to driver names, team names, and rounds (round names/numbers). Add driver numbers to driver names. |
 | 43 | data.js | Research mechanical-vs-other DNF causes for prior (pre-2026) seasons and add them to `MANUAL_OVERRIDES`, using the same hand-researched approach as issue #36. |
-| 44 | All pages | Move code duplicated across pages into shared files: team colors/short names, season list, alpha helper, preset highlighting and the driver picker row into `common.js`; shared picker CSS into `theme.css`; season dropdown driven by `SEASON_META`. |
 | 45 | drivers.html | On narrow screens the "Eliminated: below the knockout line" label is clipped at the chart's right edge. It's drawn at a hardcoded x position (`x.getPixelForValue(18)`) rather than computed from the season length and chart width. |
 
 ## Pending research inside a closed issue (#36)

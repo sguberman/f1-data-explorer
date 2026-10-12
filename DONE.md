@@ -96,3 +96,11 @@ Replaced with hand-researched `MANUAL_OVERRIDES` in `data.js` for every 2026 DNF
 ## #37 — Full names in pickers
 Driver pickers show the full name with a small muted code tag; team labels and the constructors picker show
 full official team names. Chart legends still use short names.
+
+## #44 — Shared code moved out of the pages
+Code that was copied into every chart page now lives in one place: `common.js` (`F1Common`) holds the
+team colors and short names, `SEASON_META` (which also drives the season dropdown in `controls.js`),
+`isNarrow()`, one `withAlpha()` (replacing the two different `rgba()` / `withAlpha()` copies),
+`rankedDriverIds()`, the driver picker row and the preset highlighting. The picker list CSS moved into
+`theme.css`. Page-specific code (charts, picker sorting/grouping, the constructors' team row, each page's
+preset lists) stays on its page. Verified pixel-identical before/after on every page.
