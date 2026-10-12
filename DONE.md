@@ -116,3 +116,25 @@ Both championship charts now draw the same "Below the knockout line" label (shar
 "Projected to fall below at current form". Owner's choice: "below" describes it more accurately than
 "eliminated", since the line is drawn from the highest-ranked *selected* entry. Differences that come from
 drivers having teammates (legend grouped by team, dashed second driver) stay.
+
+## #23 — Clear cached data
+A **Refresh data** button in the status line (`controls.js`, every data page) clears every cached f1api.dev
+response for all seasons (`F1Data.clearCache()`, keys under `f1cache:v1:`) and reloads the selected season.
+The theme and selected season are kept.
+
+## #47 — Standings movement indicators
+Picker rows on all four pages show a green ▲n / red ▼n for places gained/lost in the standings since the
+previous round (`F1Common.standingsMoves()`), using the same points ranking as the pickers. Blank when
+unchanged and at round 1; updates live with the round slider, no network requests.
+
+## #48 — Loading and error states
+`F1Data.loadSeason()` now resolves to `{rounds, failed, fetchedAt}`. A failed load shows a red message
+with **Retry** under the status line (partial: "some results may be missing (showing rounds 1–N)"; total:
+"Couldn't load the YEAR season"). While loading, chart and picker slots (`.f1-skel`) show a pulsing
+placeholder after 150ms (static under reduced motion) and the drag handle is hidden. A load token keeps a
+slower older load from overwriting a newer one.
+
+## #49 — "Data last refreshed" timestamp
+Cache entries record their fetch time (`t`). The status line shows "updated 5 min ago" for the newest data
+used, with the exact time on hover, refreshed every minute without fetching. Entries cached before this
+change have no time until they're refetched.

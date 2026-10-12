@@ -11,7 +11,6 @@ the work is not enough on its own.
 | 10 | New chart | A chart showing projected championship finishing position and/or projected final points by round. |
 | 11 | simulator.html | Option to simulate two specific drivers taking each other out in the same race. |
 | 14 | New tool | A head-to-head tool comparing various stats for two drivers. |
-| 23 | All pages | Add a "clear cached data" button (data is cached in `localStorage` by `data.js`). |
 | 29 | Data | For completed seasons, which won't change, store and serve the data statically from the site (for example, a build-time JSON snapshot per season) instead of fetching f1api.dev live every time. Keep live fetching only for the in-progress season. |
 | 38 | simulator.html | Add a manual control for the number of **wins** in the remaining races for tracked drivers, using the same stepper UI pattern as the existing DNF controls. |
 | 39 | index.html | Improve index.html. (Note: its subtitle is hardcoded to "through Round 15 (Azerbaijan)" and is stale, and the card descriptions predate several features. See Known bugs in `PROJECT_CONTEXT.md`.) |
@@ -19,9 +18,6 @@ the work is not enough on its own.
 | 41 | simulator.html | Changing which drivers are tracked should not require re-running the simulation. (Today `onSelectionChanged()` calls `hideResults()`, which discards results.) |
 | 42 | All pages | Add national flags to driver names, team names, and rounds (round names/numbers). Add driver numbers to driver names. |
 | 43 | data.js | Research mechanical-vs-other DNF causes for prior (pre-2026) seasons and add them to `MANUAL_OVERRIDES`, using the same hand-researched approach as issue #36. |
-| 47 | Pickers | Standings movement indicators: a small ▲/▼ in the picker rows showing position change since the previous round, next to the current points total. (From `BRAINSTORM.md`.) |
-| 48 | All pages | Loading and error states: a loading skeleton on first fetch, and a clear retry message when f1api.dev is down or rate-limited, instead of a blank page. (Today a mid-season fetch failure quietly shows fewer rounds.) (From `BRAINSTORM.md`.) |
-| 49 | All pages | Show a "Data last refreshed" timestamp next to the cache status text, so staleness is visible without devtools. Related to #23 (clear cached data). (From `BRAINSTORM.md`.) |
 
 ## Pending research inside a closed issue (#36)
 
