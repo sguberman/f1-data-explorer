@@ -6,6 +6,7 @@
 <title>2026 F1 Drivers' Championship — Cumulative Points</title>
 <link rel="stylesheet" href="theme.css">
 <script src="theme.js"></script>
+<script src="common.js"></script>
 <script src="data.js"></script>
 <script src="controls.js"></script>
 <style>
@@ -66,37 +67,8 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
 const ff=getComputedStyle(document.body).fontFamily;
 Chart.defaults.font.family=ff;Chart.defaults.font.size=11;
 
-// Team colors by f1api.dev teamId. Unlisted teams get a stable hashed color instead of breaking.
-const TEAM_COLORS={mercedes:'#00A79D',ferrari:'#DC0000',mclaren:'#FF8000',red_bull:'#1B2A6B',redbull:'#1B2A6B',
- alpine:'#FF1493',haas:'#1A1A1A',williams:'#00A3E0',audi:'#E8534D',sauber:'#E8534D',
- aston_martin:'#229971',astonmartin:'#229971',rb:'#2B4EE6',racing_bulls:'#2B4EE6',visa_rb:'#2B4EE6',cadillac:'#B8860B'};
-function teamColor(teamId){
- if(TEAM_COLORS[teamId]) return TEAM_COLORS[teamId];
- let h=0; for(const ch of teamId) h=(h*31+ch.charCodeAt(0))>>>0;
- return `hsl(${h%360} 55% 45%)`;
-}
-// Short display names by teamId — f1api.dev's own teamName is the full official sponsor-laden version
-// ("Mercedes Formula 1 Team", "Scuderia Ferrari", "Audi Revolut F1 Team"...), too long for a legend.
-const SHORT_TEAM_NAMES={mercedes:'Mercedes',ferrari:'Ferrari',mclaren:'McLaren',red_bull:'Red Bull',redbull:'Red Bull',
- alpine:'Alpine',haas:'Haas',williams:'Williams',audi:'Audi',sauber:'Audi',
- aston_martin:'Aston Martin',astonmartin:'Aston Martin',rb:'Racing Bulls',racing_bulls:'Racing Bulls',visa_rb:'Racing Bulls',cadillac:'Cadillac'};
-function shortTeamName(teamId, fallback){ return SHORT_TEAM_NAMES[teamId] || fallback || teamId; }
-// Approximate season shape — f1api.dev doesn't expose a full future calendar, so total rounds/sprints
-// per year are a lookup rather than fetched. Refine this table as needed for other seasons.
-const SEASON_META={2026:{rounds:23,sprints:6},2025:{rounds:24,sprints:6},2024:{rounds:24,sprints:6},
- 2023:{rounds:22,sprints:6},2022:{rounds:22,sprints:3},2021:{rounds:22,sprints:3}};
-function seasonMeta(year){ return SEASON_META[year] || {rounds:24,sprints:6}; }
-
-const rgba=(h,a)=>{
- if(h[0]==='#'){const n=parseInt(h.slice(1),16);return `rgba(${n>>16&255},${n>>8&255},${n&255},${a})`;}
- return h.slice(0,-1)+' / '+a+')'; // modern hsl(h s% l% / a) syntax for the hashed-color fallback
-};
-
 let D=[], N=0, L=0, R=[], thr=[], lead=[], P, chart, usingRealCalendar=false;
 let currentYear=null, currentSeasonRounds=[], currentCalendar=null, selectedDriverIds=null, pickerSort='team';
-// issue #13 (mobile): below this width the canvas end-of-line labels (drawn by the `ends` plugin)
-// are dropped in favor of the #endLegend list below the chart, which has room to wrap.
-function isNarrow(){ return window.innerWidth<=600; }
 
 async function buildFromSelection(detail){
  currentYear = detail.year;
@@ -106,14 +78,8 @@ async function buildFromSelection(detail){
  selectedDriverIds = null; // reset default whenever the season changes; round changes never touch this
  L = detail.round; // so the default (top 5 "as of now") and the first picker render use the right round
  const cum = F1Data.cumulative(currentSeasonRounds, L, 'include');
- selectedDriverIds = rankedDriverIds(cum).slice(0,5);
+ selectedDriverIds = F1Common.rankedDriverIds(cum).slice(0,5);
  recompute(detail.round);
-}
-
-function rankedDriverIds(cum){
- return Object.values(cum.drivers)
-   .map(d=>({driverId:d.driverId,total:d.rounds.reduce((s,x)=>s+x.points,0)}))
-   .sort((a,b)=>b.total-a.total).map(d=>d.driverId);
 }
 
 function pickerRowHTML(d, rank){
@@ -121,7 +87,7 @@ function pickerRowHTML(d, rank){
  return `<label class="pickerRow">
    <input type="checkbox" data-id="${d.driverId}" ${checked?'checked':''}>
    ${rank!=null?`<span class="pickerRank">${rank}</span>`:''}
-   <span class="pickerDot" style="background:${F1Theme.team(teamColor(d.teamId))}"></span>
+   <span class="pickerDot" style="background:${F1Theme.team(F1Common.teamColor(d.teamId))}"></span>
    <span class="pickerCode${checked?'':' off'}">${d.name}<span class="pickerCodeTag">${d.code}</span></span>
    <span class="pickerPts">${Math.round(d.total)}</span>
  </label>`;
@@ -162,7 +128,7 @@ function renderDriverPicker(){
 // it's clear what's picked — not highlighted at all if the selection was built by hand-checking boxes.
 function updatePresetActive(){
  const cum = F1Data.cumulative(currentSeasonRounds, L, 'include');
- const ranked = rankedDriverIds(cum);
+ const ranked = F1Common.rankedDriverIds(cum);
  const sets = { all: Object.keys(cum.drivers), none: [], 5: ranked.slice(0,5), 10: ranked.slice(0,10) };
  const cur = new Set(selectedDriverIds||[]);
  let matched=null;
@@ -179,7 +145,7 @@ document.getElementById('sortSeg').addEventListener('change', e=>{
 document.getElementById('presetRow').addEventListener('click', e=>{
  const btn=e.target.closest('button[data-preset]'); if(!btn) return;
  const cum = F1Data.cumulative(currentSeasonRounds, L, 'include'); // ranking as of the CURRENT round
- const ranked = rankedDriverIds(cum);
+ const ranked = F1Common.rankedDriverIds(cum);
  const p = btn.dataset.preset;
  selectedDriverIds = p==='all' ? Object.keys(cum.drivers) : p==='none' ? [] : ranked.slice(0,+p);
  recompute(L);
@@ -189,7 +155,7 @@ document.getElementById('presetRow').addEventListener('click', e=>{
 function recompute(round){
  const year = currentYear, seasonRounds = currentSeasonRounds;
  const cum = F1Data.cumulative(seasonRounds, round, 'include');
- const meta = seasonMeta(year);
+ const meta = F1Common.seasonMeta(year);
  const cal = currentCalendar;
  const haveCalendar = cal && cal.totalRounds > 0;
  usingRealCalendar = haveCalendar;
@@ -227,7 +193,7 @@ function recompute(round){
    teamDrivers = teamDrivers.map(dr=>({...dr,total:dr.rounds.reduce((s,x)=>s+x.points,0)})).sort((a,b)=>b.total-a.total);
    return teamDrivers.map((dr,i)=>{
      const {cumArr,full,rate}=projectedFull(dr);
-     return {n:dr.code, c:teamColor(teamId), teamId, teamName:cum.teams[teamId].teamName, d:i===0?[]:[6,4], cum:cumArr, full, rate};
+     return {n:dr.code, c:F1Common.teamColor(teamId), teamId, teamName:cum.teams[teamId].teamName, d:i===0?[]:[6,4], cum:cumArr, full, rate};
    });
  });
 
@@ -247,7 +213,7 @@ P=F1Theme.chart();Chart.defaults.color=P.text;
 const DC=D.map(d=>({...d,c:F1Theme.team(d.c)}));
 const ds=[];
 DC.forEach(d=>ds.push({kind:'a',driver:d.n,data:d.cum.concat(Array(N-L).fill(null)),borderColor:d.c,borderDash:d.d,borderWidth:2.2,tension:0,pointRadius:0,pointHoverRadius:4,pointBackgroundColor:d.c}));
-DC.forEach(d=>ds.push({kind:'p',driver:d.n,c:d.c,fin:d.full[N-1],data:d.full.map((v,i)=>i>=L-1?v:null),borderColor:rgba(d.c,.45),borderDash:d.d,borderWidth:1.8,tension:0,pointRadius:0,pointHoverRadius:3,pointBackgroundColor:d.c}));
+DC.forEach(d=>ds.push({kind:'p',driver:d.n,c:d.c,fin:d.full[N-1],data:d.full.map((v,i)=>i>=L-1?v:null),borderColor:F1Common.withAlpha(d.c,.45),borderDash:d.d,borderWidth:1.8,tension:0,pointRadius:0,pointHoverRadius:3,pointBackgroundColor:d.c}));
 ds.push({kind:'ka',driver:'Knockout line',data:thr.map((v,i)=>i<L?v:null),borderColor:P.knock,backgroundColor:P.knockFill,fill:'origin',borderWidth:3,tension:0,pointRadius:0,pointHoverRadius:4,pointBackgroundColor:P.knock});
 ds.push({kind:'kp',driver:'Knockout line',data:thr.map((v,i)=>i>=L-1?v:null),borderColor:P.knock,backgroundColor:P.knockFillProj,fill:'origin',borderDash:[6,4],borderWidth:2.5,tension:0,pointRadius:0,pointHoverRadius:3,pointBackgroundColor:P.knock});
 const shade={id:'shade',beforeDatasetsDraw(ch){
@@ -264,7 +230,7 @@ const marks={id:'marks',afterDatasetsDraw(ch){
  ctx.fillStyle=P.elimText;ctx.font='11px '+ff;ctx.textAlign='center';
  ctx.fillText('Eliminated: below the knockout line',x.getPixelForValue(18),y.getPixelForValue(0)-10);ctx.restore();}};
 const ends={id:'ends',afterDatasetsDraw(ch){
- if(isNarrow())return; // mobile: shown as a legend list below the chart instead (see #endLegend)
+ if(F1Common.isNarrow())return; // mobile: shown as a legend list below the chart instead (see #endLegend)
  const it=[];ch.data.datasets.forEach((s,i)=>{if(s.kind!=='p')return;const p=ch.getDatasetMeta(i).data[N-1];it.push({x:p.x,y:p.y,ly:p.y,s});});
  it.sort((a,b)=>a.y-b.y);for(let i=1;i<it.length;i++)if(it[i].ly-it[i-1].ly<13)it[i].ly=it[i-1].ly+13;
  const {ctx}=ch;ctx.save();ctx.font='11px '+ff;ctx.textAlign='left';ctx.textBaseline='middle';
@@ -272,7 +238,7 @@ const ends={id:'ends',afterDatasetsDraw(ch){
 // Reserve right padding from the widest end label so it's never clipped (none needed on mobile,
 // where the labels move into #endLegend below the chart instead).
 const mc=document.createElement('canvas').getContext('2d');mc.font='11px '+ff;
-const PR=isNarrow()?10:Math.ceil(Math.max(...ds.filter(s=>s.kind==='p').map(s=>mc.measureText(s.driver+' '+Math.round(s.fin)).width)))+17+8;
+const PR=F1Common.isNarrow()?10:Math.ceil(Math.max(...ds.filter(s=>s.kind==='p').map(s=>mc.measureText(s.driver+' '+Math.round(s.fin)).width)))+17+8;
 const peak=Math.max(1,...D.map(d=>Math.max(...d.full)),...thr);
 const yMax=Math.ceil(peak*1.1/50)*50;
 const yStep=yMax<=300?50:yMax<=600?100:yMax<=1200?200:500;
@@ -287,7 +253,7 @@ const sw=(c,d,w)=>`<svg width="22" height="8" aria-hidden="true"><line x1="1" y1
 const byTeam={};
 DC.forEach(d=>{ (byTeam[d.teamId] = byTeam[d.teamId]||[]).push(d); });
 document.getElementById('lg').innerHTML=Object.values(byTeam).map(drivers=>{
- const label=shortTeamName(drivers[0].teamId,drivers[0].teamName);
+ const label=F1Common.shortTeamName(drivers[0].teamId,drivers[0].teamName);
  const items=drivers.map((d,i)=>sw(d.c,i>0)+d.n).join('');
  return `<span style="display:flex;align-items:center;gap:6px;"><span style="font-weight:500;">${label}</span>${items}</span>`;
 }).join('')
@@ -338,10 +304,10 @@ function positionHandle(){
 window.addEventListener('f1selection', e=>buildFromSelection(e.detail));
 window.addEventListener('f1roundchange', e=>{ if(currentSeasonRounds.length) recompute(e.detail.round); });
 window.addEventListener('themechange',draw);
-let lastNarrow=isNarrow();
+let lastNarrow=F1Common.isNarrow();
 window.addEventListener('resize', ()=>{
  if(chart) positionHandle();
- const now=isNarrow(); if(now!==lastNarrow){ lastNarrow=now; draw(); }
+ const now=F1Common.isNarrow(); if(now!==lastNarrow){ lastNarrow=now; draw(); }
 });
 F1Controls.mount('f1controls', {defaultYear:2026});
 </script>

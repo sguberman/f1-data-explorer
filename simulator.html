@@ -6,6 +6,7 @@
 <title>2026 Title Simulator</title>
 <link rel="stylesheet" href="theme.css">
 <script src="theme.js"></script>
+<script src="common.js"></script>
 <script src="data.js"></script>
 <script src="controls.js"></script>
 <style>
@@ -130,20 +131,6 @@ canvas{max-width:100%;}
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script>
-// Team colors by f1api.dev teamId. Unlisted teams get a stable hashed color instead of breaking.
-const TEAM_COLORS={mercedes:'#00A79D',ferrari:'#DC0000',mclaren:'#FF8000',red_bull:'#1B2A6B',redbull:'#1B2A6B',
- alpine:'#FF1493',haas:'#1A1A1A',williams:'#00A3E0',audi:'#E8534D',sauber:'#E8534D',
- aston_martin:'#229971',astonmartin:'#229971',rb:'#2B4EE6',racing_bulls:'#2B4EE6',visa_rb:'#2B4EE6',cadillac:'#B8860B'};
-function teamColor(teamId){
- if(TEAM_COLORS[teamId]) return TEAM_COLORS[teamId];
- let h=0; for(const ch of teamId) h=(h*31+ch.charCodeAt(0))>>>0;
- return `hsl(${h%360} 55% 45%)`;
-}
-const SHORT_TEAM_NAMES={mercedes:'Mercedes',ferrari:'Ferrari',mclaren:'McLaren',red_bull:'Red Bull',redbull:'Red Bull',
- alpine:'Alpine',haas:'Haas',williams:'Williams',audi:'Audi',sauber:'Audi',
- aston_martin:'Aston Martin',astonmartin:'Aston Martin',rb:'Racing Bulls',racing_bulls:'Racing Bulls',visa_rb:'Racing Bulls',cadillac:'Cadillac'};
-function shortTeamName(teamId, fallback){ return SHORT_TEAM_NAMES[teamId] || fallback || teamId; }
-
 // Real F1 scoring. GP pays the top 10; sprint pays the top 8.
 const PTS_GP=[25,18,15,12,10,8,6,4,2,1];
 const PTS_SPRINT=[8,7,6,5,4,3,2,1];
@@ -312,7 +299,7 @@ function buildDnfInputs(){
  const roster = fullRoster.filter(d=>(selectedDriverIds||[]).includes(d.driverId)).sort((a,b)=>b.now-a.now);
  document.getElementById('dnfGrid').innerHTML=roster.map(d=>`
    <div class="dnf-item">
-     <span class="tag" data-id="${d.driverId}" style="color:${F1Theme.team(teamColor(d.teamId))}">${d.code}</span>
+     <span class="tag" data-id="${d.driverId}" style="color:${F1Theme.team(F1Common.teamColor(d.teamId))}">${d.code}</span>
      <div class="stepper">
        <button type="button" data-id="${d.driverId}" data-dir="-1" aria-label="Decrease ${d.code} DNFs">−</button>
        <span class="val" id="dnfVal-${d.driverId}">${dnfState[d.driverId]}</span>
@@ -332,7 +319,7 @@ function buildDnfInputs(){
 function recolorDnfTags(){
  document.querySelectorAll('#dnfGrid .tag[data-id]').forEach(el=>{
    const d=fullRoster.find(x=>x.driverId===el.dataset.id);
-   if(d) el.style.color=F1Theme.team(teamColor(d.teamId));
+   if(d) el.style.color=F1Theme.team(F1Common.teamColor(d.teamId));
  });
 }
 function syncStepperDisabled(){
@@ -352,7 +339,7 @@ function pickerRowHTML(d, rank){
  return `<label class="pickerRow">
    <input type="checkbox" data-id="${d.driverId}" ${checked?'checked':''}>
    ${rank!=null?`<span class="pickerRank">${rank}</span>`:''}
-   <span class="pickerDot" style="background:${F1Theme.team(teamColor(d.teamId))}"></span>
+   <span class="pickerDot" style="background:${F1Theme.team(F1Common.teamColor(d.teamId))}"></span>
    <span class="pickerCode${checked?'':' off'}">${d.name}<span class="pickerCodeTag">${d.code}</span></span>
    <span class="pickerPts">${Math.round(d.now)}</span>
  </label>`;
@@ -474,19 +461,6 @@ document.getElementById('run').addEventListener('click',()=>{
 // the absolute comparison.
 const RIDGE_ROW=1, RIDGE_PEAK=0.82, RIDGE_ROW_PX=58, RIDGE_PAD_PX=34, RIDGE_FILL_ALPHA=0.35;
 const ridgeCharts={};
-// teamColor() returns either a hex string (explicit TEAM_COLORS entries) or an `hsl(H S% L%)` string
-// (the hashed fallback for an unmapped team id) — appending a hex alpha suffix only works for the
-// first form; on the second it produces invalid CSS that canvas silently drops to opaque black. This
-// handles both so an unrecognized/renamed team never renders as a black blob instead of its color.
-function withAlpha(color, alpha){
- if(color[0]==='#'){
-   const a=Math.round(alpha*255).toString(16).padStart(2,'0');
-   return color+a;
- }
- const m=color.match(/^hsl\(\s*([\d.]+)\s+([\d.]+%)\s+([\d.]+%)\s*\)$/);
- if(m) return `hsla(${m[1]}, ${m[2]}, ${m[3]}, ${alpha})`;
- return color; // unrecognized format — leave opaque rather than risk another invalid-CSS case
-}
 function medianFromCounts(counts, N){
  let cum=0;
  for(let i=0;i<counts.length;i++){ cum+=counts[i]; if(cum>=N/2) return i; }
@@ -503,7 +477,7 @@ function renderRidgeline(chartKey, canvasId, wrapId, order, categories, opts){
    const heights=counts.map(v=>baseline+(v/peak)*RIDGE_PEAK);
    const pct=counts.map(v=>100*v/total);
    datasets.push({ data:categories.map(()=>baseline), borderWidth:0, pointRadius:0, fill:false, _baseline:true });
-   datasets.push({ data:heights, borderColor:color, backgroundColor:withAlpha(color,RIDGE_FILL_ALPHA), borderWidth:1.6, pointRadius:0,
+   datasets.push({ data:heights, borderColor:color, backgroundColor:F1Common.withAlpha(color,RIDGE_FILL_ALPHA), borderWidth:1.6, pointRadius:0,
      fill:'-1', tension:opts.tension||0, stepped:opts.stepped||false, _code:code, _pct:pct });
  });
  const P=F1Theme.chart();
@@ -549,19 +523,19 @@ function renderRidgePoints(roster, finals){
  const order=roster.map((d,i)=>{
    const counts=new Array(bins.length).fill(0);
    finals[i].forEach(v=>{ const bi=Math.min(Math.floor((v-min)/binSize),bins.length-1); counts[bi]++; });
-   return {code:d.code, color:F1Theme.team(teamColor(d.teamId)), counts, med:quantile(finals[i],.5)};
+   return {code:d.code, color:F1Theme.team(F1Common.teamColor(d.teamId)), counts, med:quantile(finals[i],.5)};
  }).sort((a,b)=>b.med-a.med);
  renderRidgeline('points','ridgePointsCanvas','ridgePointsWrap', order, bins.map(String), {tension:0.35, xTitle:'final points'});
 }
 function renderRidgePosition(roster, posCounts, k, N){
  const labels=Array.from({length:k},(_,i)=>'P'+(i+1)).concat([(k+1)+'th or lower']);
- const order=roster.map((d,i)=>({code:d.code, color:F1Theme.team(teamColor(d.teamId)), counts:posCounts[i],
+ const order=roster.map((d,i)=>({code:d.code, color:F1Theme.team(F1Common.teamColor(d.teamId)), counts:posCounts[i],
    med:medianFromCounts(posCounts[i],N)})).sort((a,b)=>a.med-b.med);
  renderRidgeline('pos','ridgePosCanvas','ridgePosWrap', order, labels, {stepped:'middle', xTitle:'final championship position'});
 }
 
 function renderOdds(roster, odds){
- const rows=roster.map((d,i)=>({d,c:F1Theme.team(teamColor(d.teamId)),pct:odds[i]})).sort((a,b)=>b.pct-a.pct);
+ const rows=roster.map((d,i)=>({d,c:F1Theme.team(F1Common.teamColor(d.teamId)),pct:odds[i]})).sort((a,b)=>b.pct-a.pct);
  document.getElementById('odds').innerHTML=rows.map(({d,c,pct})=>`
    <div class="driver-row">
      <div class="tag" style="color:${c}">${d.code}</div>

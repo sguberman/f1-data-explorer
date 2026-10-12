@@ -6,6 +6,7 @@
 <title>2026 F1 Drivers — Race Finishing Position</title>
 <link rel="stylesheet" href="theme.css">
 <script src="theme.js"></script>
+<script src="common.js"></script>
 <script src="data.js"></script>
 <script src="controls.js"></script>
 <style>
@@ -80,20 +81,6 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
 <script>
 const ff=getComputedStyle(document.body).fontFamily;
 
-// Team colors by f1api.dev teamId. Unlisted teams get a stable hashed color instead of breaking.
-const TEAM_COLORS={mercedes:'#00A79D',ferrari:'#DC0000',mclaren:'#FF8000',red_bull:'#1B2A6B',redbull:'#1B2A6B',
- alpine:'#FF1493',haas:'#1A1A1A',williams:'#00A3E0',audi:'#E8534D',sauber:'#E8534D',
- aston_martin:'#229971',astonmartin:'#229971',rb:'#2B4EE6',racing_bulls:'#2B4EE6',visa_rb:'#2B4EE6',cadillac:'#B8860B'};
-function teamColor(teamId){
- if(TEAM_COLORS[teamId]) return TEAM_COLORS[teamId];
- let h=0; for(const ch of teamId) h=(h*31+ch.charCodeAt(0))>>>0;
- return `hsl(${h%360} 55% 45%)`;
-}
-const SHORT_TEAM_NAMES={mercedes:'Mercedes',ferrari:'Ferrari',mclaren:'McLaren',red_bull:'Red Bull',redbull:'Red Bull',
- alpine:'Alpine',haas:'Haas',williams:'Williams',audi:'Audi',sauber:'Audi',
- aston_martin:'Aston Martin',astonmartin:'Aston Martin',rb:'Racing Bulls',racing_bulls:'Racing Bulls',visa_rb:'Racing Bulls',cadillac:'Cadillac'};
-function shortTeamName(teamId, fallback){ return SHORT_TEAM_NAMES[teamId] || fallback || teamId; }
-
 let LAB=['P1','P2','P3','P4','P5','P6','P7','P8','P9','P10','11+/DNF'];
 
 let D=[], L=0, P;
@@ -114,18 +101,6 @@ let chartSort='median', showBelowP10=false, includeMechanical=false, includeSpri
 // to each driver's OWN peak bucket (a shape comparison, not an absolute-count one).
 const RIDGE_ROW=1, RIDGE_PEAK=0.82, RIDGE_ROW_PX=58, RIDGE_PAD_PX=34, RIDGE_FILL_ALPHA=0.35;
 let ridgeChart=null;
-// teamColor() returns either a hex string or an `hsl(H S% L%)` hashed-fallback string — appending a
-// hex alpha suffix only works on the first form; on the second it's invalid CSS that canvas silently
-// renders as opaque black instead of the driver's color. This handles both.
-function withAlpha(color, alpha){
- if(color[0]==='#'){
-   const a=Math.round(alpha*255).toString(16).padStart(2,'0');
-   return color+a;
- }
- const m=color.match(/^hsl\(\s*([\d.]+)\s+([\d.]+%)\s+([\d.]+%)\s*\)$/);
- if(m) return `hsla(${m[1]}, ${m[2]}, ${m[3]}, ${alpha})`;
- return color;
-}
 function medianBucket(counts){
  const total=counts.reduce((a,b)=>a+b,0);
  if(!total) return counts.length-1;
@@ -134,9 +109,6 @@ function medianBucket(counts){
  return counts.length-1;
 }
 let currentYear=null, currentSeasonRounds=[], selectedDriverIds=null, pickerSort='team';
-// issue #13 (mobile): below this width the x-axis bucket labels (P1...P10, 11+/DNF) don't fit
-// horizontally without rotating, since autoSkip is deliberately off for the default <=12-bucket case.
-function isNarrow(){ return window.innerWidth<=600; }
 
 async function buildFromSelection(detail){
  currentYear = detail.year;
@@ -145,14 +117,8 @@ async function buildFromSelection(detail){
  selectedDriverIds = null; // reset default whenever the season changes; round changes never touch this
  L = detail.round;
  const cum = F1Data.cumulative(currentSeasonRounds, L, 'include');
- selectedDriverIds = rankedDriverIds(cum).slice(0,8); // top 8 — roughly "top four teams" from the old static page
+ selectedDriverIds = F1Common.rankedDriverIds(cum).slice(0,8); // top 8 — roughly "top four teams" from the old static page
  recompute(detail.round);
-}
-
-function rankedDriverIds(cum){
- return Object.values(cum.drivers)
-   .map(d=>({driverId:d.driverId,total:d.rounds.reduce((s,x)=>s+x.points,0)}))
-   .sort((a,b)=>b.total-a.total).map(d=>d.driverId);
 }
 
 // Sessions (race, plus sprint if included) contributing to the histogram for a round, respecting the
@@ -208,7 +174,7 @@ function bucketsFor(driverId, labels){
 function recompute(round){
  L = round;
  const cum = F1Data.cumulative(currentSeasonRounds, L, 'include');
- const driverRanked = rankedDriverIds(cum);
+ const driverRanked = F1Common.rankedDriverIds(cum);
  const driverRank = {}; driverRanked.forEach((id,i)=>{ driverRank[id]=i; });
  const teamRanked = Object.values(cum.teams)
    .map(t=>({teamId:t.teamId,total:t.rounds.reduce((s,x)=>s+x.points,0)}))
@@ -218,7 +184,7 @@ function recompute(round){
  D = (selectedDriverIds||[]).map(id=>{
    const dr = cum.drivers[id]; if(!dr) return null;
    const {v,starts} = bucketsFor(id, LAB);
-   return { n:dr.code, teamId:dr.teamId, teamName:dr.teamName, c:teamColor(dr.teamId), v, starts,
+   return { n:dr.code, teamId:dr.teamId, teamName:dr.teamName, c:F1Common.teamColor(dr.teamId), v, starts,
      driverRank:driverRank[id]??999, teamRank:teamRank[dr.teamId]??999 };
  }).filter(Boolean);
  draw();
@@ -247,7 +213,7 @@ function draw(){
    const peak=Math.max(...counts,1e-9);
    const heights=counts.map(v=>baseline+(v/peak)*RIDGE_PEAK);
    datasets.push({ data:LAB.map(()=>baseline), borderWidth:0, pointRadius:0, fill:false, _baseline:true });
-   datasets.push({ data:heights, borderColor:color, backgroundColor:withAlpha(color,RIDGE_FILL_ALPHA), borderWidth:1.6, pointRadius:0,
+   datasets.push({ data:heights, borderColor:color, backgroundColor:F1Common.withAlpha(color,RIDGE_FILL_ALPHA), borderWidth:1.6, pointRadius:0,
      fill:'-1', stepped:'middle', _code:code, _counts:counts, _starts:starts });
  });
  ridgeChart=new Chart(document.getElementById('ridgeCanvas'),{
@@ -271,8 +237,10 @@ function draw(){
        }
      },
      scales:{
-       x:{grid:{color:P.grid}, ticks:{color:P.text, maxRotation:isNarrow()?60:0, minRotation:isNarrow()?60:0,
-         autoSkip:LAB.length>12, font:{size:isNarrow()?9:11}}},
+       // issue #13 (mobile): narrow screens rotate the bucket labels (P1...P10, 11+/DNF), which don't fit
+     // horizontally since autoSkip is deliberately off for the default <=12-bucket case.
+     x:{grid:{color:P.grid}, ticks:{color:P.text, maxRotation:F1Common.isNarrow()?60:0, minRotation:F1Common.isNarrow()?60:0,
+         autoSkip:LAB.length>12, font:{size:F1Common.isNarrow()?9:11}}},
        y:{
          min:-0.15, max:(n-1)*RIDGE_ROW+RIDGE_PEAK+0.25,
          grid:{display:false},
@@ -307,7 +275,7 @@ function pickerRowHTML(d, rank){
  return `<label class="pickerRow">
    <input type="checkbox" data-id="${d.driverId}" ${checked?'checked':''}>
    ${rank!=null?`<span class="pickerRank">${rank}</span>`:''}
-   <span class="pickerDot" style="background:${F1Theme.team(teamColor(d.teamId))}"></span>
+   <span class="pickerDot" style="background:${F1Theme.team(F1Common.teamColor(d.teamId))}"></span>
    <span class="pickerCode${checked?'':' off'}">${d.name}<span class="pickerCodeTag">${d.code}</span></span>
    <span class="pickerPts">${Math.round(d.total)}</span>
  </label>`;
@@ -346,7 +314,7 @@ function renderDriverPicker(){
 // it's clear what's picked — not highlighted at all if the selection was built by hand-checking boxes.
 function updatePresetActive(){
  const cum = F1Data.cumulative(currentSeasonRounds, L, 'include');
- const ranked = rankedDriverIds(cum);
+ const ranked = F1Common.rankedDriverIds(cum);
  const sets = { all: Object.keys(cum.drivers), none: [], 5: ranked.slice(0,5), 10: ranked.slice(0,10) };
  const cur = new Set(selectedDriverIds||[]);
  let matched=null;
@@ -375,7 +343,7 @@ document.getElementById('sortSeg').addEventListener('change', e=>{
 document.getElementById('presetRow').addEventListener('click', e=>{
  const btn=e.target.closest('button[data-preset]'); if(!btn) return;
  const cum = F1Data.cumulative(currentSeasonRounds, L, 'include');
- const ranked = rankedDriverIds(cum);
+ const ranked = F1Common.rankedDriverIds(cum);
  const p = btn.dataset.preset;
  selectedDriverIds = p==='all' ? Object.keys(cum.drivers) : p==='none' ? [] : ranked.slice(0,+p);
  recompute(L);
@@ -384,8 +352,8 @@ document.getElementById('presetRow').addEventListener('click', e=>{
 window.addEventListener('f1selection', e=>buildFromSelection(e.detail));
 window.addEventListener('f1roundchange', e=>{ if(currentSeasonRounds.length) recompute(e.detail.round); });
 window.addEventListener('themechange', draw);
-let lastNarrow=isNarrow();
-window.addEventListener('resize', ()=>{ const now=isNarrow(); if(now!==lastNarrow){ lastNarrow=now; draw(); } });
+let lastNarrow=F1Common.isNarrow();
+window.addEventListener('resize', ()=>{ const now=F1Common.isNarrow(); if(now!==lastNarrow){ lastNarrow=now; draw(); } });
 F1Controls.mount('f1controls', {defaultYear:2026});
 </script>
 </body>
