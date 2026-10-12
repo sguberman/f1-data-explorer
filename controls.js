@@ -4,7 +4,7 @@
    the data is ready or the selection changes. Pages just listen for that event and redraw. */
 const F1Controls = (() => {
   const SEASON_KEY = 'f1cache:selectedSeason';
-  const YEARS = Array.from({length:6},(_,i)=>2026-i); // 2026 down to 2021 — adjust as more seasons are wanted
+  const YEARS = F1Common.YEARS; // newest first — add a season by adding its row to F1Common.SEASON_META
 
   let state = { year:null, round:null, maxRound:null, seasonRounds:[] };
 

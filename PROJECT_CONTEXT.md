@@ -18,17 +18,25 @@ drivers.html        Drivers' championship: cumulative points line chart, project
 constructors.html   Constructors' championship: same chart pattern for teams.
 position.html       Race finishing-position ridgeline chart per driver, with sort/show options.
 simulator.html      Monte Carlo rest-of-season title simulator with ridgeline result charts.
+common.js           F1Common: team colors/short names, SEASON_META + season list, withAlpha, isNarrow,
+                    rankedDriverIds, driver picker row, preset highlighting (issue #44).
 data.js             F1Data: fetch, cache (localStorage), normalize f1api.dev data; MANUAL_OVERRIDES.
 controls.js         F1Controls: shared season dropdown + "as of round" slider; emits events.
 theme.js            Light/dark/system theme (dropdown in .theme-bar) + canvas color palette (F1Theme).
-theme.css           Shared CSS variables (both themes), controls, pills, dropdowns, legends, checkboxes.
+theme.css           Shared CSS variables (both themes), controls, pills, dropdowns, legends, checkboxes, pickers.
 TODO.md / DONE.md / BRAINSTORM.md / PROJECT_CONTEXT.md   Project tracking docs.
 ```
 
-Each HTML page has its own inline `<style>` and `<script>`. Several helpers are **intentionally duplicated
-per page** (house style): `TEAM_COLORS`, `teamColor()`, `SHORT_TEAM_NAMES`, `shortTeamName()`,
-`pickerRowHTML()`, `renderDriverPicker()` / `renderTeamPicker()`, `updatePresetActive()`, `isNarrow()`,
-`withAlpha()` / `rgba()`. A change to one of these usually has to be made on every page that has it.
+Each HTML page has its own inline `<style>` and `<script>` for page-specific code. Code that is identical
+across pages lives in shared files instead (issue #44), so a change is made once:
+- `common.js` (global `F1Common`, loaded after `theme.js`, before `data.js`/`controls.js`): `TEAM_COLORS` /
+  `teamColor()`, `SHORT_TEAM_NAMES` / `shortTeamName()`, `SEASON_META` / `seasonMeta()` / `YEARS`,
+  `isNarrow()`, `withAlpha()`, `rankedDriverIds()`, `driverPickerRowHTML()`, `markActivePreset()`.
+- `theme.css`: picker list styles (`.pickerRow`, `.pickerDot`, …).
+Still per page, because they really differ: chart code, `renderDriverPicker()` / `renderTeamPicker()`
+(sorting/grouping), constructors' team picker row, each page's preset lists in `updatePresetActive()`, and
+a thin `pickerRowHTML()` wrapper on driver pages that supplies the page's selection and points field.
+Move something into `common.js` only once it's genuinely identical on every page that uses it.
 
 ## Data layer (`data.js`, global `F1Data`)
 
@@ -52,7 +60,8 @@ per page** (house style): `TEAM_COLORS`, `teamColor()`, `SHORT_TEAM_NAMES`, `sho
 
 ## Shared controls (`controls.js`, global `F1Controls`)
 
-`F1Controls.mount(containerId, {defaultYear})` renders the season dropdown (2026–2021) and round slider,
+`F1Controls.mount(containerId, {defaultYear})` renders the season dropdown (the years in
+`F1Common.SEASON_META`, newest first — add a row there to add a season) and round slider,
 persists the season in `localStorage`, and dispatches on `window`:
 - `f1selection` `{year, round, maxRound, seasonRounds}` — on load and season change. Pages rebuild their
   default selection here.
@@ -90,9 +99,9 @@ and final championship position, ranked against the full grid. Default tracked s
 
 ## Design requirements (owner-approved — keep these)
 
-- Team colors via `TEAM_COLORS` (Mercedes teal, McLaren papaya, Ferrari red, Red Bull navy, Alpine pink,
-  Audi salmon/red, Haas black, …). Unknown team ids get a stable hashed `hsl()` color; use `withAlpha()` /
-  `rgba()` for transparency, since a hex alpha suffix breaks on `hsl()`.
+- Team colors via `F1Common.TEAM_COLORS` (Mercedes teal, McLaren papaya, Ferrari red, Red Bull navy, Alpine pink,
+  Audi salmon/red, Haas black, …). Unknown team ids get a stable hashed `hsl()` color; use `F1Common.withAlpha()`
+  for transparency, since a hex alpha suffix breaks on `hsl()`.
 - Theme: light / dark / system through the dropdown in `.theme-bar`. Canvas colors come from
   `F1Theme.chart()`, and `F1Theme.team(color)` swaps colors too dark for the dark background. Redraw on the
   `themechange` event.
@@ -135,7 +144,7 @@ and final championship position, ranked against the full grid. Default tracked s
   default, so the two pages' "form" can differ.
 - `isMechanical()` keyword matching is dead code with live data (kept, hardened against non-string input).
 - Some 2026 DNFs are still unclassified, and every future round needs new overrides (see `TODO.md`).
-- `F1Controls` season list (2026–2021) and `SEASON_META` are hardcoded.
+- The season list and per-season round/sprint estimates come from the hardcoded `SEASON_META` in `common.js`.
 - Mobile Safari behavior can't be fully verified with headless Chromium. Check owner screenshots.
 
 ## Testing approach used so far
@@ -151,7 +160,7 @@ Note: requests for sprint rounds legitimately produce 404 console noise.
 ## Instructions to preserve (owner's standing workflow)
 
 1. **Track every request as a numbered issue**, including ones not being worked on yet. Numbers are
-   permanent; the next new issue is **#44**. Log new issues in `TODO.md`.
+   permanent; the next new issue is **#45**. Log new issues in `TODO.md`.
 2. **Never mark an issue closed unless the owner explicitly says so.** Finishing and verifying the work is
    not enough. Move it from `TODO.md` to `DONE.md` only after the owner confirms.
 3. After finishing work on an issue, give a **short git commit message starting with `issue #xx: `**.
