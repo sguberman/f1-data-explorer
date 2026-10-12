@@ -204,7 +204,11 @@ const marks={id:'marks',afterDatasetsDraw(ch){
   if(d.out<L){ctx.fillStyle=P.elim;ctx.fill();ctx.strokeStyle=P.pointRing;ctx.lineWidth=1.5;ctx.stroke();}
   else{ctx.fillStyle=P.pointRing;ctx.fill();ctx.strokeStyle=P.elim;ctx.lineWidth=2;ctx.stroke();}});
  ctx.fillStyle=P.elimText;ctx.font='11px '+ff;ctx.textAlign='center';
- ctx.fillText('Eliminated: below the knockout line',x.getPixelForValue(18),y.getPixelForValue(0)-10);ctx.restore();}};
+ // issue #45: centered ~78% of the way along the season (round 18 of 23, as before) but kept inside the
+ // plot area, so it isn't clipped at the right edge on narrow screens or placed off-chart in a short season.
+ const elimLbl='Eliminated: below the knockout line', elimW=ctx.measureText(elimLbl).width;
+ const elimX=Math.min(Math.max(x.getPixelForValue(Math.round((N-1)*18/22)), a.left+elimW/2+4), a.right-elimW/2-4);
+ ctx.fillText(elimLbl,elimX,y.getPixelForValue(0)-10);ctx.restore();}};
 const ends={id:'ends',afterDatasetsDraw(ch){
  if(F1Common.isNarrow())return; // mobile: shown as a legend list below the chart instead (see #endLegend)
  const it=[];ch.data.datasets.forEach((s,i)=>{if(s.kind!=='p')return;const p=ch.getDatasetMeta(i).data[N-1];it.push({x:p.x,y:p.y,ly:p.y,s});});
