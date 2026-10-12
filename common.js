@@ -71,6 +71,18 @@ const F1Common = (() => {
    document.querySelectorAll('#presetRow button[data-preset]').forEach(b=>b.classList.toggle('active', b.dataset.preset===matched));
   }
 
+  // Labels the shaded area under the knockout line (drivers + constructors charts). Call from a Chart.js
+  // plugin's afterDatasetsDraw with ctx's fill style and font already set. issue #45: centered ~78% of the
+  // way along the season (round 18 of 23) but kept inside the plot area, so it isn't clipped on narrow
+  // screens or placed off-chart in a short season. issue #46: "below", not "eliminated" — the line is
+  // drawn from the highest-ranked *selected* entry, so falling under it doesn't always mean eliminated.
+  function drawKnockoutLabel(ch, totalRounds){
+   const {ctx,chartArea:a,scales:{x,y}}=ch;
+   const text='Below the knockout line', w=ctx.measureText(text).width;
+   const cx=Math.min(Math.max(x.getPixelForValue(Math.round((totalRounds-1)*18/22)), a.left+w/2+4), a.right-w/2-4);
+   ctx.save();ctx.textAlign='center';ctx.fillText(text,cx,y.getPixelForValue(0)-10);ctx.restore();
+  }
+
   return { TEAM_COLORS, teamColor, SHORT_TEAM_NAMES, shortTeamName, SEASON_META, seasonMeta, YEARS,
-    isNarrow, withAlpha, rankedDriverIds, driverPickerRowHTML, markActivePreset };
+    isNarrow, withAlpha, rankedDriverIds, driverPickerRowHTML, markActivePreset, drawKnockoutLabel };
 })();

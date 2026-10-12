@@ -31,7 +31,8 @@ Each HTML page has its own inline `<style>` and `<script>` for page-specific cod
 across pages lives in shared files instead (issue #44), so a change is made once:
 - `common.js` (global `F1Common`, loaded after `theme.js`, before `data.js`/`controls.js`): `TEAM_COLORS` /
   `teamColor()`, `SHORT_TEAM_NAMES` / `shortTeamName()`, `SEASON_META` / `seasonMeta()` / `YEARS`,
-  `isNarrow()`, `withAlpha()`, `rankedDriverIds()`, `driverPickerRowHTML()`, `markActivePreset()`.
+  `isNarrow()`, `withAlpha()`, `rankedDriverIds()`, `driverPickerRowHTML()`, `markActivePreset()`,
+  `drawKnockoutLabel()` (the "Below the knockout line" label on both championship charts).
 - `theme.css`: picker list styles (`.pickerRow`, `.pickerDot`, …).
 Still per page, because they really differ: chart code, `renderDriverPicker()` / `renderTeamPicker()`
 (sorting/grouping), constructors' team picker row, each page's preset lists in `updatePresetActive()`, and

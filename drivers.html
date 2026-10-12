@@ -198,17 +198,12 @@ const shade={id:'shade',beforeDatasetsDraw(ch){
  ctx.strokeStyle=P.divider;ctx.setLineDash([3,3]);ctx.beginPath();ctx.moveTo(x0,a.top);ctx.lineTo(x0,a.bottom);ctx.stroke();ctx.setLineDash([]);
  ctx.fillStyle=P.dividerText;ctx.font='11px '+ff;ctx.textAlign='right';ctx.fillText('Actual',x0-8,a.top+13);ctx.textAlign='left';ctx.fillText('Projected',x0+8,a.top+13);ctx.restore();}};
 const marks={id:'marks',afterDatasetsDraw(ch){
- const {ctx,scales:{x,y},chartArea:a}=ch;ctx.save();
+ const {ctx,scales:{x,y}}=ch;ctx.save();
  D.forEach(d=>{if(d.out<0)return;const px=x.getPixelForValue(d.out),py=y.getPixelForValue(d.full[d.out]);
   ctx.beginPath();ctx.arc(px,py,5.5,0,7);
   if(d.out<L){ctx.fillStyle=P.elim;ctx.fill();ctx.strokeStyle=P.pointRing;ctx.lineWidth=1.5;ctx.stroke();}
   else{ctx.fillStyle=P.pointRing;ctx.fill();ctx.strokeStyle=P.elim;ctx.lineWidth=2;ctx.stroke();}});
- ctx.fillStyle=P.elimText;ctx.font='11px '+ff;ctx.textAlign='center';
- // issue #45: centered ~78% of the way along the season (round 18 of 23, as before) but kept inside the
- // plot area, so it isn't clipped at the right edge on narrow screens or placed off-chart in a short season.
- const elimLbl='Eliminated: below the knockout line', elimW=ctx.measureText(elimLbl).width;
- const elimX=Math.min(Math.max(x.getPixelForValue(Math.round((N-1)*18/22)), a.left+elimW/2+4), a.right-elimW/2-4);
- ctx.fillText(elimLbl,elimX,y.getPixelForValue(0)-10);ctx.restore();}};
+ ctx.fillStyle=P.elimText;ctx.font='11px '+ff;F1Common.drawKnockoutLabel(ch,N);ctx.restore();}};
 const ends={id:'ends',afterDatasetsDraw(ch){
  if(F1Common.isNarrow())return; // mobile: shown as a legend list below the chart instead (see #endLegend)
  const it=[];ch.data.datasets.forEach((s,i)=>{if(s.kind!=='p')return;const p=ch.getDatasetMeta(i).data[N-1];it.push({x:p.x,y:p.y,ly:p.y,s});});
@@ -247,7 +242,7 @@ const lab=d=>`${d.n} (R${d.out+1})`;
 const now=D.filter(d=>d.out>=0&&d.out<L).sort((a,b)=>a.out-b.out),proj=D.filter(d=>d.out>=L).sort((a,b)=>a.out-b.out);
 document.getElementById('sm').innerHTML=
  `<b>After round ${L}:</b> knockout line at ${Math.round(thr[L-1])} pts, based on the highest-ranked <i>selected</i> driver (${Math.round(lead[L-1])} pts, minus ${Math.round(lead[L-1]-thr[L-1])} still available over the rest of the season${usingRealCalendar?'':', estimated — the real calendar was not available this load'}).`
- +`<br><span style="color:var(--elim);">●</span> Eliminated: ${now.length?now.map(lab).join(', '):'none'} &nbsp; <span style="color:var(--elim);">○</span> Projected to be eliminated at current form: ${proj.length?proj.map(lab).join(', '):'none'}`;
+ +`<br><span style="color:var(--elim);">●</span> Below the line: ${now.length?now.map(lab).join(', '):'none'} &nbsp; <span style="color:var(--elim);">○</span> Projected to fall below at current form: ${proj.length?proj.map(lab).join(', '):'none'}`;
 positionHandle();
 }
 
