@@ -19,8 +19,6 @@ the work is not enough on its own.
 | 41 | simulator.html | Changing which drivers are tracked should not require re-running the simulation. (Today `onSelectionChanged()` calls `hideResults()`, which discards results.) |
 | 42 | All pages | Add national flags to driver names, team names, and rounds (round names/numbers). Add driver numbers to driver names. |
 | 43 | data.js | Research mechanical-vs-other DNF causes for prior (pre-2026) seasons and add them to `MANUAL_OVERRIDES`, using the same hand-researched approach as issue #36. |
-| 45 | drivers.html | On narrow screens the "Eliminated: below the knockout line" label is clipped at the chart's right edge. It's drawn at a hardcoded x position (`x.getPixelForValue(18)`) rather than computed from the season length and chart width. |
-| 46 | constructors.html | Make the constructors chart work the same way as the drivers chart. (1) Draw the "Eliminated: below the knockout line" label in the shaded area, positioned the same way as the drivers label after #45. (2) The summary below the chart uses different wording: drivers says "Eliminated" / "Projected to be eliminated at current form", constructors says "Below the line" / "Projected to fall below at current form". Pick one wording for both. Differences that come from drivers having teammates (legend grouped by team, dashed second driver) stay. |
 
 ## Pending research inside a closed issue (#36)
 

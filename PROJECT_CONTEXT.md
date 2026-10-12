@@ -124,6 +124,7 @@ and final championship position, ranked against the full grid. Default tracked s
 
 - The knockout line on both championship pages deliberately uses the **highest-ranked selected** entry as
   the leader, not the true full-field leader (issue #26).
+  For that reason both charts say "below the line" rather than "eliminated" (label and summary, issue #46).
 - Projections use each entry's last 5 **participated** rounds, so a driver who missed rounds isn't
   penalized for them.
 - Remaining-points math uses the real calendar when available (25 per GP + 8 per sprint for drivers;
@@ -137,8 +138,6 @@ and final championship position, ranked against the full grid. Default tracked s
 
 - **index.html subtitle is hardcoded** to "through Round 15 (Azerbaijan)" and is stale. Card descriptions
   also predate later features (e.g. position.html now includes sprints by default). Covered by #39/#40.
-- **drivers.html "Eliminated: below the knockout line" label** is positioned at a hardcoded x index
-  (`x.getPixelForValue(18)`), not computed from the season length, and is clipped on phone widths (#45).
 - position.html and simulator.html default to the **top 8**, which no longer matches any preset, so no
   preset is highlighted on first load (owner was told; no decision yet).
 - The simulator's histograms use **GP results only**, while position.html now includes sprints by

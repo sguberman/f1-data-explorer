@@ -104,3 +104,15 @@ team colors and short names, `SEASON_META` (which also drives the season dropdow
 `rankedDriverIds()`, the driver picker row and the preset highlighting. The picker list CSS moved into
 `theme.css`. Page-specific code (charts, picker sorting/grouping, the constructors' team row, each page's
 preset lists) stays on its page. Verified pixel-identical before/after on every page.
+
+## #45 — Knockout label clipped on phones (bug)
+The drivers chart's knockout-area label was drawn at a hardcoded x (`x.getPixelForValue(18)`) and ran off
+the right edge on narrow screens. It's now centered ~78% of the way along the season (round 18 of 23, so
+desktop is unchanged) and clamped inside the plot area.
+
+## #46 — Constructors chart matches the drivers chart
+Both championship charts now draw the same "Below the knockout line" label (shared
+`F1Common.drawKnockoutLabel()`), and both summaries use the constructors wording: "Below the line" /
+"Projected to fall below at current form". Owner's choice: "below" describes it more accurately than
+"eliminated", since the line is drawn from the highest-ranked *selected* entry. Differences that come from
+drivers having teammates (legend grouped by team, dashed second driver) stay.
