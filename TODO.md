@@ -17,9 +17,6 @@ the work is not enough on its own.
 | 42 | All pages | Add national flags to driver names, team names, and rounds (round names/numbers). Add driver numbers to driver names. |
 | 43 | data.js | Research mechanical-vs-other DNF causes for prior (pre-2026) seasons and add them to `MANUAL_OVERRIDES`, using the same hand-researched approach as issue #36. |
 | 50 | Pickers | Picker order and the ▲/▼ movement arrows sort by points only, while the championship-position chart (#9) breaks ties by countback of Grand Prix finishes. When two entries are level on points the picker order can disagree with the chart. Make them use the same ranking (`F1Common.standingsByRound()`). |
-| 51 | Repo | Deploy only the site's files to GitHub Pages, so the project docs (`TODO.md`, `PROJECT_CONTEXT.md`, …) aren't served over HTTP. Move the site into `site/` and deploy just that folder. |
-| 53 | Repo | Keep the automated browser tests (headless Chromium + fake f1api.dev data) in the repo under `tests/`, not deployed, and run them on every pull request with a GitHub Action. |
-| 54 | Repo | Add a `CLAUDE.md` (read automatically by Claude Code at the start of every session) pointing to `PROJECT_CONTEXT.md` and summarizing the owner's standing rules. |
 
 ## Pending research inside a closed issue (#36)
 

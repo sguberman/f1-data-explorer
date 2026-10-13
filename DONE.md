@@ -153,8 +153,21 @@ round; its last value equals the end of the points chart's projection line. The 
 dropdown switches between actual standings and projected final standings. Both ignore the round slider.
 Shared code in `common.js` (`projectionsByRound()`, `renderProjectedPointsChart()`).
 
+## #51 — Deploy only the site
+The website moved into `site/`, and the GitHub Pages workflow deploys only that folder, so the project docs
+and tests are no longer served. URLs are unchanged. Deploys run only when `site/` or the workflow changes.
+
 ## #52 — Preview deploys and review-and-merge workflow
 Cloudflare Pages is connected to the repo (output folder `site`): every PR branch gets a preview link,
 posted on the PR, using live f1api.dev data. Each issue now gets its own branch and PR that also moves the
 issue to `DONE.md`, so merging the PR is the owner's approval and closes the issue. Documented under
 "Review and merge" in `PROJECT_CONTEXT.md` and in `CLAUDE.md`.
+
+## #53 — Tests in the repo, run on every PR
+Browser tests in `tests/` (headless Chromium, fake f1api.dev data, local Chart.js): a smoke test of every
+page plus checks for #9, #10, #23, #44–#49. `.github/workflows/tests.yml` runs them on every pull request
+and uploads page screenshots.
+
+## #54 — CLAUDE.md
+`CLAUDE.md` is read automatically at the start of each Claude Code session; it points to
+`PROJECT_CONTEXT.md` and summarizes the owner's standing rules.
