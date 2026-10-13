@@ -129,8 +129,7 @@ async function buildFromSelection(detail){
  drawPositions();
  selectedDriverIds = null; // reset default whenever the season changes; round changes never touch this
  L = detail.round; // so the default (top 5 "as of now") and the first picker render use the right round
- const cum = F1Data.cumulative(currentSeasonRounds, L, 'include');
- selectedDriverIds = F1Common.rankedDriverIds(cum).slice(0,5);
+ selectedDriverIds = F1Common.standingsOrder(currentSeasonRounds, L, 'drivers').slice(0,5);
  recompute(detail.round);
 }
 
@@ -144,18 +143,18 @@ function renderDriverPicker(){
  if(!currentSeasonRounds.length) return;
  const cum = F1Data.cumulative(currentSeasonRounds, L, 'include');
  let roster = Object.values(cum.drivers).map(d=>({...d,total:d.rounds.reduce((s,x)=>s+x.points,0)}));
- roster.sort((a,b)=>b.total-a.total);
+ const rank = F1Common.standingsRank(currentSeasonRounds, L, 'drivers'); // #20: same order as the standings
+ roster.sort((a,b)=>rank[a.driverId]-rank[b.driverId]);
  const moves = F1Common.standingsMoves(currentSeasonRounds, L, 'drivers'); // issue #47
  let html;
  if(pickerSort==='rank'){
    html = roster.map((d,i)=>pickerRowHTML(d,i+1,moves)).join('');
  }else{
-   const teamTotal={};
-   roster.forEach(d=>{ teamTotal[d.teamId]=(teamTotal[d.teamId]||0)+d.total; });
-   const teamsOrdered=[...new Set(roster.map(d=>d.teamId))].sort((a,b)=>teamTotal[b]-teamTotal[a]);
+   const teamRank = F1Common.standingsRank(currentSeasonRounds, L, 'teams');
+   const teamsOrdered=[...new Set(roster.map(d=>d.teamId))].sort((a,b)=>teamRank[a]-teamRank[b]);
    html = teamsOrdered.map(teamId=>{
      const teamDrivers = roster.filter(d=>d.teamId===teamId);
-     return `<div class="pickerTeamLabel">${teamDrivers[0].teamName||teamId}</div>`
+     return F1Common.pickerTeamLabelHTML(teamId, teamDrivers[0].teamName)
        + teamDrivers.map(d=>pickerRowHTML(d,null,moves)).join('');
    }).join('');
  }
@@ -174,7 +173,7 @@ function renderDriverPicker(){
 // it's clear what's picked — not highlighted at all if the selection was built by hand-checking boxes.
 function updatePresetActive(){
  const cum = F1Data.cumulative(currentSeasonRounds, L, 'include');
- const ranked = F1Common.rankedDriverIds(cum);
+ const ranked = F1Common.standingsOrder(currentSeasonRounds, L, 'drivers');
  const sets = { all: Object.keys(cum.drivers), none: [], 5: ranked.slice(0,5), 10: ranked.slice(0,10) };
  F1Common.markActivePreset(sets, selectedDriverIds);
 }
@@ -186,7 +185,7 @@ document.getElementById('sortSeg').addEventListener('change', e=>{
 document.getElementById('presetRow').addEventListener('click', e=>{
  const btn=e.target.closest('button[data-preset]'); if(!btn) return;
  const cum = F1Data.cumulative(currentSeasonRounds, L, 'include'); // ranking as of the CURRENT round
- const ranked = F1Common.rankedDriverIds(cum);
+ const ranked = F1Common.standingsOrder(currentSeasonRounds, L, 'drivers');
  const p = btn.dataset.preset;
  selectedDriverIds = p==='all' ? Object.keys(cum.drivers) : p==='none' ? [] : ranked.slice(0,+p);
  recompute(L);
@@ -234,7 +233,7 @@ function recompute(round){
    teamDrivers = teamDrivers.map(dr=>({...dr,total:dr.rounds.reduce((s,x)=>s+x.points,0)})).sort((a,b)=>b.total-a.total);
    return teamDrivers.map((dr,i)=>{
      const {cumArr,full,rate}=projectedFull(dr);
-     return {n:dr.code, c:F1Common.teamColor(teamId), teamId, teamName:cum.teams[teamId].teamName, d:i===0?[]:[6,4], cum:cumArr, full, rate};
+     return {id:dr.driverId, nat:F1Common.nationalityOf('drivers', dr.driverId), n:dr.code, c:F1Common.teamColor(teamId), teamId, teamName:cum.teams[teamId].teamName, d:i===0?[]:[6,4], cum:cumArr, full, rate};
    });
  });
 
@@ -255,7 +254,7 @@ P=F1Theme.chart();Chart.defaults.color=P.text;
 const DC=D.map(d=>({...d,c:F1Theme.team(d.c)}));
 const ds=[];
 DC.forEach(d=>ds.push({kind:'a',driver:d.n,data:d.cum.concat(Array(N-L).fill(null)),borderColor:d.c,borderDash:d.d,borderWidth:2.2,tension:0,pointRadius:0,pointHoverRadius:4,pointBackgroundColor:d.c}));
-DC.forEach(d=>ds.push({kind:'p',driver:d.n,c:d.c,fin:d.full[N-1],data:d.full.map((v,i)=>i>=L-1?v:null),borderColor:F1Common.withAlpha(d.c,.45),borderDash:d.d,borderWidth:1.8,tension:0,pointRadius:0,pointHoverRadius:3,pointBackgroundColor:d.c}));
+DC.forEach(d=>ds.push({kind:'p',driver:d.n,nat:d.nat,c:d.c,fin:d.full[N-1],data:d.full.map((v,i)=>i>=L-1?v:null),borderColor:F1Common.withAlpha(d.c,.45),borderDash:d.d,borderWidth:1.8,tension:0,pointRadius:0,pointHoverRadius:3,pointBackgroundColor:d.c}));
 ds.push({kind:'ka',driver:'Knockout line',data:thr.map((v,i)=>i<L?v:null),borderColor:P.knock,backgroundColor:P.knockFill,fill:'origin',borderWidth:3,tension:0,pointRadius:0,pointHoverRadius:4,pointBackgroundColor:P.knock});
 ds.push({kind:'kp',driver:'Knockout line',data:thr.map((v,i)=>i>=L-1?v:null),borderColor:P.knock,backgroundColor:P.knockFillProj,fill:'origin',borderDash:[6,4],borderWidth:2.5,tension:0,pointRadius:0,pointHoverRadius:3,pointBackgroundColor:P.knock});
 const shade={id:'shade',beforeDatasetsDraw(ch){
@@ -275,11 +274,12 @@ const ends={id:'ends',afterDatasetsDraw(ch){
  const it=[];ch.data.datasets.forEach((s,i)=>{if(s.kind!=='p')return;const p=ch.getDatasetMeta(i).data[N-1];it.push({x:p.x,y:p.y,ly:p.y,s});});
  it.sort((a,b)=>a.y-b.y);for(let i=1;i<it.length;i++)if(it[i].ly-it[i-1].ly<13)it[i].ly=it[i-1].ly+13;
  const {ctx}=ch;ctx.save();ctx.font='11px '+ff;ctx.textAlign='left';ctx.textBaseline='middle';
- it.forEach(o=>{ctx.fillStyle=o.s.c;ctx.fillRect(o.x+7,o.ly-3,6,6);ctx.fillStyle=P.label;ctx.fillText(o.s.driver+' '+Math.round(o.s.fin),o.x+17,o.ly);});ctx.restore();}};
+ it.forEach(o=>{ctx.fillStyle=o.s.c;ctx.fillRect(o.x+7,o.ly-3,6,6);F1Common.drawFlag(ctx,o.s.nat,o.x+17,o.ly);ctx.fillStyle=P.label;ctx.fillText(o.s.driver+' '+Math.round(o.s.fin),o.x+17+fw,o.ly);});ctx.restore();}};
 // Reserve right padding from the widest end label so it's never clipped (none needed on mobile,
 // where the labels move into #endLegend below the chart instead).
 const mc=document.createElement('canvas').getContext('2d');mc.font='11px '+ff;
-const PR=F1Common.isNarrow()?10:Math.ceil(Math.max(...ds.filter(s=>s.kind==='p').map(s=>mc.measureText(s.driver+' '+Math.round(s.fin)).width)))+17+8;
+const fw=F1Common.flagSpace(ds.filter(s=>s.kind==='p').map(s=>s.nat)); // #18: room for flags in the end labels
+const PR=F1Common.isNarrow()?10:Math.ceil(Math.max(...ds.filter(s=>s.kind==='p').map(s=>mc.measureText(s.driver+' '+Math.round(s.fin)).width)))+fw+17+8;
 const peak=Math.max(1,...D.map(d=>Math.max(...d.full)),...thr);
 const yMax=Math.ceil(peak*1.1/50)*50;
 const yStep=yMax<=300?50:yMax<=600?100:yMax<=1200?200:500;
@@ -294,15 +294,15 @@ const sw=(c,d,w)=>`<svg width="22" height="8" aria-hidden="true"><line x1="1" y1
 const byTeam={};
 DC.forEach(d=>{ (byTeam[d.teamId] = byTeam[d.teamId]||[]).push(d); });
 document.getElementById('lg').innerHTML=Object.values(byTeam).map(drivers=>{
- const label=F1Common.shortTeamName(drivers[0].teamId,drivers[0].teamName);
- const items=drivers.map((d,i)=>sw(d.c,i>0)+d.n).join('');
+ const label=F1Common.flagHTML(F1Common.nationalityOf('teams', drivers[0].teamId))+F1Common.shortTeamName(drivers[0].teamId,drivers[0].teamName);
+ const items=drivers.map((d,i)=>sw(d.c,i>0)+F1Common.flagHTML(d.nat)+d.n).join('');
  return `<span style="display:flex;align-items:center;gap:6px;"><span style="font-weight:500;">${label}</span>${items}</span>`;
 }).join('')
  +`<span style="display:flex;align-items:center;gap:6px;"><span style="font-weight:500;">Knockout line</span>${sw(P.knock,0,3)}</span>`;
 // Mobile stand-in for the canvas end-of-line labels — same info (code + final points), ranked.
 const legendSorted=DC.slice().sort((a,b)=>b.full[N-1]-a.full[N-1]);
 document.getElementById('endLegend').innerHTML=legendSorted.map((d,i)=>
- `<div class="endLegendRow"><span class="endLegendRank">${i+1}</span><span class="endLegendDot" style="background:${d.c}"></span><span class="endLegendName">${d.n}</span><span class="endLegendPts">${Math.round(d.full[N-1])}</span></div>`
+ `<div class="endLegendRow"><span class="endLegendRank">${i+1}</span><span class="endLegendDot" style="background:${d.c}"></span><span class="endLegendName">${F1Common.flagHTML(d.nat)}${d.n}</span><span class="endLegendPts">${Math.round(d.full[N-1])}</span></div>`
 ).join('');
 const lab=d=>`${d.n} (R${d.out+1})`;
 const now=D.filter(d=>d.out>=0&&d.out<L).sort((a,b)=>a.out-b.out),proj=D.filter(d=>d.out>=L).sort((a,b)=>a.out-b.out);

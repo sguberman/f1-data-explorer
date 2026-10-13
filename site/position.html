@@ -44,6 +44,7 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
 </div>
 <div class="ridgeWrap f1-skel" id="ridgeWrap"><canvas id="ridgeCanvas"></canvas></div>
 <div id="empty" style="font-size:12.5px;color:var(--sub);display:none;">No drivers selected.</div>
+<div class="ridgeKey" id="ridgeKey"></div>
 <div class="note" id="ridgeNote"></div>
 </div>
 <div class="card">
@@ -104,8 +105,7 @@ async function buildFromSelection(detail){
  if(!currentSeasonRounds.length){ D=[]; draw(); renderDriverPicker(); return; }
  selectedDriverIds = null; // reset default whenever the season changes; round changes never touch this
  L = detail.round;
- const cum = F1Data.cumulative(currentSeasonRounds, L, 'include');
- selectedDriverIds = F1Common.rankedDriverIds(cum).slice(0,8); // top 8 — roughly "top four teams" from the old static page
+ selectedDriverIds = F1Common.standingsOrder(currentSeasonRounds, L, 'drivers').slice(0,8); // top 8 — roughly "top four teams" from the old static page
  recompute(detail.round);
 }
 
@@ -162,17 +162,15 @@ function bucketsFor(driverId, labels){
 function recompute(round){
  L = round;
  const cum = F1Data.cumulative(currentSeasonRounds, L, 'include');
- const driverRanked = F1Common.rankedDriverIds(cum);
+ const driverRanked = F1Common.standingsOrder(currentSeasonRounds, L, 'drivers');
  const driverRank = {}; driverRanked.forEach((id,i)=>{ driverRank[id]=i; });
- const teamRanked = Object.values(cum.teams)
-   .map(t=>({teamId:t.teamId,total:t.rounds.reduce((s,x)=>s+x.points,0)}))
-   .sort((a,b)=>b.total-a.total).map(t=>t.teamId);
+ const teamRanked = F1Common.standingsOrder(currentSeasonRounds, L, 'teams');
  const teamRank = {}; teamRanked.forEach((id,i)=>{ teamRank[id]=i; });
  LAB = buildLabels();
  D = (selectedDriverIds||[]).map(id=>{
    const dr = cum.drivers[id]; if(!dr) return null;
    const {v,starts} = bucketsFor(id, LAB);
-   return { n:dr.code, teamId:dr.teamId, teamName:dr.teamName, c:F1Common.teamColor(dr.teamId), v, starts,
+   return { id, n:dr.code, teamId:dr.teamId, teamName:dr.teamName, c:F1Common.teamColor(dr.teamId), v, starts,
      driverRank:driverRank[id]??999, teamRank:teamRank[dr.teamId]??999 };
  }).filter(Boolean);
  draw();
@@ -182,11 +180,11 @@ function recompute(round){
 function draw(){
  const wrap=document.getElementById('ridgeWrap'), empty=document.getElementById('empty'), note=document.getElementById('ridgeNote');
  if(ridgeChart){ ridgeChart.destroy(); ridgeChart=null; }
- if(!D.length){ wrap.style.display='none'; empty.style.display='block'; note.textContent=''; updateSub(); return; }
+ if(!D.length){ wrap.style.display='none'; empty.style.display='block'; note.textContent=''; document.getElementById('ridgeKey').innerHTML=''; updateSub(); return; }
  wrap.style.display='block'; empty.style.display='none';
  P=F1Theme.chart();
  Chart.defaults.font.family=ff; Chart.defaults.color=P.text;
- const order=D.map(d=>({code:d.n, color:F1Theme.team(d.c), counts:d.v, starts:d.starts,
+ const order=D.map(d=>({id:d.id, code:d.n, color:F1Theme.team(d.c), counts:d.v, starts:d.starts,
      driverRank:d.driverRank, teamRank:d.teamRank}))
    .sort((a,b)=>{
      if(chartSort==='champ') return a.driverRank-b.driverRank;
@@ -201,11 +199,15 @@ function draw(){
    const peak=Math.max(...counts,1e-9);
    const heights=counts.map(v=>baseline+(v/peak)*RIDGE_PEAK);
    datasets.push({ data:LAB.map(()=>baseline), borderWidth:0, pointRadius:0, fill:false, _baseline:true });
+   // #30: median and most common position(s) — every tied one — drawn by F1Common.ridgeMarkers
+   const top=Math.max(...counts);
    datasets.push({ data:heights, borderColor:color, backgroundColor:F1Common.withAlpha(color,RIDGE_FILL_ALPHA), borderWidth:1.6, pointRadius:0,
-     fill:'-1', stepped:'middle', _code:code, _counts:counts, _starts:starts });
+     fill:'-1', stepped:'middle', _code:code, _counts:counts, _starts:starts,
+     _median: starts ? medianBucket(counts) : null, _modes: top>0 ? counts.map((v,j)=>v===top?j:-1).filter(j=>j>=0) : [] });
  });
  ridgeChart=new Chart(document.getElementById('ridgeCanvas'),{
    type:'line',
+   plugins:[F1Common.ridgeMarkers(), F1Common.ridgeFlags(row=>order[n-1-row] && order[n-1-row].id)],
    data:{labels:LAB, datasets},
    options:{
      responsive:true, maintainAspectRatio:false, animation:false,
@@ -232,6 +234,7 @@ function draw(){
        y:{
          min:-0.15, max:(n-1)*RIDGE_ROW+RIDGE_PEAK+0.25,
          grid:{display:false},
+         afterFit:s=>{ s.width+=F1Common.FLAG_ROOM; }, // room for the flags (#18)
          afterBuildTicks:axis=>{ axis.ticks=Array.from({length:n},(_,i)=>({value:i})); },
          ticks:{
            color:ctx=>{ const i=n-1-Math.round(ctx.tick.value); return (order[i]&&order[i].color)||P.text; },
@@ -242,6 +245,7 @@ function draw(){
      }
    }
  });
+ document.getElementById('ridgeKey').innerHTML = F1Common.ridgeKeyHTML(true);
  note.textContent = 'Races counted: ' + order.map(o=>`${o.code} ${o.starts}`).join(' · ');
  updateSub();
 }
@@ -267,18 +271,18 @@ function renderDriverPicker(){
  if(!currentSeasonRounds.length) return;
  const cum = F1Data.cumulative(currentSeasonRounds, L, 'include');
  let roster = Object.values(cum.drivers).map(d=>({...d,total:d.rounds.reduce((s,x)=>s+x.points,0)}));
- roster.sort((a,b)=>b.total-a.total);
+ const rank = F1Common.standingsRank(currentSeasonRounds, L, 'drivers'); // #20: same order as the standings
+ roster.sort((a,b)=>rank[a.driverId]-rank[b.driverId]);
  const moves = F1Common.standingsMoves(currentSeasonRounds, L, 'drivers'); // issue #47
  let html;
  if(pickerSort==='rank'){
    html = roster.map((d,i)=>pickerRowHTML(d,i+1,moves)).join('');
  }else{
-   const teamTotal={};
-   roster.forEach(d=>{ teamTotal[d.teamId]=(teamTotal[d.teamId]||0)+d.total; });
-   const teamsOrdered=[...new Set(roster.map(d=>d.teamId))].sort((a,b)=>teamTotal[b]-teamTotal[a]);
+   const teamRank = F1Common.standingsRank(currentSeasonRounds, L, 'teams');
+   const teamsOrdered=[...new Set(roster.map(d=>d.teamId))].sort((a,b)=>teamRank[a]-teamRank[b]);
    html = teamsOrdered.map(teamId=>{
      const teamDrivers = roster.filter(d=>d.teamId===teamId);
-     return `<div class="pickerTeamLabel">${teamDrivers[0].teamName||teamId}</div>`
+     return F1Common.pickerTeamLabelHTML(teamId, teamDrivers[0].teamName)
        + teamDrivers.map(d=>pickerRowHTML(d,null,moves)).join('');
    }).join('');
  }
@@ -297,7 +301,7 @@ function renderDriverPicker(){
 // it's clear what's picked — not highlighted at all if the selection was built by hand-checking boxes.
 function updatePresetActive(){
  const cum = F1Data.cumulative(currentSeasonRounds, L, 'include');
- const ranked = F1Common.rankedDriverIds(cum);
+ const ranked = F1Common.standingsOrder(currentSeasonRounds, L, 'drivers');
  const sets = { all: Object.keys(cum.drivers), none: [], 5: ranked.slice(0,5), 10: ranked.slice(0,10) };
  F1Common.markActivePreset(sets, selectedDriverIds);
 }
@@ -321,7 +325,7 @@ document.getElementById('sortSeg').addEventListener('change', e=>{
 document.getElementById('presetRow').addEventListener('click', e=>{
  const btn=e.target.closest('button[data-preset]'); if(!btn) return;
  const cum = F1Data.cumulative(currentSeasonRounds, L, 'include');
- const ranked = F1Common.rankedDriverIds(cum);
+ const ranked = F1Common.standingsOrder(currentSeasonRounds, L, 'drivers');
  const p = btn.dataset.preset;
  selectedDriverIds = p==='all' ? Object.keys(cum.drivers) : p==='none' ? [] : ranked.slice(0,+p);
  recompute(L);

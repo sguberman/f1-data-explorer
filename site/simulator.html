@@ -29,8 +29,8 @@ button:active{transform:translateY(1px);}
 button:disabled{opacity:.5;cursor:default;}
 .status{font-size:12.5px;color:var(--sub);margin-top:10px;}
 h2{font-size:14px;font-weight:650;margin:0 0 12px;color:var(--sub);text-transform:none;}
-.driver-row{display:grid;grid-template-columns:52px 1fr 46px;align-items:center;gap:10px;padding:6px 0;}
-.tag{font-weight:700;font-size:13px;}
+.driver-row{display:grid;grid-template-columns:74px 1fr 46px;align-items:center;gap:10px;padding:6px 0;}
+.tag{font-weight:700;font-size:13px;white-space:nowrap;}
 .bar-track{background:var(--inset);border-radius:5px;height:14px;overflow:hidden;}
 .bar-fill{height:100%;border-radius:5px;}
 .pct{font-variant-numeric:tabular-nums;font-size:13px;text-align:right;}
@@ -130,12 +130,14 @@ canvas{max-width:100%;}
   <div class="card" id="ridgePosCard" style="display:none;">
     <h2>Projected final championship position</h2>
     <div class="ridgeWrap" id="ridgePosWrap"><canvas id="ridgePosCanvas"></canvas></div>
+    <div class="ridgeKey"><span class="ridgeKeyItem"><i class="ridgeKeyMedian"></i>median</span></div>
     <div class="note">Each ridge is one tracked driver's share of simulated seasons landing at each final position, tallest at their most likely finish. Position is rank in the full simulated standings — every driver who has raced this season, not just the tracked set — so finishing behind an untracked driver is possible. Ordered by median finish, best on top.</div>
   </div>
 
   <div class="card" id="ridgePointsCard" style="display:none;">
     <h2>Projected final points</h2>
     <div class="ridgeWrap" id="ridgePointsWrap"><canvas id="ridgePointsCanvas"></canvas></div>
+    <div class="ridgeKey"><span class="ridgeKeyItem"><i class="ridgeKeyMedian"></i>median</span></div>
     <div class="note">Each ridge is one tracked driver's spread of possible final point totals. Overlap between two ridges is a rough read on how contested that gap still is — heavy overlap means the sim sees it as a toss-up. Ordered by median final points, highest on top.</div>
   </div>
 </div>
@@ -169,7 +171,7 @@ async function buildFromSelection(detail){
  currentCalendar = await F1Data.getCalendar(currentYear);
  outcomes={}; collisions=[]; lastRun=null; hideResults(); // a new season starts from scratch
  recomputeRoster();
- selectedDriverIds = [...fullRoster].sort((a,b)=>b.now-a.now).slice(0,8).map(d=>d.driverId);
+ selectedDriverIds = [...fullRoster].sort(byStanding).slice(0,8).map(d=>d.driverId);
  recompute(detail.round);
 }
 
@@ -216,15 +218,19 @@ function buildDnfStats(){
 function recomputeRoster(){
  const cumInc = F1Data.cumulative(currentSeasonRounds, L, 'include');
  const posHist = buildPosHist(), dnfStats = buildDnfStats();
+ const rank = F1Common.standingsRank(currentSeasonRounds, L, 'drivers'); // #20: standings order, ties by countback
  fullRoster = Object.keys(cumInc.drivers).map(id=>{
    const di = cumInc.drivers[id];
    const now = di.rounds.reduce((s,x)=>s+x.points,0);
    const st = dnfStats[id];
    const dnfRate = st && st.starts ? st.dnfs / st.starts : 0;
-   return { driverId:id, code:di.code, name:di.name, teamId:di.teamId, teamName:di.teamName, now, dnfRate,
+   return { driverId:id, code:di.code, name:di.name, teamId:di.teamId, teamName:di.teamName, now, dnfRate, rank:rank[id],
             posHist: posHist[id] || new Array(11).fill(0) };
  });
 }
+
+// Roster order everywhere on this page (pickers, settings, presets): the standings (#20).
+const byStanding = (a,b)=>a.rank-b.rank;
 
 // ---- Simulation engine (#39, #42, #14, #11) ----
 // A snapshot of everything one run needs, so settings changed mid-run can't leak in. Per roster index:
@@ -378,7 +384,7 @@ function quantile(arr,q){
 
 // ---- Tracked drivers' DNFs and wins (#42, #14) and collisions (#11) ----
 const nGPLeft = ()=>remainingEvents.filter(e=>e.type==='gp').length;
-const trackedRoster = ()=>fullRoster.filter(d=>(selectedDriverIds||[]).includes(d.driverId)).sort((a,b)=>b.now-a.now);
+const trackedRoster = ()=>fullRoster.filter(d=>(selectedDriverIds||[]).includes(d.driverId)).sort(byStanding);
 const getOutcome = id=>outcomes[id] || {dnf:null, win:null};
 // Collisions that can actually happen: two different drivers who are both in this season's roster.
 function validCollisions(){
@@ -446,7 +452,7 @@ function buildOutcomeInputs(){
 }
 function renderCollisions(){
  const tracked=trackedRoster(), trackedIds=new Set(tracked.map(d=>d.driverId));
- const others=[...fullRoster].filter(d=>!trackedIds.has(d.driverId)).sort((a,b)=>b.now-a.now);
+ const others=[...fullRoster].filter(d=>!trackedIds.has(d.driverId)).sort(byStanding);
  const opts=sel=>`<optgroup label="Tracked">${tracked.map(d=>`<option value="${d.driverId}"${d.driverId===sel?' selected':''}>${d.code}</option>`).join('')}</optgroup>`
    + (others.length?`<optgroup label="Others">${others.map(d=>`<option value="${d.driverId}"${d.driverId===sel?' selected':''}>${d.code}</option>`).join('')}</optgroup>`:'');
  document.getElementById('collisionList').innerHTML=collisions.map((c,i)=>`
@@ -496,7 +502,7 @@ document.getElementById('collisionList').addEventListener('change', e=>{
  clampOutcomes(); onOutcomeChanged();
 });
 document.getElementById('addCollision').addEventListener('click', ()=>{
- const ids=[...trackedRoster(), ...[...fullRoster].sort((a,b)=>b.now-a.now)].map(d=>d.driverId);
+ const ids=[...trackedRoster(), ...[...fullRoster].sort(byStanding)].map(d=>d.driverId);
  const uniq=[...new Set(ids)];
  if(uniq.length<2) return;
  collisions.push({a:uniq[0], b:uniq[1], n:1});
@@ -521,18 +527,17 @@ function pickerRowHTML(d, rank, moves){
 }
 function renderDriverPicker(){
  if(!fullRoster.length){ document.getElementById('driverPicker').innerHTML=''; return; }
- let roster=[...fullRoster].sort((a,b)=>b.now-a.now);
+ let roster=[...fullRoster].sort(byStanding);
  const moves = F1Common.standingsMoves(currentSeasonRounds, L, 'drivers'); // issue #47
  let html;
  if(pickerSort==='rank'){
    html = roster.map((d,i)=>pickerRowHTML(d,i+1,moves)).join('');
  }else{
-   const teamTotal={};
-   roster.forEach(d=>{ teamTotal[d.teamId]=(teamTotal[d.teamId]||0)+d.now; });
-   const teamsOrdered=[...new Set(roster.map(d=>d.teamId))].sort((a,b)=>teamTotal[b]-teamTotal[a]);
+   const teamRank = F1Common.standingsRank(currentSeasonRounds, L, 'teams');
+   const teamsOrdered=[...new Set(roster.map(d=>d.teamId))].sort((a,b)=>teamRank[a]-teamRank[b]);
    html = teamsOrdered.map(teamId=>{
      const teamDrivers = roster.filter(d=>d.teamId===teamId);
-     return `<div class="pickerTeamLabel">${teamDrivers[0].teamName||teamId}</div>`
+     return F1Common.pickerTeamLabelHTML(teamId, teamDrivers[0].teamName)
        + teamDrivers.map(d=>pickerRowHTML(d,null,moves)).join('');
    }).join('');
  }
@@ -550,7 +555,7 @@ function renderDriverPicker(){
 // issue #13: highlight whichever preset button (if any) exactly matches the current selection, so
 // it's clear what's picked — not highlighted at all if the selection was built by hand-checking boxes.
 function updatePresetActive(){
- const ranked=[...fullRoster].sort((a,b)=>b.now-a.now).map(d=>d.driverId);
+ const ranked=[...fullRoster].sort(byStanding).map(d=>d.driverId);
  const sets = { all: fullRoster.map(d=>d.driverId), none: [], 5: ranked.slice(0,5), 10: ranked.slice(0,10) };
  F1Common.markActivePreset(sets, selectedDriverIds);
 }
@@ -560,7 +565,7 @@ document.getElementById('sortSeg').addEventListener('change', e=>{
 });
 document.getElementById('presetRow').addEventListener('click', e=>{
  const btn=e.target.closest('button[data-preset]'); if(!btn) return;
- const ranked=[...fullRoster].sort((a,b)=>b.now-a.now).map(d=>d.driverId);
+ const ranked=[...fullRoster].sort(byStanding).map(d=>d.driverId);
  const p=btn.dataset.preset;
  selectedDriverIds = p==='all' ? fullRoster.map(d=>d.driverId) : p==='none' ? [] : ranked.slice(0,+p);
  onSelectionChanged();
@@ -640,7 +645,7 @@ function renderRidgeline(chartKey, canvasId, wrapId, order, categories, opts){
  const n=order.length;
  document.getElementById(wrapId).style.height=(n*RIDGE_ROW_PX+RIDGE_PAD_PX)+'px';
  const datasets=[];
- order.forEach(({code,color,counts},i)=>{
+ order.forEach(({code,color,counts,median},i)=>{
    const baseline=(n-1-i)*RIDGE_ROW;
    const total=counts.reduce((a,b)=>a+b,0)||1;
    const peak=Math.max(...counts,1e-9);
@@ -648,12 +653,13 @@ function renderRidgeline(chartKey, canvasId, wrapId, order, categories, opts){
    const pct=counts.map(v=>100*v/total);
    datasets.push({ data:categories.map(()=>baseline), borderWidth:0, pointRadius:0, fill:false, _baseline:true });
    datasets.push({ data:heights, borderColor:color, backgroundColor:F1Common.withAlpha(color,RIDGE_FILL_ALPHA), borderWidth:1.6, pointRadius:0,
-     fill:'-1', tension:opts.tension||0, stepped:opts.stepped||false, _code:code, _pct:pct });
+     fill:'-1', tension:opts.tension||0, stepped:opts.stepped||false, _code:code, _pct:pct, _median:median }); // #30
  });
  const P=F1Theme.chart();
  if(ridgeCharts[chartKey]) ridgeCharts[chartKey].destroy();
  ridgeCharts[chartKey]=new Chart(document.getElementById(canvasId),{
    type:'line',
+   plugins:[F1Common.ridgeMarkers(), F1Common.ridgeFlags(row=>order[n-1-row] && order[n-1-row].id)],
    data:{labels:categories, datasets},
    options:{
      responsive:true, maintainAspectRatio:false,
@@ -673,6 +679,7 @@ function renderRidgeline(chartKey, canvasId, wrapId, order, categories, opts){
        y:{
          min:-0.15, max:(n-1)*RIDGE_ROW+RIDGE_PEAK+0.25,
          grid:{display:false},
+         afterFit:s=>{ s.width+=F1Common.FLAG_ROOM; }, // room for the flags (#18)
          afterBuildTicks:axis=>{ axis.ticks=Array.from({length:n},(_,i)=>({value:i})); },
          ticks:{
            color:ctx=>{ const i=n-1-Math.round(ctx.tick.value); return (order[i]&&order[i].color)||P.text; },
@@ -693,14 +700,16 @@ function renderRidgePoints(roster, finals){
  const order=roster.map((d,i)=>{
    const counts=new Array(bins.length).fill(0);
    finals[i].forEach(v=>{ const bi=Math.min(Math.floor((v-min)/binSize),bins.length-1); counts[bi]++; });
-   return {code:d.code, color:F1Theme.team(F1Common.teamColor(d.teamId)), counts, med:quantile(finals[i],.5)};
+   const med=quantile(finals[i],.5);
+   // #30: the median as a position between categories: bin b (b..b+10) is drawn at index b, centred on b+5
+   return {id:d.driverId, code:d.code, color:F1Theme.team(F1Common.teamColor(d.teamId)), counts, med, median:(med-min-binSize/2)/binSize};
  }).sort((a,b)=>b.med-a.med);
  renderRidgeline('points','ridgePointsCanvas','ridgePointsWrap', order, bins.map(String), {tension:0.35, xTitle:'final points'});
 }
 function renderRidgePosition(roster, posCounts, k, N){
  const labels=Array.from({length:k},(_,i)=>'P'+(i+1)).concat([(k+1)+'th or lower']);
- const order=roster.map((d,i)=>({code:d.code, color:F1Theme.team(F1Common.teamColor(d.teamId)), counts:posCounts[i],
-   med:medianFromCounts(posCounts[i],N)})).sort((a,b)=>a.med-b.med);
+ const order=roster.map((d,i)=>{ const med=medianFromCounts(posCounts[i],N);
+   return {id:d.driverId, code:d.code, color:F1Theme.team(F1Common.teamColor(d.teamId)), counts:posCounts[i], med, median:med}; }).sort((a,b)=>a.med-b.med);
  renderRidgeline('pos','ridgePosCanvas','ridgePosWrap', order, labels, {stepped:'middle', xTitle:'final championship position'});
 }
 
@@ -708,7 +717,7 @@ function renderOdds(roster, odds){
  const rows=roster.map((d,i)=>({d,c:F1Theme.team(F1Common.teamColor(d.teamId)),pct:odds[i]})).sort((a,b)=>b.pct-a.pct);
  document.getElementById('odds').innerHTML=rows.map(({d,c,pct})=>`
    <div class="driver-row">
-     <div class="tag" style="color:${c}">${d.code}</div>
+     <div class="tag" style="color:${c}">${F1Common.flagHTML(F1Common.nationalityOf('drivers', d.driverId))}${d.code}</div>
      <div class="bar-track"><div class="bar-fill" style="width:${Math.max(pct,0.4)}%;background:${c}"></div></div>
      <div class="pct">${pct<0.1 && pct>0 ? '<0.1' : pct.toFixed(1)}%</div>
    </div>`).join('');

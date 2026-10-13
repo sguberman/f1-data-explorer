@@ -8,7 +8,16 @@ const F1Controls = (() => {
 
   let state = { year:null, round:null, maxRound:null, seasonRounds:[] };
 
+  // "Round 5 of 12 — [flag] Miami Grand Prix" (#18: the circuit country's flag before the race name).
+  function roundLabelHTML(round){
+    if(!state.maxRound) return 'No rounds found';
+    const r = state.seasonRounds[round-1];
+    const esc = t => String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+    return `Round ${round} of ${state.maxRound}${r?(' — '+F1Common.flagHTML(r.country)+esc(r.raceName)):''}`;
+  }
+
   function emit(){
+    F1Common.indexPeople(state.seasonRounds); // #18: nationalities and numbers by id, for flags
     window.dispatchEvent(new CustomEvent('f1selection', { detail: { ...state } }));
   }
 
@@ -66,8 +75,7 @@ const F1Controls = (() => {
     const slider = container.querySelector('.f1c-round');
     slider.max = state.maxRound || 1;
     slider.value = state.round || 1;
-    container.querySelector('.f1c-roundlabel').textContent =
-      state.maxRound ? `Round ${state.round} of ${state.maxRound}${rounds[state.round-1]?(' — '+rounds[state.round-1].raceName):''}` : 'No rounds found';
+    container.querySelector('.f1c-roundlabel').innerHTML = roundLabelHTML(state.round);
     loadedMsg = state.maxRound ? `${state.maxRound} rounds loaded` : (failed ? 'No rounds loaded' : `Couldn't find any results for ${year}.`);
     renderStatus(container);
     emit();
@@ -115,9 +123,7 @@ const F1Controls = (() => {
     });
     roundSlider.addEventListener('input', ()=>{
       state.round = +roundSlider.value;
-      const r = state.seasonRounds[state.round-1];
-      container.querySelector('.f1c-roundlabel').textContent =
-        `Round ${state.round} of ${state.maxRound}${r?(' — '+r.raceName):''}`;
+      container.querySelector('.f1c-roundlabel').innerHTML = roundLabelHTML(state.round);
       // Live update on every drag step, same as the on-chart drag handle — a lightweight event
       // (not `f1selection`) so pages can just recompute from already-loaded data, with no network
       // call and without resetting the driver/team selection the way a full f1selection rebuild would.
@@ -137,9 +143,8 @@ const F1Controls = (() => {
     state.round = round;
     const slider = mountedContainer.querySelector('.f1c-round');
     if(slider) slider.value = round;
-    const r = state.seasonRounds[round-1];
     const label = mountedContainer.querySelector('.f1c-roundlabel');
-    if(label) label.textContent = `Round ${round} of ${state.maxRound}${r?(' — '+r.raceName):''}`;
+    if(label) label.innerHTML = roundLabelHTML(round);
   }
 
   return { mount, setRound, get state(){ return { ...state }; } };

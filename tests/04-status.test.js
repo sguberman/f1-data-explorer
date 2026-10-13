@@ -10,21 +10,21 @@ module.exports = async (t, h) => {
   }
 
   const p = await h.openPage('drivers'); await h.loaded(p);
-  // #23: Refresh clears every f1cache:v1: entry, refetches, and keeps the theme + selected season.
+  // #23: Refresh clears every f1cache:v2: entry, refetches, and keeps the theme + selected season.
   p.apiHits.length = 0;
   await p.click('.f1c-refresh'); await h.loaded(p);
   const keys = await p.evaluate(() => Object.keys(localStorage));
   t.check('Refresh data refetches from f1api.dev', p.apiHits.length > 20, `${p.apiHits.length} requests`);
-  t.check('Refresh data keeps theme and season', keys.includes('f1-theme') && keys.includes('f1cache:selectedSeason'), keys.filter(k => !k.startsWith('f1cache:v1:')).join(','));
+  t.check('Refresh data keeps theme and season', keys.includes('f1-theme') && keys.includes('f1cache:selectedSeason'), keys.filter(k => !k.startsWith('f1cache:v2:')).join(','));
   t.check('cache entries record their fetch time', await p.evaluate(() =>
-    Object.keys(localStorage).filter(k => k.startsWith('f1cache:v1:2026/')).every(k => JSON.parse(localStorage[k]).t > 0)));
+    Object.keys(localStorage).filter(k => k.startsWith('f1cache:v2:2026/')).every(k => JSON.parse(localStorage[k]).t > 0)));
   // House rule: moving the slider never fetches.
   p.apiHits.length = 0;
   for(const r of [3, 9, 12]) await h.setRound(p, r);
   await p.waitForTimeout(200);
   t.check('round slider makes no network requests', p.apiHits.length === 0, `${p.apiHits.length}`);
   // #49: the age comes from the cache, and isn't reset to "just now" by re-stamping the latest round's TTL.
-  await p.evaluate(() => Object.keys(localStorage).filter(k => k.startsWith('f1cache:v1:')).forEach(k => {
+  await p.evaluate(() => Object.keys(localStorage).filter(k => k.startsWith('f1cache:v2:')).forEach(k => {
     const e = JSON.parse(localStorage[k]); e.t -= 3*3600e3; localStorage[k] = JSON.stringify(e); }));
   await p.reload(); await h.loaded(p);
   t.check('age read from cache ("3 hrs ago")', /updated 3 hrs ago/.test(await h.text(p, '.f1c-statusline')), await h.text(p, '.f1c-statusline'));

@@ -52,10 +52,15 @@ Each HTML page has its own inline `<style>` and `<script>` for page-specific cod
 across pages lives in shared files instead (issue #44), so a change is made once:
 - `common.js` (global `F1Common`, loaded after `theme.js`, before `data.js`/`controls.js`): `TEAM_COLORS` /
   `teamColor()`, `SHORT_TEAM_NAMES` / `shortTeamName()`, `SEASON_META` / `seasonMeta()` / `YEARS`,
-  `isNarrow()`, `withAlpha()`, `rankedDriverIds()`, `driverPickerRowHTML()`, `markActivePreset()`,
+  `isNarrow()`, `withAlpha()`, `driverPickerRowHTML()`, `pickerTeamLabelHTML()`, `markActivePreset()`,
+  `standingsOrder()` / `standingsRank()` (standings order with countback, for pickers, ▲/▼ and presets, #20),
+  flags and numbers (#18: `flagCode()`, `flagHTML()`, `drawFlag()`, `flagSpace()`, `ridgeFlags()`,
+  `indexPeople()` / `nationalityOf()` / `numberOf()`), `ridgeMarkers()` / `ridgeKeyHTML()` (#30),
   `standingsByRound()` / `renderPositionChart()` (the championship-position chart, issue #9),
   `projectionsByRound()` / `renderProjectedPointsChart()` (projection history, issue #10).
-- `theme.css`: picker list styles (`.pickerRow`, `.pickerDot`, …).
+- `theme.css`: picker list styles (`.pickerRow`, `.pickerDot`, …), `.flag`, `.pickerNum`, `.ridgeKey`.
+- `flags/`: small SVG flags (from flag-icons, MIT, see `flags/LICENSE.txt`) for the countries the site maps.
+  Spain and Mexico are simplified to keep them small. Add a file (and a name in `FLAG_CODES`) for a new country.
 Still per page, because they really differ: chart code, `renderDriverPicker()` / `renderTeamPicker()`
 (sorting/grouping), constructors' team picker row, each page's preset lists in `updatePresetActive()`, and
 a thin `pickerRowHTML()` wrapper on driver pages that supplies the page's selection and points field.
@@ -68,13 +73,15 @@ Move something into `common.js` only once it's genuinely identical on every page
   this round"** and is cached as a confirmed negative, not treated as a failure (issue #28).
 - `F1Data.loadSeason(year, {onProgress})` walks rounds 1, 2, 3… until the API returns no results, and
   resolves to `{rounds, failed, fetchedAt}`. Each round becomes `{round, raceName, raceResults,
-  sprintResults}`; result rows carry `driverId, code, name, teamId, teamName, position, points, mechanical`.
+  sprintResults, country}` (`country` = the circuit's, #18); result rows carry `driverId, code, name, teamId,
+  teamName, number, nationality, teamNationality, position, points, mechanical`.
   `failed` is true if any fetch failed (the load stops at the first failed round; a failed sprint reads as
   "no sprint"), issue #48. `fetchedAt` is the newest fetch time of the data used, issue #49.
-- Caching: completed rounds are cached permanently in `localStorage` under `f1cache:v1:`; the most recent
+- Caching: completed rounds are cached permanently in `localStorage` under `f1cache:v2:` (bumped from
+  `v1:` for #18's new fields; old `v1:` entries are deleted on load); the most recent
   round has a short TTL because post-race penalties can still change it. Each entry is `{v, exp, t}`, where
   `t` is when it was fetched (kept when re-stamping the TTL). Fetch failures are never cached (issue #22).
-  `F1Data.clearCache()` removes every `f1cache:v1:` entry (issue #23); the theme and the
+  `F1Data.clearCache()` removes every `f1cache:v2:` entry (issue #23); the theme and the
   `f1cache:selectedSeason` key are kept.
 - `F1Data.getCalendar(year)` gives total rounds, race names and sprint rounds for the full season.
 - `F1Data.cumulative(seasonRounds, throughRound, mode)` returns `{drivers, teams}` with per-round points;
@@ -137,7 +144,9 @@ chosen round, normalized to its own peak. "Sort by" Median / Championship / Team
 then drivers' order). "Show" checkboxes: Below P10 (expand to individual positions + DNF instead of one
 "11+/DNF" bucket), Mechanical DNFs (off by default — excluded entirely, not counted as a start), Sprints
 (on by default — merged into the same histogram). All options recompute from cached data. Default
-selection is the top 8 drivers.
+selection is the top 8 drivers. Each ridge marks its **median** (a line from baseline to curve) and its
+**most common** position(s) (a small triangle above the curve; every one when tied), with a key under the
+chart (#30).
 
 **simulator.html** — Simulates the rest of the season for the **whole grid**. Each race order is drawn slot
 by slot from each driver's own finishing-position histogram (GP results only, finished races only —
@@ -157,7 +166,8 @@ drivers and are dropped when a driver is untracked. Results (#17): a run stores 
 and rank for each simulated season (`lastRun`), so changing the tracked set redraws the same run without
 re-running; changing a setting or the round keeps the results with a "Settings changed since this run" note
 and a Run again button; loading another season clears them. Results: win probability plus ridgeline charts
-of final-points distribution and final championship position, ranked against the full grid. Default
+of final-points distribution and final championship position, ranked against the full grid, each ridge
+marking its median (#30; on the points chart, the exact median total placed between bins). Default
 tracked set is the top 8.
 
 **index.html** — Static landing page with four cards.
@@ -174,10 +184,16 @@ tracked set is the top 8.
 - Theme: light / dark / system through the dropdown in `.theme-bar`. Canvas colors come from
   `F1Theme.chart()`, and `F1Theme.team(color)` swaps colors too dark for the dark background. Redraw on the
   `themechange` event.
+- Flags and numbers (#18): flags before driver names/codes (pickers, legends, end labels, ridge labels,
+  simulator rows), team names (picker headings, constructors rows and labels) and the race name in the round
+  label (circuit country). Driver numbers only in driver pickers, muted, before the name. Not in tooltips or
+  under x-axis rounds. Nationalities come from f1api.dev as names or demonyms; unknown ones get no flag,
+  and canvas labels keep the flag's space so they still line up.
 - Charts: driver codes (VER, NOR…) on chart labels; **short team names** (`shortTeamName()`) in chart
   legends and end labels; **full names** in pickers (driver full name + small muted code tag; full official
   team names).
-- Pickers sit **below** the chart. Rows: checkbox, (rank), team-color dot, name, movement, points. Movement
+- Pickers sit **below** the chart. Rows: checkbox, (rank), team-color dot, flag, number, name, movement, points.
+  Order, ranks, ▲/▼ and presets follow the standings with ties broken by countback (`standingsOrder()`, #20). Movement
   (issue #47) is a green ▲n / red ▼n for places gained/lost in the standings since the previous round
   (`F1Common.standingsMoves()`), blank when unchanged and at round 1.
 - All sort controls are `<select class="ddSelect">` dropdowns at every screen size, preceded by "Sort by".
@@ -230,7 +246,9 @@ since fonts render differently on different machines.
 - Test files (`NN-name.test.js`) export `async (t, h) => { t.check(name, ok, detail) ... }`. Current files:
   smoke (every page, both themes, desktop + phone, no errors), common (#44), knockout (#45/#46),
   status (#23/#48/#49), movement (#47), position (#9), projection (#10),
-  simulator (#39 DNF modeling, #42 auto DNFs, #14 wins, #11 collisions, #17 results kept). Logic is checked against
+  simulator (#39 DNF modeling, #42 auto DNFs, #14 wins, #11 collisions, #17 results kept), flags and markers
+  (#18/#30; movement also covers #20's tie-breaks). The fixture's names mix country names and demonyms, with
+  one unknown. Logic is checked against
   independent calculations written in the tests, not against the site's own helpers.
 - Add tests for each new feature in the same PR. Before trusting a new check, make sure it fails when the
   feature is broken.

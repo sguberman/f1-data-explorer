@@ -20,7 +20,10 @@
      driver here when their retirement's actual cause has been found. */
 const F1Data = (() => {
   const API = 'https://f1api.dev/api';
-  const CACHE_NS = 'f1cache:v1:';
+  const CACHE_NS = 'f1cache:v2:'; // v2 (#18): results now keep driver number/nationality, team nationality and circuit country
+  try{ // drop the old v1 entries, which lack those fields
+    for(let i=localStorage.length-1;i>=0;i--){ const k=localStorage.key(i); if(k && k.startsWith('f1cache:v1:')) localStorage.removeItem(k); }
+  }catch(e){ /* storage unavailable */ }
   const FRESH_ROUND_TTL_MS = 60 * 60 * 1000; // 1 hour — only applied to the latest round seen in a load
   const MAX_ROUNDS = 26;
 
@@ -211,9 +214,15 @@ const F1Data = (() => {
     const resultsArr = race ? (kind==='sprint' ? race.sprintRaceResults : race.results) : null;
     const hasResults = Array.isArray(resultsArr) && resultsArr.length>0;
     const norm = hasResults
-      ? { ok:true, raceName: race.raceName, results: normalizeResults(resultsArr, season, round, kind) }
-      : { ok:false, raceName:null, results:[] };
+      ? { ok:true, raceName: race.raceName, country: circuitCountry(race), results: normalizeResults(resultsArr, season, round, kind) }
+      : { ok:false, raceName:null, country:null, results:[] };
     return { ...norm, failed, _fresh:true, _key:path, _t:Date.now() };
+  }
+
+  // #18: the circuit's country, for the round's flag. f1api.dev sends `circuit` as an object or a one-item array.
+  function circuitCountry(race){
+    const c = Array.isArray(race.circuit) ? race.circuit[0] : race.circuit;
+    return (c && c.country) || null;
   }
 
   function normalizeResults(resultsArr, season, round, kind){
@@ -228,6 +237,9 @@ const F1Data = (() => {
         name: r.driver.name+' '+r.driver.surname,
         teamId: r.team.teamId,
         teamName: r.team.teamName,
+        number: Number.isFinite(parseInt(r.driver.number,10)) ? parseInt(r.driver.number,10) : null, // #18
+        nationality: r.driver.nationality || null,
+        teamNationality: r.team.nationality || r.team.teamNationality || null,
         position: r.position!=null ? parseInt(r.position,10) : null,
         points: r.points||0,
         retired: retiredText,
@@ -281,7 +293,7 @@ const F1Data = (() => {
         // cache every freshly-fetched, CONFIRMED round permanently, including negative results (no
         // sprint that round, or round hasn't happened yet) so we stop re-asking the same question on
         // every load. A round that hasn't happened yet gets a short TTL — it needs rechecking as the season moves on.
-        if(raceR._fresh) cacheSet(raceR._key, {ok:raceR.ok, raceName:raceR.raceName, results:raceR.results}, raceR.ok ? null : FRESH_ROUND_TTL_MS);
+        if(raceR._fresh) cacheSet(raceR._key, {ok:raceR.ok, raceName:raceR.raceName, country:raceR.country, results:raceR.results}, raceR.ok ? null : FRESH_ROUND_TTL_MS);
         if(!raceR.ok){ hitEnd = true; break; } // confirmed: first un-run round — season data ends here
         if(sprintR.failed) failed = true; else noteFetch(sprintR._t);
         if(sprintR._fresh && !sprintR.failed) cacheSet(sprintR._key, {ok:sprintR.ok, raceName:sprintR.raceName, results:sprintR.results}, null);
@@ -289,6 +301,7 @@ const F1Data = (() => {
         rounds.push({
           round: r,
           raceName: raceR.raceName,
+          country: raceR.country || null,
           raceResults: raceR.results,
           // If the sprint fetch itself failed, this reads as "no sprint" just for this one render —
           // nothing was cached for it, so the next load retries and self-corrects.
@@ -308,7 +321,7 @@ const F1Data = (() => {
     // confirmed "no sprint" (that was a second instance of the same class of bug).
     if(rounds.length){
       const last = rounds[rounds.length-1];
-      cacheSet(`${year}/${last.round}/race`, {ok:true, raceName:last.raceName, results:last.raceResults}, FRESH_ROUND_TTL_MS, last._raceT);
+      cacheSet(`${year}/${last.round}/race`, {ok:true, raceName:last.raceName, country:last.country, results:last.raceResults}, FRESH_ROUND_TTL_MS, last._raceT);
       if(!last._sprintFailed){
         cacheSet(`${year}/${last.round}/sprint/race`,
           {ok: !!last.sprintResults, raceName:last.raceName, results:last.sprintResults||[]}, FRESH_ROUND_TTL_MS, last._sprintT);
@@ -355,10 +368,10 @@ const F1Data = (() => {
       rows.forEach(res=>{
         if(res.mechanical && mechanicalMode==='exclude') return; // leave this round out entirely for this driver
         const dk = res.driverId;
-        if(!drivers[dk]) drivers[dk]={driverId:dk,code:res.code,name:res.name,teamId:res.teamId,teamName:res.teamName,rounds:[]};
+        if(!drivers[dk]) drivers[dk]={driverId:dk,code:res.code,name:res.name,teamId:res.teamId,teamName:res.teamName,number:res.number,nationality:res.nationality,rounds:[]};
         drivers[dk].rounds.push({round:r.round,session:res.session,points:res.points});
         const tk = res.teamId;
-        if(!teams[tk]) teams[tk]={teamId:tk,teamName:res.teamName,rounds:[]};
+        if(!teams[tk]) teams[tk]={teamId:tk,teamName:res.teamName,nationality:res.teamNationality,rounds:[]};
         teams[tk].rounds.push({round:r.round,session:res.session,points:res.points});
       });
     });
