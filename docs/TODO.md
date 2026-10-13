@@ -1,8 +1,8 @@
 # Open issues
 
-Numbered issues that are logged but not yet done. Numbers are permanent. New issues continue from #55.
-An issue moves to `DONE.md` **only when the owner explicitly says it is closed**. Finishing and verifying
-the work is not enough on its own.
+Numbered issues that are logged but not yet done. Numbers are permanent. New issues continue from #56.
+Each issue's pull request moves it to `DONE.md`; it's closed when the owner merges that PR (or says to merge
+it). See "Review and merge" in `PROJECT_CONTEXT.md`.
 
 | # | Area | Issue |
 |---|------|-------|

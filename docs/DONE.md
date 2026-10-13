@@ -171,3 +171,9 @@ and uploads page screenshots.
 ## #54 — CLAUDE.md
 `CLAUDE.md` is read automatically at the start of each Claude Code session; it points to
 `PROJECT_CONTEXT.md` and summarizes the owner's standing rules.
+
+## #55 — README and docs/ folder
+Added `README.md` (what the site is, live link, how it works, repo layout, running it locally and the
+tests, how changes are made). Moved `PROJECT_CONTEXT.md`, `TODO.md`, `DONE.md` and `BRAINSTORM.md` into
+`docs/`; `CLAUDE.md` stays at the repo root, where Claude Code reads it. Updated `CLAUDE.md` and the file
+layout in `PROJECT_CONTEXT.md`.

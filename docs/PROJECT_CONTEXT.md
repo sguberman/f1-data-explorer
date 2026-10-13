@@ -27,7 +27,11 @@ site/                 The website (deployed as the site root, so URLs are unchan
   theme.js            Light/dark/system theme (dropdown in .theme-bar) + canvas color palette (F1Theme).
   theme.css           Shared CSS variables (both themes), controls, pills, dropdowns, legends, pickers.
 .github/workflows/    static.yml deploys site/ on pushes to main that touch site/ (or the workflow).
-TODO.md / DONE.md / BRAINSTORM.md / PROJECT_CONTEXT.md   Project tracking docs (not deployed).
+tests/                Browser tests, run on every PR (see "Tests" below). Not deployed.
+docs/                 Project docs (not deployed): PROJECT_CONTEXT.md (this file), TODO.md (open issues),
+                      DONE.md (closed issues), BRAINSTORM.md (unapproved ideas).
+README.md             What the project is, links, how to run the tests. CLAUDE.md: Claude Code session notes
+                      (stays at the repo root, where Claude Code looks for it).
 ```
 
 Each HTML page has its own inline `<style>` and `<script>` for page-specific code. Code that is identical
@@ -219,7 +223,7 @@ since fonts render differently on different machines.
 ## Instructions to preserve (owner's standing workflow)
 
 1. **Track every request as a numbered issue**, including ones not being worked on yet. Numbers are
-   permanent; the next new issue is **#55**. Log new issues in `TODO.md`.
+   permanent; the next new issue is **#56**. Log new issues in `TODO.md`.
 2. **Only the owner closes issues.** Each issue's PR moves it from `TODO.md` to `DONE.md`, so the owner
    merging that PR (or telling Claude to merge it) is what closes it; the owner can also close an issue by
    saying so. Finishing and verifying the work is not enough on its own. See "Review and merge" below.
