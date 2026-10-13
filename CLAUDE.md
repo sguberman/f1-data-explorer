@@ -3,8 +3,10 @@
 Static Formula 1 statistics site (2026 season), hosted on GitHub Pages, with live data from f1api.dev.
 
 **Read `docs/PROJECT_CONTEXT.md` first.** It's the full handoff: architecture, data layer, design
-requirements, decisions, known issues, tests, and the owner's standing rules. Then `docs/TODO.md` (open
-issues), `docs/DONE.md` (closed issues) and `docs/BRAINSTORM.md` (ideas, not yet approved).
+requirements, decisions, known issues, tests, and the owner's standing rules. Then the open
+[GitHub issues](https://github.com/sguberman/f1-data-explorer/issues), `docs/DONE.md` (archive of legacy
+issues #1–#55) and `docs/BRAINSTORM.md` (ideas, not yet approved). Issue numbers before the move to GitHub
+(issue #9) are legacy and overlap GitHub's; see "Issue numbers" in `docs/PROJECT_CONTEXT.md`.
 
 ## Layout
 
@@ -19,10 +21,10 @@ issues), `docs/DONE.md` (closed issues) and `docs/BRAINSTORM.md` (ideas, not yet
 
 ## Standing rules (summary; details in docs/PROJECT_CONTEXT.md)
 
-- Track every request as a numbered issue in `docs/TODO.md`. Numbers are permanent. "Log an issue" means log
+- Track every request as a GitHub issue (default labels: enhancement, bug, documentation). "Log an issue" means log
   only; work on it when told.
-- Only the owner closes issues: each issue's PR moves it to `docs/DONE.md`, and the owner merging it (or saying
-  to merge) closes it.
+- Only the owner closes issues: each issue's PR says `Closes #NN`, and the owner merging it (or saying to
+  merge) closes it.
 - Explain proposed changes before applying them; show mockups or options first for design-heavy work.
   Preserve the current design and behavior unless asked.
 - Commit messages start with `issue #xx: `. No `Co-Authored-By`, session links or other attribution lines.

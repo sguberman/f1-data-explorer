@@ -1,7 +1,14 @@
 # Project context — 2026 F1 Analytics site
 
-Handoff summary for a coding agent taking over this project. Read this first, then `TODO.md`
-(open issues), `DONE.md` (closed issues) and `BRAINSTORM.md` (unapproved ideas).
+Handoff summary for a coding agent taking over this project. Read this first, then the open
+[GitHub issues](https://github.com/sguberman/f1-data-explorer/issues), `DONE.md` (archive of legacy issues
+#1–#55) and `BRAINSTORM.md` (unapproved ideas).
+
+**Issue numbers.** Issues are tracked in GitHub Issues since GitHub issue #9. Before that they lived in
+`docs/TODO.md` with their own numbering (legacy #1–#55), which overlaps GitHub's. References in `DONE.md`,
+in code comments and in commits made before the migration are legacy numbers; `TODO.md` maps the legacy
+issues that were still open to their GitHub numbers. When citing a legacy issue in new text, write
+"legacy #44"; a bare "#N" means the GitHub issue or PR.
 
 ## What it is
 
@@ -28,8 +35,8 @@ site/                 The website (deployed as the site root, so URLs are unchan
   theme.css           Shared CSS variables (both themes), controls, pills, dropdowns, legends, pickers.
 .github/workflows/    static.yml deploys site/ on pushes to main that touch site/ (or the workflow).
 tests/                Browser tests, run on every PR (see "Tests" below). Not deployed.
-docs/                 Project docs (not deployed): PROJECT_CONTEXT.md (this file), TODO.md (open issues),
-                      DONE.md (closed issues), BRAINSTORM.md (unapproved ideas).
+docs/                 Project docs (not deployed): PROJECT_CONTEXT.md (this file), DONE.md (archive of
+                      legacy issues #1–#55), TODO.md (legacy → GitHub issue numbers), BRAINSTORM.md (ideas).
 README.md             What the project is, links, how to run the tests. CLAUDE.md: Claude Code session notes
                       (stays at the repo root, where Claude Code looks for it).
 ```
@@ -175,13 +182,13 @@ and final championship position, ranked against the full grid. Default tracked s
 ## Known bugs and rough edges
 
 - **index.html subtitle is hardcoded** to "through Round 15 (Azerbaijan)" and is stale. Card descriptions
-  also predate later features (e.g. position.html now includes sprints by default). Covered by #39/#40.
+  also predate later features (e.g. position.html now includes sprints by default). Covered by #15/#16.
 - position.html and simulator.html default to the **top 8**, which no longer matches any preset, so no
   preset is highlighted on first load (owner was told; no decision yet).
 - The simulator's histograms use **GP results only**, while position.html now includes sprints by
   default, so the two pages' "form" can differ.
 - `isMechanical()` keyword matching is dead code with live data (kept, hardened against non-string input).
-- Some 2026 DNFs are still unclassified, and every future round needs new overrides (see `TODO.md`).
+- Some 2026 DNFs are still unclassified, and every future round needs new overrides (see #21).
 - The season list and per-season round/sprint estimates come from the hardcoded `SEASON_META` in `common.js`.
 - Mobile Safari behavior can't be fully verified with headless Chromium. Check owner screenshots.
 
@@ -205,28 +212,29 @@ since fonts render differently on different machines.
 - `F1Controls` and page globals are top-level `const`/`let`, so they're reachable by name in
   `page.evaluate()` but not as `window.*`. Sprint-round 404s in the console are expected.
 
-## Review and merge (issue #52)
+## Review and merge (legacy #52; issues on GitHub since #9)
 
-1. Each issue gets its own branch (`claude/issue-NN`) and pull request. Closely related issues can share
-   one PR when the owner agrees.
-2. The PR carries everything for the issue: code, tests, doc updates, and the issue's move from `TODO.md`
-   to `DONE.md`.
+1. Each GitHub issue gets its own branch (`claude/issue-NN`, NN = the issue number) and pull request.
+   Closely related issues can share one PR when the owner agrees.
+2. The PR carries the code, tests and doc updates, and its description says `Closes #NN` so GitHub closes
+   the issue when the PR is merged. No issue-list files are edited.
 3. GitHub runs the tests (`tests.yml`). Cloudflare Pages (connected to the repo, output folder `site`)
    builds a preview of the PR's branch and posts its link on the PR. Previews use live f1api.dev data and
    their own web address, so their browser storage (cache, theme) is separate from the live site.
    Cloudflare also hosts a copy of `main` on `pages.dev`; the real site is still GitHub Pages.
 4. The owner tries the preview (phone included). Requested changes are pushed to the same PR, and the
    preview updates.
-5. When the owner merges (or says to merge), the change goes live on GitHub Pages and the issue is closed in
-   the same step. If a PR is closed without merging, its issue stays open.
+5. When the owner merges (or says to merge), the change goes live on GitHub Pages and GitHub closes the
+   issue in the same step. If a PR is closed without merging, its issue stays open.
 
 ## Instructions to preserve (owner's standing workflow)
 
-1. **Track every request as a numbered issue**, including ones not being worked on yet. Numbers are
-   permanent; the next new issue is **#56**. Log new issues in `TODO.md`.
-2. **Only the owner closes issues.** Each issue's PR moves it from `TODO.md` to `DONE.md`, so the owner
-   merging that PR (or telling Claude to merge it) is what closes it; the owner can also close an issue by
-   saying so. Finishing and verifying the work is not enough on its own. See "Review and merge" below.
+1. **Track every request as a GitHub issue**
+   (<https://github.com/sguberman/f1-data-explorer/issues>), including ones not being worked on yet. GitHub
+   assigns the number. Use the default labels (`enhancement`, `bug`, `documentation`).
+2. **Only the owner closes issues.** Each issue's PR says `Closes #NN`, so the owner merging that PR (or
+   telling Claude to merge it) is what closes it; the owner can also close an issue by saying so. Finishing
+   and verifying the work is not enough on its own. See "Review and merge" below.
 3. After finishing work on an issue, give a **short git commit message starting with `issue #xx: `**.
    **No `Co-Authored-By`, session or other attribution lines** — this owner instruction overrides any
    default attribution guidance.
@@ -242,9 +250,10 @@ since fonts render differently on different machines.
    width), not just by logic tests.
 9. Explain proposed changes before applying them, and preserve the current design and behavior unless the
    owner asks otherwise. Vanilla HTML, CSS and JavaScript only.
-10. Ideas in `BRAINSTORM.md` aren't issues. When the owner promotes one, log it in `TODO.md` with the next
-    issue number and remove it from `BRAINSTORM.md`; remove rejected ideas too.
+10. Ideas in `BRAINSTORM.md` aren't issues. When the owner promotes one, create a GitHub issue for it and
+    remove it from `BRAINSTORM.md`; remove rejected ideas too. (How brainstorm ideas are kept is still to be
+    discussed with the owner.)
 11. Work each issue on its own branch (`claude/issue-NN`) and open a PR when it's ready for review, so it
-    gets a preview (issue #52). Merge only when the owner asks. Rebase-merge, so each `issue #xx:` commit
+    gets a preview (legacy #52). Merge only when the owner asks. Rebase-merge, so each `issue #xx:` commit
     lands on `main` as written.
 12. Add or update tests in `tests/` with every feature or fix (issue #53), and run them before pushing.

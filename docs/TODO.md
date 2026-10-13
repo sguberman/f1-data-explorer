@@ -1,31 +1,24 @@
-# Open issues
+# Open issues → GitHub Issues
 
-Numbered issues that are logged but not yet done. Numbers are permanent. New issues continue from #56.
-Each issue's pull request moves it to `DONE.md`; it's closed when the owner merges that PR (or says to merge
-it). See "Review and merge" in `PROJECT_CONTEXT.md`.
+Issues are tracked in **[GitHub Issues](https://github.com/sguberman/f1-data-explorer/issues)** since
+GitHub issue #9. This file used to be the issue list, with its own numbering ("legacy" numbers, #1–#55)
+that overlaps GitHub's.
 
-| # | Area | Issue |
-|---|------|-------|
-| 8 | New tool | A qualifying-pace comparison tool for any drivers, not limited to teammates. |
-| 11 | simulator.html | Option to simulate two specific drivers taking each other out in the same race. |
-| 14 | New tool | A head-to-head tool comparing various stats for two drivers. |
-| 29 | Data | For completed seasons, which won't change, store and serve the data statically from the site (for example, a build-time JSON snapshot per season) instead of fetching f1api.dev live every time. Keep live fetching only for the in-progress season. |
-| 38 | simulator.html | Add a manual control for the number of **wins** in the remaining races for tracked drivers, using the same stepper UI pattern as the existing DNF controls. |
-| 39 | index.html | Improve index.html. (Note: its subtitle is hardcoded to "through Round 15 (Azerbaijan)" and is stale, and the card descriptions predate several features. See Known bugs in `PROJECT_CONTEXT.md`.) |
-| 40 | All pages | Improve the lede / subtitle text across the site. |
-| 41 | simulator.html | Changing which drivers are tracked should not require re-running the simulation. (Today `onSelectionChanged()` calls `hideResults()`, which discards results.) |
-| 42 | All pages | Add national flags to driver names, team names, and rounds (round names/numbers). Add driver numbers to driver names. |
-| 43 | data.js | Research mechanical-vs-other DNF causes for prior (pre-2026) seasons and add them to `MANUAL_OVERRIDES`, using the same hand-researched approach as issue #36. |
-| 50 | Pickers | Picker order and the ▲/▼ movement arrows sort by points only, while the championship-position chart (#9) breaks ties by countback of Grand Prix finishes. When two entries are level on points the picker order can disagree with the chart. Make them use the same ranking (`F1Common.standingsByRound()`). |
+Legacy issues that were still open, and their GitHub numbers:
 
-## Pending research inside a closed issue (#36)
+| Legacy | GitHub | Issue |
+|---|---|---|
+| 8 | #10 | Qualifying-pace comparison tool |
+| 11 | #11 | Simulator: two drivers taking each other out in the same race |
+| 14 | #12 | Head-to-head tool comparing two drivers |
+| 29 | #13 | Serve completed seasons' data statically instead of fetching live |
+| 38 | #14 | Simulator: manual win counts for tracked drivers |
+| 39 | #15 | Improve the index page |
+| 40 | #16 | Improve the lede / subtitle text across the site |
+| 41 | #17 | Simulator: keep results when the tracked drivers change |
+| 42 | #18 | National flags and driver numbers |
+| 43 | #19 | Mechanical-vs-other DNF causes for pre-2026 seasons |
+| 50 | #20 | Picker order and ▲/▼ arrows should break ties like the standings |
+| (pending research in legacy #36) | #21 | 2026 DNF causes: unresolved retirements and new rounds |
 
-These 2026 DNFs have no cause found yet and are deliberately left unclassified in `MANUAL_OVERRIDES`
-(they count as non-mechanical by default):
-
-- Round 5: Alonso, Lindblad
-- Round 6: Sainz
-- Round 7: Bearman, Albon, Bottas, Stroll
-- Round 14: Sainz
-
-Each new round after round 16 also needs its DNFs researched and added to `MANUAL_OVERRIDES`.
+Closed legacy issues are archived in [`DONE.md`](DONE.md).

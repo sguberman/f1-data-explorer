@@ -1,6 +1,8 @@
-# Closed issues
+# Closed issues (legacy, #1–#55)
 
-Issues the owner has explicitly confirmed closed. Details are condensed from the project's issue log.
+Archive of the issues tracked here before the move to [GitHub Issues](https://github.com/sguberman/f1-data-explorer/issues)
+(GitHub issue #9). Numbers below are legacy numbers, which overlap GitHub's. New issues are closed on GitHub
+when their PR is merged; this file isn't updated any more. Details are condensed from the project's issue log.
 
 ## #1–#6 — Pre-tracking foundation
 Done before numbered tracking began, so individual details weren't recorded. Together they produced:

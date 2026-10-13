@@ -27,7 +27,7 @@ API and cached locally. The site is hosted on GitHub Pages.
 |---|---|
 | `site/` | The website. The only folder that's deployed. |
 | `tests/` | Automated browser tests (headless Chromium with fake race data). |
-| `docs/` | Project docs: [context and design notes](docs/PROJECT_CONTEXT.md), [open issues](docs/TODO.md), [closed issues](docs/DONE.md), [ideas](docs/BRAINSTORM.md). |
+| `docs/` | Project docs: [context and design notes](docs/PROJECT_CONTEXT.md), [closed issues before the move to GitHub Issues](docs/DONE.md), [ideas](docs/BRAINSTORM.md). |
 | `.github/workflows/` | GitHub Actions: deploy `site/` to GitHub Pages, and run the tests on every pull request. |
 | `CLAUDE.md` | Notes for Claude Code sessions. |
 
@@ -39,7 +39,7 @@ API and cached locally. The site is hosted on GitHub Pages.
 
 ## How changes are made
 
-Each change is tracked as a numbered issue in [docs/TODO.md](docs/TODO.md) and made on its own branch and
-pull request. GitHub runs the tests, and Cloudflare Pages posts a preview link on the PR. Merging the PR
-puts the change live and closes the issue. Details: "Review and merge" in
+Each change is tracked as a [GitHub issue](https://github.com/sguberman/f1-data-explorer/issues) and made
+on its own branch and pull request. GitHub runs the tests, and Cloudflare Pages posts a preview link on the
+PR. Merging the PR puts the change live and closes the issue. Details: "Review and merge" in
 [docs/PROJECT_CONTEXT.md](docs/PROJECT_CONTEXT.md).
