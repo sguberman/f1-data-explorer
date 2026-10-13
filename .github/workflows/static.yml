@@ -5,6 +5,10 @@ on:
   # Runs on pushes targeting the default branch
   push:
     branches: ["main"]
+    # issue #51: only redeploy when the site itself (or this workflow) changes, not for docs-only commits
+    paths:
+      - "site/**"
+      - ".github/workflows/static.yml"
 
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
@@ -34,8 +38,9 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          # Upload entire repository
-          path: '.'
+          # issue #51: deploy only the site's files. Project docs and tests live elsewhere in the repo
+          # and are never served over HTTP.
+          path: 'site'
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v5

@@ -12,19 +12,22 @@ vanilla JavaScript, plus Chart.js 4.4.1 from cdnjs.
 
 ## File structure
 
+Only `site/` is deployed to GitHub Pages (issue #51); everything else in the repo is never served.
+
 ```
-index.html          Landing page: cards linking to the four tools.
-drivers.html        Drivers' championship: cumulative points line chart, projections, knockout line.
-constructors.html   Constructors' championship: same chart pattern for teams.
-position.html       Race finishing-position ridgeline chart per driver, with sort/show options.
-simulator.html      Monte Carlo rest-of-season title simulator with ridgeline result charts.
-common.js           F1Common: team colors/short names, SEASON_META + season list, withAlpha, isNarrow,
-                    rankedDriverIds, driver picker row, preset highlighting (issue #44).
-data.js             F1Data: fetch, cache (localStorage), normalize f1api.dev data; MANUAL_OVERRIDES.
-controls.js         F1Controls: shared season dropdown + "as of round" slider; emits events.
-theme.js            Light/dark/system theme (dropdown in .theme-bar) + canvas color palette (F1Theme).
-theme.css           Shared CSS variables (both themes), controls, pills, dropdowns, legends, checkboxes, pickers.
-TODO.md / DONE.md / BRAINSTORM.md / PROJECT_CONTEXT.md   Project tracking docs.
+site/                 The website (deployed as the site root, so URLs are unchanged)
+  index.html          Landing page: cards linking to the four tools.
+  drivers.html        Drivers' championship: cumulative points line chart, projections, knockout line.
+  constructors.html   Constructors' championship: same chart pattern for teams.
+  position.html       Race finishing-position ridgeline chart per driver, with sort/show options.
+  simulator.html      Monte Carlo rest-of-season title simulator with ridgeline result charts.
+  common.js           F1Common: helpers shared by the chart pages (issue #44 and later).
+  data.js             F1Data: fetch, cache (localStorage), normalize f1api.dev data; MANUAL_OVERRIDES.
+  controls.js         F1Controls: shared season dropdown + "as of round" slider; emits events.
+  theme.js            Light/dark/system theme (dropdown in .theme-bar) + canvas color palette (F1Theme).
+  theme.css           Shared CSS variables (both themes), controls, pills, dropdowns, legends, pickers.
+.github/workflows/    static.yml deploys site/ on pushes to main that touch site/ (or the workflow).
+TODO.md / DONE.md / BRAINSTORM.md / PROJECT_CONTEXT.md   Project tracking docs (not deployed).
 ```
 
 Each HTML page has its own inline `<style>` and `<script>` for page-specific code. Code that is identical
@@ -149,7 +152,7 @@ and final championship position, ranked against the full grid. Default tracked s
   with `animation:false`. The only fetches are loading a season, and the explicit Refresh data / Retry clicks.
 - Mobile: breakpoint 600px (`isNarrow()` in JS, media queries in CSS). Layout must work on a ~390px phone.
   `-webkit-text-size-adjust:100%` is set to stop Mobile Safari inflating text.
-- Static files only. No server-side code, no build step.
+- Static files only, all under `site/`. No server-side code, no build step.
 
 ## Important implementation decisions
 
