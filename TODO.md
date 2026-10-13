@@ -7,7 +7,6 @@ the work is not enough on its own.
 | # | Area | Issue |
 |---|------|-------|
 | 8 | New tool | A qualifying-pace comparison tool for any drivers, not limited to teammates. |
-| 10 | New chart | A chart showing projected championship finishing position and/or projected final points by round. |
 | 11 | simulator.html | Option to simulate two specific drivers taking each other out in the same race. |
 | 14 | New tool | A head-to-head tool comparing various stats for two drivers. |
 | 29 | Data | For completed seasons, which won't change, store and serve the data statically from the site (for example, a build-time JSON snapshot per season) instead of fetching f1api.dev live every time. Keep live fetching only for the in-progress season. |

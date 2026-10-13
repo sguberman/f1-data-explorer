@@ -144,3 +144,11 @@ New card below the picker on drivers.html and constructors.html: every driver/te
 top, a flat segment at each round's position joined to the next round by an angled line. Always shows the
 whole loaded season (independent of the round slider and picker); ties on points broken by countback of
 Grand Prix finishes. Shared renderer in `common.js` (`standingsByRound()`, `renderPositionChart()`).
+
+## #10 — Projected final points / position over time
+Drivers and constructors pages now run: points chart → **Projected final points** (picker selection) →
+picker → **Championship position by round** (everyone). The projected-points chart shows what the points
+chart's projection (points so far + last-5-participated-rounds average × rounds left) said after each
+round; its last value equals the end of the points chart's projection line. The position card's **Show**
+dropdown switches between actual standings and projected final standings. Both ignore the round slider.
+Shared code in `common.js` (`projectionsByRound()`, `renderProjectedPointsChart()`).
