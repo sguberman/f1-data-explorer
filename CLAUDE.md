@@ -1,6 +1,7 @@
 # CLAUDE.md
 
-Static Formula 1 statistics site (2026 season), hosted on GitHub Pages, with live data from f1api.dev.
+Static Formula 1 statistics site (2026 season) at <https://f1.gubes.net/>, hosted on GitHub Pages, with live
+data from f1api.dev.
 
 **Read `docs/PROJECT_CONTEXT.md` first.** It's the full handoff: architecture, data layer, design
 requirements, decisions, known issues, tests, and the owner's standing rules. Then the open

@@ -2,7 +2,7 @@
 
 Interactive charts and a title simulator for the 2026 Formula 1 season (2021–2025 seasons load too).
 
-**Live site: <https://sguberman.github.io/f1-data-explorer/>**
+**Live site: <https://f1.gubes.net/>**
 
 ## What's on the site
 

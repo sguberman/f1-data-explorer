@@ -17,6 +17,13 @@ It is hosted by the owner on **GitHub Pages** and fetches live race data in the 
 API at <https://f1api.dev/docs>. There is no server, no build step and no framework: plain HTML, CSS and
 vanilla JavaScript, plus Chart.js 4.4.1 from cdnjs.
 
+**Hosting (#37).** The live site is <https://f1.gubes.net/>. The custom domain is set in this repo's
+Settings → Pages; since `site/` is deployed by a GitHub Actions workflow, no `CNAME` file is needed in the
+repo. DNS is at Hover: a CNAME `f1` → `sguberman.github.io`, plus the `_github-pages-challenge` TXT record
+that verifies the domain with GitHub. `gubes.net` and `www.gubes.net` forward to the site using Hover's
+Forwards. `sguberman.github.io/f1-data-explorer/` redirects to the custom domain automatically. PR
+previews are on Cloudflare Pages (`*.f1-data-explorer.pages.dev`; see "Review and merge").
+
 ## File structure
 
 Only `site/` is deployed to GitHub Pages (issue #51); everything else in the repo is never served.
