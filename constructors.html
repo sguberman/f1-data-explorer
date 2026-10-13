@@ -32,6 +32,17 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
 <div id="endLegend" class="endLegend"></div>
 <div id="sm" style="font-size:12px;color:var(--muted);line-height:1.6;margin:10px 2px 2px;"></div>
 </div>
+<div class="card" style="margin-bottom:16px;">
+<div style="display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px;margin:0 0 10px;">
+ <span style="font-size:13px;font-weight:600;color:var(--ink);">Projected final points</span>
+ <span style="font-size:12px;color:var(--sub);">same teams as above · after each round</span>
+</div>
+<div style="position:relative;width:100%;" id="projWrap" class="f1-skel">
+<canvas id="projChart" role="img" aria-label="Line chart of each selected team's projected final championship points, as projected after each round of the season."></canvas>
+</div>
+<div id="projLegend" class="endLegend"></div>
+<div style="font-size:12px;color:var(--muted);line-height:1.6;margin:8px 2px 2px;">What the projection on the chart above would have said after each round: points so far plus the average of the last 5 rounds each team took part in, for every round left.</div>
+</div>
 <div class="card">
 <div style="font-size:12px;color:var(--sub);margin-bottom:10px;">Teams shown</div>
 <div class="btnrow" id="presetRow" style="margin-bottom:10px;">
@@ -43,14 +54,22 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
 <div id="teamPicker" class="f1-skel"></div>
 </div>
 <div class="card" style="margin-top:16px;">
-<div style="display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px;margin:0 0 10px;">
+<div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;margin:0 0 10px;">
  <span style="font-size:13px;font-weight:600;color:var(--ink);">Championship position by round</span>
  <span id="posSub" style="font-size:12px;color:var(--sub);"></span>
+ <span style="flex:1;"></span>
+ <span style="display:inline-flex;align-items:center;gap:8px;">
+  <span style="font-size:12px;color:var(--sub);">Show</span>
+  <select id="posView" class="ddSelect" aria-label="Show actual or projected standings">
+   <option value="actual">Actual standings</option>
+   <option value="proj">Projected final standings</option>
+  </select>
+ </span>
 </div>
 <div style="position:relative;width:100%;" id="posWrap" class="f1-skel">
 <canvas id="posChart" role="img" aria-label="Line chart of every team's position in the constructors' championship after each round of the season."></canvas>
 </div>
-<div style="font-size:12px;color:var(--muted);line-height:1.6;margin:8px 2px 2px;">Position in the constructors' standings after each round, for the whole season so far. Ties on points are broken by countback (most wins, then most second places, and so on).</div>
+<div id="posNote" style="font-size:12px;color:var(--muted);line-height:1.6;margin:8px 2px 2px;"></div>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script>
@@ -60,19 +79,46 @@ Chart.defaults.font.family=ff;Chart.defaults.font.size=11;
 let D=[], N=0, L=0, R=[], thr=[], lead=[], P, chart, usingRealCalendar=false;
 let currentYear=null, currentSeasonRounds=[], currentCalendar=null, selectedTeamIds=null;
 
-// issue #9: championship position by round, for every team (shared renderer in common.js).
+// Season length used by the projections — the same N as recompute() uses for the points chart.
+function totalRounds(){
+ const cal=currentCalendar, M=currentSeasonRounds.length;
+ return cal && cal.totalRounds>0 ? Math.max(cal.totalRounds, M) : Math.max(F1Common.seasonMeta(currentYear).rounds, M);
+}
+
+// issue #9/#10: championship position by round, for every team — actual standings, or the projected final
+// standings after each round (Show dropdown). Shared renderer in common.js; ignores the round slider.
 let posChart=null;
+const POS_NOTES={
+ actual:"Position in the constructors' standings after each round, for the whole season so far. Ties on points are broken by countback (most wins, then most second places, and so on).",
+ proj:"Projected finishing order after each round, from the same projection as the chart at the top (points so far plus the last-5-round average for every round left). Ties go to the higher-placed team in the standings."
+};
 function drawPositions(){
- posChart = F1Common.renderPositionChart(document.getElementById('posChart'), currentSeasonRounds, 'teams', posChart);
+ const projected = document.getElementById('posView').value==='proj';
+ posChart = F1Common.renderPositionChart(document.getElementById('posChart'), currentSeasonRounds, 'teams', posChart,
+   {projected, totalRounds: currentSeasonRounds.length ? totalRounds() : 0});
  document.getElementById('posSub').textContent = currentSeasonRounds.length ? `all teams · through round ${currentSeasonRounds.length}` : '';
+ document.getElementById('posNote').textContent = POS_NOTES[projected?'proj':'actual'];
+}
+document.getElementById('posView').addEventListener('change', drawPositions);
+
+// issue #10: projected final points after each round, for the picker selection. Projections are computed
+// once per season (projData); redrawing only rebuilds the chart, and only when the selection changes.
+let projData=null, projChart=null, projKey=null;
+function drawProjPoints(force){
+ const ids=selectedTeamIds||[], key=ids.join(',');
+ if(!force && key===projKey) return;
+ projKey=key;
+ projChart = F1Common.renderProjectedPointsChart(document.getElementById('projChart'), document.getElementById('projLegend'), projData, 'teams', ids, projChart);
 }
 
 async function buildFromSelection(detail){
  currentYear = detail.year;
  currentSeasonRounds = detail.seasonRounds;
- drawPositions(); // issue #9: always the full season, independent of the round slider
- if(!currentSeasonRounds.length){ D=[]; if(chart) chart.destroy(); return; }
+ if(!currentSeasonRounds.length){ D=[]; if(chart) chart.destroy(); projData=null; drawPositions(); drawProjPoints(true); return; }
  currentCalendar = await F1Data.getCalendar(currentYear);
+ // issue #9/#10: whole-season charts, independent of the round slider (need the calendar for the season length)
+ projData = F1Common.projectionsByRound(currentSeasonRounds, 'teams', totalRounds()); projKey=null;
+ drawPositions();
  selectedTeamIds = null; // reset default whenever the season changes; round changes never touch this
  L = detail.round;
  const cum = F1Data.cumulative(currentSeasonRounds, L, 'include');
@@ -180,6 +226,7 @@ function recompute(round){
 
  draw();
  renderTeamPicker();
+ drawProjPoints(); // issue #10: follows the selection; no-op when only the round changed
 }
 
 function draw(){
@@ -271,11 +318,11 @@ function positionHandle(){
 
 window.addEventListener('f1selection', e=>buildFromSelection(e.detail));
 window.addEventListener('f1roundchange', e=>{ if(currentSeasonRounds.length) recompute(e.detail.round); });
-window.addEventListener('themechange',()=>{ draw(); drawPositions(); });
+window.addEventListener('themechange',()=>{ draw(); drawPositions(); drawProjPoints(true); });
 let lastNarrow=F1Common.isNarrow();
 window.addEventListener('resize', ()=>{
  if(chart) positionHandle();
- const now=F1Common.isNarrow(); if(now!==lastNarrow){ lastNarrow=now; draw(); drawPositions(); }
+ const now=F1Common.isNarrow(); if(now!==lastNarrow){ lastNarrow=now; draw(); drawPositions(); drawProjPoints(true); }
 });
 F1Controls.mount('f1controls', {defaultYear:2026});
 </script>

@@ -33,7 +33,8 @@ across pages lives in shared files instead (issue #44), so a change is made once
   `teamColor()`, `SHORT_TEAM_NAMES` / `shortTeamName()`, `SEASON_META` / `seasonMeta()` / `YEARS`,
   `isNarrow()`, `withAlpha()`, `rankedDriverIds()`, `driverPickerRowHTML()`, `markActivePreset()`,
   `drawKnockoutLabel()` (the "Below the knockout line" label on both championship charts),
-  `standingsByRound()` / `renderPositionChart()` (the championship-position chart, issue #9).
+  `standingsByRound()` / `renderPositionChart()` (the championship-position chart, issue #9),
+  `projectionsByRound()` / `renderProjectedPointsChart()` (projection history, issue #10).
 - `theme.css`: picker list styles (`.pickerRow`, `.pickerDot`, …).
 Still per page, because they really differ: chart code, `renderDriverPicker()` / `renderTeamPicker()`
 (sorting/grouping), constructors' team picker row, each page's preset lists in `updatePresetActive()`, and
@@ -93,11 +94,20 @@ legend grouped by short team name, end-of-line labels (replaced by a ranked list
 ≤600px). Picker below the chart: "Sort by" Team/Ranking dropdown, presets All/None/Top 5/Top 10, default
 Top 5.
 
-Both championship pages also have a **Championship position by round** card below the picker (issue #9):
-every driver/team as a line, P1 at the top, a flat segment at each round's position joined to the next
-round by an angled line. It always shows the whole loaded season (ignores the round slider and the
-picker), ranks by points with ties broken by countback of Grand Prix finishes, uses short team names /
-driver codes as end labels and the solid/dashed teammate convention.
+Both championship pages are laid out (issue #10, "Layout A"): points chart → **Projected final points**
+card → picker → **Championship position by round** card. Cards above the picker follow the picker
+selection; the card below it shows every driver/team.
+- **Projected final points** (issue #10): for the picker selection, what the points chart's projection
+  (points so far + last-5-participated-rounds average × rounds left) said after each round. Its last value
+  equals the end of the points chart's projection line. End labels on wide screens, ranked list (`.endLegend`)
+  on narrow ones. Projections are computed once per season (`projData`) and the chart only rebuilds when the
+  selection changes.
+- **Championship position by round** (issue #9): every driver/team as a line, P1 at the top, a flat segment
+  at each round's position joined to the next round by an angled line; ties broken by countback of Grand
+  Prix finishes. A **Show** dropdown switches between *Actual standings* and *Projected final standings*
+  (issue #10: ranked by the projection after each round; ties go to the higher-placed entry).
+- Both cards always cover the whole loaded season and ignore the round slider; driver codes / short team
+  names as end labels, solid/dashed teammate convention.
 
 **constructors.html** — Same chart pattern for teams (remaining points per weekend 43 GP + 15 sprint).
 Knockout line based on the highest-ranked selected team. Presets All/None/Top 2/Top 5, default Top 5.

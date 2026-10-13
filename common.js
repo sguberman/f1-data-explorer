@@ -136,27 +136,59 @@ const F1Common = (() => {
    return { ids, pos, info };
   }
 
+  // issue #10: what the points chart's projection would have said after each round, using only the results
+  // available then — the same math as the chart: points so far + (average points over the last 5 rounds
+  // the entry took part in) x rounds left in the season (totalRounds). Projected position ranks every
+  // entry by that projection (ties: current standings). Returns { ids (latest projected order),
+  // pts: {id: [..]}, pos: {id: [..]}, info } with null before an entry's first round.
+  function projectionsByRound(seasonRounds, kind, totalRounds){
+   const actual = standingsByRound(seasonRounds, kind), M=seasonRounds.length;
+   const pts={}, pos={};
+   actual.ids.forEach(id=>{ pts[id]=new Array(M).fill(null); pos[id]=new Array(M).fill(null); });
+   for(let k=1;k<=M;k++){
+     const N=Math.max(totalRounds, k);
+     const rows = Object.values(F1Data.cumulative(seasonRounds, k, 'include')[kind]).map(e=>{
+       const id = kind==='teams' ? e.teamId : e.driverId;
+       const w = Array.from({length:k},(_,ri)=>e.rounds.filter(x=>x.round===ri+1).reduce((s,x)=>s+x.points,0));
+       const total = w.reduce((a,b)=>a+b,0);
+       const last5 = [...new Set(e.rounds.map(x=>x.round))].sort((a,b)=>a-b).slice(-5);
+       const rate = last5.length ? last5.reduce((s,r)=>s+w[r-1],0)/last5.length : 0;
+       return {id, proj: total + rate*(N-k), now: actual.pos[id][k-1]};
+     });
+     rows.sort((a,b)=>b.proj-a.proj || a.now-b.now).forEach((r,i)=>{ pts[r.id][k-1]=r.proj; pos[r.id][k-1]=i+1; });
+   }
+   const ids = actual.ids.slice().sort((a,b)=>pos[a][M-1]-pos[b][M-1]);
+   return { ids, pts, pos, info: actual.info };
+  }
+
+  // Teammate dash pattern, given ids in display order: first of each team solid, the next dashed
+  // (drivers only) — the points chart's convention.
+  function teammateDashes(ids, info, kind){
+   const seen={}, dash={};
+   ids.forEach(id=>{ const t=info[id].teamId; dash[id] = kind==='drivers' && seen[t] ? [5,3] : []; seen[t]=true; });
+   return dash;
+  }
+
   // issue #9: the "Championship position by round" chart on the drivers and constructors pages. Always
   // shows every loaded round (it ignores the as-of-round slider). Each round's position is a flat segment
   // joined to the next round's by an angled line; P1 at the top. Teammates follow the points chart's
   // convention (better-placed driver solid, the other dashed). Returns the new Chart; pass the previous
-  // one to replace it.
-  function renderPositionChart(canvas, seasonRounds, kind, prevChart){
+  // one to replace it. issue #10: with {projected:true, totalRounds} it plots the projected final standings
+  // after each round (projectionsByRound) instead of the actual standings.
+  function renderPositionChart(canvas, seasonRounds, kind, prevChart, {projected=false, totalRounds=0}={}){
    if(prevChart) prevChart.destroy();
    if(!seasonRounds.length) return null;
-   const {ids, pos, info} = standingsByRound(seasonRounds, kind);
+   const {ids, pos, info} = projected ? projectionsByRound(seasonRounds, kind, totalRounds) : standingsByRound(seasonRounds, kind);
    const N=seasonRounds.length, n=ids.length, P=F1Theme.chart();
    const ff=getComputedStyle(document.body).fontFamily;
    const label = id => kind==='teams' ? shortTeamName(id, info[id].teamName) : info[id].code;
    const HALF=0.28; // half-width of each round's flat segment, in rounds
-   const leadSeen={};
+   const dash = teammateDashes(ids, info, kind);
    const ds = ids.map(id=>{
      const data=[];
      pos[id].forEach((p,i)=>{ const r=i+1; if(p==null) data.push({x:r,y:null}); else data.push({x:r-HALF,y:p},{x:r+HALF,y:p}); });
-     const t=info[id].teamId, dash = kind==='drivers' && leadSeen[t] ? [5,3] : [];
-     leadSeen[t]=true;
-     const c=F1Theme.team(teamColor(t));
-     return {data, borderColor:c, borderDash:dash, borderWidth:2, tension:0, pointRadius:0, spanGaps:false,
+     const c=F1Theme.team(teamColor(info[id].teamId));
+     return {data, borderColor:c, borderDash:dash[id], borderWidth:2, tension:0, pointRadius:0, spanGaps:false,
        label:label(id), fin:pos[id][N-1]};
    });
    canvas.parentElement.style.height = (n*(isNarrow()?20:22)+50)+'px';
@@ -175,13 +207,55 @@ const F1Common = (() => {
          x:{type:'linear', min:0.5, max:N+0.5, grid:{color:P.grid},
             ticks:{color:P.text, autoSkip:false, maxRotation:0, callback:v=>(!isNarrow()||v%2===1)?v:''},
             afterBuildTicks:ax=>{ ax.ticks=Array.from({length:N},(_,i)=>({value:i+1})); },
-            title:{display:true, text:'Round', color:P.text}},
+            title:{display:true, text:projected?'After round':'Round', color:P.text}},
          y:{type:'linear', reverse:true, min:0.5, max:n+0.5, grid:{display:false},
             ticks:{color:P.text, autoSkip:false, callback:v=>'P'+v},
             afterBuildTicks:ax=>{ ax.ticks=Array.from({length:n},(_,i)=>({value:i+1})); }}}}});
   }
 
+  // issue #10: "Projected final points" chart — the projected season total after each round for the given
+  // ids (the page's picker selection). End-of-line labels on wide screens; on narrow screens a ranked list
+  // is written into legendEl instead (shown by the .endLegend CSS), like the points chart. `proj` is a
+  // projectionsByRound() result, so a page can compute it once per season and redraw cheaply.
+  function renderProjectedPointsChart(canvas, legendEl, proj, kind, ids, prevChart){
+   if(prevChart) prevChart.destroy();
+   legendEl.innerHTML='';
+   if(!proj || !proj.ids.length) return null;
+   const M = proj.pts[proj.ids[0]].length, P=F1Theme.chart(), narrow=isNarrow();
+   const ff=getComputedStyle(document.body).fontFamily, font='600 11px '+ff;
+   const label = id => kind==='teams' ? shortTeamName(id, proj.info[id].teamName) : proj.info[id].code;
+   const shown = ids.filter(id=>proj.pts[id]).sort((a,b)=>proj.pts[b][M-1]-proj.pts[a][M-1]);
+   const dash = teammateDashes(shown, proj.info, kind);
+   const ds = shown.map(id=>{
+     const c=F1Theme.team(teamColor(proj.info[id].teamId)), fin=proj.pts[id][M-1];
+     return {data:proj.pts[id].map((v,i)=>({x:i+1, y:v==null?null:Math.round(v)})), borderColor:c, backgroundColor:c,
+       borderDash:dash[id], borderWidth:2, pointRadius:2.5, tension:0, spanGaps:false, name:label(id), fin};
+   });
+   canvas.parentElement.style.height = (narrow?320:380)+'px';
+   const mc=document.createElement('canvas').getContext('2d'); mc.font=font;
+   const PR = narrow || !ds.length ? 10 : Math.ceil(Math.max(...ds.map(d=>mc.measureText(d.name+' '+Math.round(d.fin)).width)))+12;
+   const ends={id:'projEnds',afterDatasetsDraw(ch){
+     if(narrow) return;
+     const {ctx,chartArea:a,scales:{y}}=ch; ctx.save(); ctx.font=font; ctx.textBaseline='middle';
+     const it=ds.map(d=>({d, y:y.getPixelForValue(Math.round(d.fin))})).sort((p,q)=>p.y-q.y);
+     for(let i=1;i<it.length;i++) if(it[i].y-it[i-1].y<13) it[i].y=it[i-1].y+13;
+     it.forEach(o=>{ ctx.fillStyle=o.d.borderColor; ctx.fillText(o.d.name+' '+Math.round(o.d.fin), a.right+6, o.y); });
+     ctx.restore();
+   }};
+   legendEl.innerHTML = ds.map((d,i)=>`<div class="endLegendRow"><span class="endLegendRank">${i+1}</span>`
+     +`<span class="endLegendDot" style="background:${d.borderColor}"></span><span class="endLegendName">${d.name}</span>`
+     +`<span class="endLegendPts">${Math.round(d.fin)}</span></div>`).join('');
+   return new Chart(canvas, {type:'line', data:{datasets:ds}, plugins:[ends],
+     options:{responsive:true, maintainAspectRatio:false, animation:false, parsing:false,
+       layout:{padding:{right:PR, top:4}}, plugins:{legend:{display:false}, tooltip:{enabled:false}},
+       scales:{
+         x:{type:'linear', min:1, max:Math.max(M,2), grid:{color:P.grid},
+            ticks:{color:P.text, stepSize:1, autoSkip:false, maxRotation:0, callback:v=>(!narrow||v%2===1)?v:''},
+            title:{display:true, text:'After round', color:P.text}},
+         y:{grid:{color:P.grid}, ticks:{color:P.text}, title:{display:true, text:'Projected final points', color:P.text}}}}});
+  }
+
   return { TEAM_COLORS, teamColor, SHORT_TEAM_NAMES, shortTeamName, SEASON_META, seasonMeta, YEARS,
     isNarrow, withAlpha, rankedDriverIds, standingsMoves, moveHTML, driverPickerRowHTML, markActivePreset, drawKnockoutLabel,
-    standingsByRound, renderPositionChart };
+    standingsByRound, renderPositionChart, projectionsByRound, renderProjectedPointsChart };
 })();
