@@ -29,7 +29,7 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
 <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:10px;">
  <span style="font-size:12px;color:var(--sub);">Sort by</span>
  <select id="chartSortSelect" class="ddSelect" aria-label="Sort by">
-  <option value="median">Median</option>
+  <option value="mode">Most common</option>
   <option value="champ">Championship</option>
   <option value="team">Team</option>
  </select>
@@ -72,9 +72,9 @@ const ff=getComputedStyle(document.body).fontFamily;
 
 let LAB=['P1','P2','P3','P4','P5','P6','P7','P8','P9','P10','11+/DNF'];
 
-let D=[], L=0, P;
+let D=[], L=0, P, FULL=[];
 // issue #35: chart display options — all computed purely from already-loaded season data, no network.
-// chartSort: 'median' (default, best typical finish on top), 'champ' (current drivers' standings order),
+// chartSort: 'mode' (default, best most-common finish on top, #30), 'champ' (current drivers' standings order),
 // 'team' (teams grouped by constructors' standings order, drivers within a team by standings order).
 // showBelowP10: false (default) folds everything below P10 into one "11+/DNF" bucket, same as before;
 // true expands individual positions down to the worst classified finish seen, plus a separate DNF bucket.
@@ -82,7 +82,7 @@ let D=[], L=0, P;
 // entirely (not even counted as a start); true counts them as a start, bucketed as a DNF/no-position.
 // includeSprints: true (default, new as of #35) folds sprint-session results into the same histogram as
 // Grand Prix results; false restricts the chart to Grand Prix classification only, as it was before.
-let chartSort='median', showBelowP10=false, includeMechanical=false, includeSprints=true;
+let chartSort='mode', showBelowP10=false, includeMechanical=false, includeSprints=true;
 
 // issue #33: single ridgeline (joyplot) chart for the selected drivers — same mechanism as the
 // simulator's ridgeline plots (#32): each driver gets a baseline row (invisible flat dataset) and a
@@ -90,12 +90,17 @@ let chartSort='median', showBelowP10=false, includeMechanical=false, includeSpri
 // to each driver's OWN peak bucket (a shape comparison, not an absolute-count one).
 const RIDGE_ROW=1, RIDGE_PEAK=0.82, RIDGE_ROW_PX=58, RIDGE_PAD_PX=34, RIDGE_FILL_ALPHA=0.35;
 let ridgeChart=null;
-function medianBucket(counts){
- const total=counts.reduce((a,b)=>a+b,0);
- if(!total) return counts.length-1;
- let cum=0;
- for(let i=0;i<counts.length;i++){ cum+=counts[i]; if(cum>=total/2) return i; }
- return counts.length-1;
+// #30: a driver's most common finish(es), always over individual positions plus DNF (P1…Pworst, DNF) —
+// even when the chart groups everything below P10 into one "11+/DNF" bucket, which must not win just for
+// being a group. Returns indexes into fullLabels(), every one if tied; [] with no starts.
+function fullLabels(){
+ const labs=[]; for(let p=1, max=maxClassifiedPosition(); p<=max; p++) labs.push('P'+p);
+ labs.push('DNF');
+ return labs;
+}
+function modesOf(counts){
+ const top=Math.max(0,...counts);
+ return top>0 ? counts.map((v,j)=>v===top?j:-1).filter(j=>j>=0) : [];
 }
 let currentYear=null, currentSeasonRounds=[], selectedDriverIds=null, pickerSort='team';
 
@@ -166,11 +171,12 @@ function recompute(round){
  const driverRank = {}; driverRanked.forEach((id,i)=>{ driverRank[id]=i; });
  const teamRanked = F1Common.standingsOrder(currentSeasonRounds, L, 'teams');
  const teamRank = {}; teamRanked.forEach((id,i)=>{ teamRank[id]=i; });
- LAB = buildLabels();
+ LAB = buildLabels(); FULL = fullLabels();
  D = (selectedDriverIds||[]).map(id=>{
    const dr = cum.drivers[id]; if(!dr) return null;
    const {v,starts} = bucketsFor(id, LAB);
-   return { id, n:dr.code, teamId:dr.teamId, teamName:dr.teamName, c:F1Common.teamColor(dr.teamId), v, starts,
+   const modes = modesOf(bucketsFor(id, FULL).v); // #30: over individual positions, see modesOf
+   return { id, modes, n:dr.code, teamId:dr.teamId, teamName:dr.teamName, c:F1Common.teamColor(dr.teamId), v, starts,
      driverRank:driverRank[id]??999, teamRank:teamRank[dr.teamId]??999 };
  }).filter(Boolean);
  draw();
@@ -184,26 +190,33 @@ function draw(){
  wrap.style.display='block'; empty.style.display='none';
  P=F1Theme.chart();
  Chart.defaults.font.family=ff; Chart.defaults.color=P.text;
- const order=D.map(d=>({id:d.id, code:d.n, color:F1Theme.team(d.c), counts:d.v, starts:d.starts,
+ const order=D.map(d=>({id:d.id, code:d.n, color:F1Theme.team(d.c), counts:d.v, starts:d.starts, modes:d.modes,
      driverRank:d.driverRank, teamRank:d.teamRank}))
    .sort((a,b)=>{
      if(chartSort==='champ') return a.driverRank-b.driverRank;
      if(chartSort==='team') return (a.teamRank-b.teamRank) || (a.driverRank-b.driverRank);
-     return medianBucket(a.counts)-medianBucket(b.counts); // 'median' (default)
+     // 'mode' (default): best most-common finish first (DNF counts as the worst); ties by standings
+     const best=d=>d.modes.length ? d.modes[0] : Infinity;
+     return (best(a)-best(b)) || (a.driverRank-b.driverRank);
    });
  const n=order.length;
  wrap.style.height=(n*RIDGE_ROW_PX+RIDGE_PAD_PX)+'px';
  const datasets=[];
- order.forEach(({code,color,counts,starts},i)=>{
+ order.forEach(({code,color,counts,starts,modes},i)=>{
    const baseline=(n-1-i)*RIDGE_ROW;
    const peak=Math.max(...counts,1e-9);
    const heights=counts.map(v=>baseline+(v/peak)*RIDGE_PEAK);
    datasets.push({ data:LAB.map(()=>baseline), borderWidth:0, pointRadius:0, fill:false, _baseline:true });
-   // #30: median and most common position(s) — every tied one — drawn by F1Common.ridgeMarkers
-   const top=Math.max(...counts);
+   // #30: most common position(s), every tied one, drawn by F1Common.ridgeMarkers. One below P10 while
+   // those positions are grouped goes on the "11+/DNF" bucket, labelled with the real position(s).
+   const shown=[], labels={};
+   modes.forEach(m=>{
+     const j = showBelowP10 || m<10 ? m : LAB.length-1;
+     if(!shown.includes(j)) shown.push(j);
+     if(!showBelowP10 && m>=10) labels[j] = labels[j] ? labels[j]+'/'+FULL[m] : FULL[m];
+   });
    datasets.push({ data:heights, borderColor:color, backgroundColor:F1Common.withAlpha(color,RIDGE_FILL_ALPHA), borderWidth:1.6, pointRadius:0,
-     fill:'-1', stepped:'middle', _code:code, _counts:counts, _starts:starts,
-     _median: starts ? medianBucket(counts) : null, _modes: top>0 ? counts.map((v,j)=>v===top?j:-1).filter(j=>j>=0) : [] });
+     fill:'-1', stepped:'middle', _code:code, _counts:counts, _starts:starts, _modes:shown, _modeLabels:labels });
  });
  ridgeChart=new Chart(document.getElementById('ridgeCanvas'),{
    type:'line',
@@ -245,7 +258,7 @@ function draw(){
      }
    }
  });
- document.getElementById('ridgeKey').innerHTML = F1Common.ridgeKeyHTML(true);
+ document.getElementById('ridgeKey').innerHTML = F1Common.ridgeKeyHTML('most common finish');
  note.textContent = 'Races counted: ' + order.map(o=>`${o.code} ${o.starts}`).join(' · ');
  updateSub();
 }

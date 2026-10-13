@@ -130,15 +130,15 @@ canvas{max-width:100%;}
   <div class="card" id="ridgePosCard" style="display:none;">
     <h2>Projected final championship position</h2>
     <div class="ridgeWrap" id="ridgePosWrap"><canvas id="ridgePosCanvas"></canvas></div>
-    <div class="ridgeKey"><span class="ridgeKeyItem"><i class="ridgeKeyMedian"></i>median</span></div>
-    <div class="note">Each ridge is one tracked driver's share of simulated seasons landing at each final position, tallest at their most likely finish. Position is rank in the full simulated standings — every driver who has raced this season, not just the tracked set — so finishing behind an untracked driver is possible. Ordered by median finish, best on top.</div>
+    <div class="ridgeKey"><span class="ridgeKeyItem"><i class="ridgeKeyMode"></i>most common finish</span></div>
+    <div class="note">Each ridge is one tracked driver's share of simulated seasons landing at each final position, tallest at their most likely finish. Position is rank in the full simulated standings — every driver who has raced this season, not just the tracked set — so finishing behind an untracked driver is possible; when the most common finish is outside the positions shown, its marker on the last column says which. Ordered by most common finish, best on top.</div>
   </div>
 
   <div class="card" id="ridgePointsCard" style="display:none;">
     <h2>Projected final points</h2>
     <div class="ridgeWrap" id="ridgePointsWrap"><canvas id="ridgePointsCanvas"></canvas></div>
-    <div class="ridgeKey"><span class="ridgeKeyItem"><i class="ridgeKeyMedian"></i>median</span></div>
-    <div class="note">Each ridge is one tracked driver's spread of possible final point totals. Overlap between two ridges is a rough read on how contested that gap still is — heavy overlap means the sim sees it as a toss-up. Ordered by median final points, highest on top.</div>
+    <div class="ridgeKey"><span class="ridgeKeyItem"><i class="ridgeKeyMode"></i>most common final points</span></div>
+    <div class="note">Each ridge is one tracked driver's spread of possible final point totals. Overlap between two ridges is a rough read on how contested that gap still is — heavy overlap means the sim sees it as a toss-up. The marker sits on the most common 10-point range and shows the most common exact total in it. Ordered by most common final points, highest on top.</div>
   </div>
 </div>
 
@@ -376,11 +376,6 @@ function sampleOrder(alive, posHist, startSlot=0, noWin=null){
  order.push(...remaining); // anyone left over is unordered among themselves — all score 0 regardless
  return order;
 }
-function quantile(arr,q){
- const s=[...arr].sort((a,b)=>a-b);
- const pos=(s.length-1)*q, lo=Math.floor(pos), hi=Math.ceil(pos);
- return lo===hi ? s[lo] : s[lo]+(s[hi]-s[lo])*(pos-lo);
-}
 
 // ---- Tracked drivers' DNFs and wins (#42, #14) and collisions (#11) ----
 const nGPLeft = ()=>remainingEvents.filter(e=>e.type==='gp').length;
@@ -589,23 +584,26 @@ function refreshResults(){
  const tracked=lastRun ? trackedRoster().filter(d=>lastRun.ids.includes(d.driverId)) : [];
  if(!lastRun || !tracked.length){ hideResults(); return; }
  const {N,n,ids,totals,ranks}=lastRun, k=tracked.length;
- const odds=[], finals=[], posCounts=[];
+ const odds=[], finals=[], posCounts=[], rankCounts=[];
  tracked.forEach(d=>{
    const i=ids.indexOf(d.driverId);
    // issue #31: posCounts[p] = seasons finished at that exact championship rank (p=0 → 1st, ...
    // p=k-1 → kth), the last slot catching "outside the top k" — k being the tracked-set size.
-   const f=new Array(N), pc=new Array(k+1).fill(0);
+   // #30: rc[r-1] = seasons finished exactly r-th, every rank — the most common finish is taken from
+   // these, so the grouped "outside the top k" slot can't win just for being a group.
+   const f=new Array(N), pc=new Array(k+1).fill(0), rc=new Array(n).fill(0);
    let champ=0;
    for(let s=0;s<N;s++){
      f[s]=totals[s*n+i];
      const r=ranks[s*n+i];
      if(r===1) champ++;
      pc[r<=k ? r-1 : k]++;
+     rc[r-1]++;
    }
-   odds.push(100*champ/N); finals.push(f); posCounts.push(pc);
+   odds.push(100*champ/N); finals.push(f); posCounts.push(pc); rankCounts.push(rc);
  });
  renderOdds(tracked, odds);
- renderRidgePosition(tracked, posCounts, k, N);
+ renderRidgePosition(tracked, posCounts, k, rankCounts);
  renderRidgePoints(tracked, finals);
  document.getElementById('oddsCard').style.display='block';
  document.getElementById('ridgePosCard').style.display='block';
@@ -636,16 +634,16 @@ document.getElementById('rerun').addEventListener('click', ()=>{ if(!document.ge
 // the absolute comparison.
 const RIDGE_ROW=1, RIDGE_PEAK=0.82, RIDGE_ROW_PX=58, RIDGE_PAD_PX=34, RIDGE_FILL_ALPHA=0.35;
 const ridgeCharts={};
-function medianFromCounts(counts, N){
- let cum=0;
- for(let i=0;i<counts.length;i++){ cum+=counts[i]; if(cum>=N/2) return i; }
- return counts.length-1;
+// #30: indexes of the largest value(s) in counts, every one if tied.
+function modesOf(counts){
+ const top=Math.max(0,...counts);
+ return top>0 ? counts.map((v,j)=>v===top?j:-1).filter(j=>j>=0) : [];
 }
 function renderRidgeline(chartKey, canvasId, wrapId, order, categories, opts){
  const n=order.length;
  document.getElementById(wrapId).style.height=(n*RIDGE_ROW_PX+RIDGE_PAD_PX)+'px';
  const datasets=[];
- order.forEach(({code,color,counts,median},i)=>{
+ order.forEach(({code,color,counts,modes,modeLabels},i)=>{
    const baseline=(n-1-i)*RIDGE_ROW;
    const total=counts.reduce((a,b)=>a+b,0)||1;
    const peak=Math.max(...counts,1e-9);
@@ -653,7 +651,7 @@ function renderRidgeline(chartKey, canvasId, wrapId, order, categories, opts){
    const pct=counts.map(v=>100*v/total);
    datasets.push({ data:categories.map(()=>baseline), borderWidth:0, pointRadius:0, fill:false, _baseline:true });
    datasets.push({ data:heights, borderColor:color, backgroundColor:F1Common.withAlpha(color,RIDGE_FILL_ALPHA), borderWidth:1.6, pointRadius:0,
-     fill:'-1', tension:opts.tension||0, stepped:opts.stepped||false, _code:code, _pct:pct, _median:median }); // #30
+     fill:'-1', tension:opts.tension||0, stepped:opts.stepped||false, _code:code, _pct:pct, _modes:modes, _modeLabels:modeLabels }); // #30
  });
  const P=F1Theme.chart();
  if(ridgeCharts[chartKey]) ridgeCharts[chartKey].destroy();
@@ -700,16 +698,32 @@ function renderRidgePoints(roster, finals){
  const order=roster.map((d,i)=>{
    const counts=new Array(bins.length).fill(0);
    finals[i].forEach(v=>{ const bi=Math.min(Math.floor((v-min)/binSize),bins.length-1); counts[bi]++; });
-   const med=quantile(finals[i],.5);
-   // #30: the median as a position between categories: bin b (b..b+10) is drawn at index b, centred on b+5
-   return {id:d.driverId, code:d.code, color:F1Theme.team(F1Common.teamColor(d.teamId)), counts, med, median:(med-min-binSize/2)/binSize};
- }).sort((a,b)=>b.med-a.med);
+   // #30: the most common 10-point bin(s), each labelled with the most common exact total inside it
+   const modes=modesOf(counts), modeLabels={}, exact={};
+   modes.forEach(bi=>{
+     const freq={};
+     finals[i].forEach(v=>{ if(Math.min(Math.floor((v-min)/binSize),bins.length-1)===bi) freq[v]=(freq[v]||0)+1; });
+     exact[bi]=+Object.keys(freq).sort((a,b)=>freq[b]-freq[a] || a-b)[0];
+     modeLabels[bi]=String(Math.round(exact[bi]));
+   });
+   return {id:d.driverId, code:d.code, color:F1Theme.team(F1Common.teamColor(d.teamId)), counts, modes, modeLabels,
+     best:Math.max(...modes.map(bi=>exact[bi]))};
+ }).sort((a,b)=>b.best-a.best); // highest most-common total first
  renderRidgeline('points','ridgePointsCanvas','ridgePointsWrap', order, bins.map(String), {tension:0.35, xTitle:'final points'});
 }
-function renderRidgePosition(roster, posCounts, k, N){
+function renderRidgePosition(roster, posCounts, k, rankCounts){
  const labels=Array.from({length:k},(_,i)=>'P'+(i+1)).concat([(k+1)+'th or lower']);
- const order=roster.map((d,i)=>{ const med=medianFromCounts(posCounts[i],N);
-   return {id:d.driverId, code:d.code, color:F1Theme.team(F1Common.teamColor(d.teamId)), counts:posCounts[i], med, median:med}; }).sort((a,b)=>a.med-b.med);
+ const order=roster.map((d,i)=>{
+   // #30: most common exact rank(s); one outside the top k goes on the last slot, labelled with the rank
+   const ranks=modesOf(rankCounts[i]).map(j=>j+1), modes=[], modeLabels={};
+   ranks.forEach(r=>{
+     const j=r<=k ? r-1 : k;
+     if(!modes.includes(j)) modes.push(j);
+     if(r>k) modeLabels[j] = modeLabels[j] ? modeLabels[j]+'/P'+r : 'P'+r;
+   });
+   return {id:d.driverId, code:d.code, color:F1Theme.team(F1Common.teamColor(d.teamId)), counts:posCounts[i], modes, modeLabels,
+     best:ranks.length ? ranks[0] : Infinity};
+ }).sort((a,b)=>a.best-b.best); // best most-common finish first
  renderRidgeline('pos','ridgePosCanvas','ridgePosWrap', order, labels, {stepped:'middle', xTitle:'final championship position'});
 }
 

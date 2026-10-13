@@ -140,13 +140,15 @@ selection; the card below it shows every driver/team.
 Knockout line based on the highest-ranked selected team. Presets All/None/Top 2/Top 5, default Top 5.
 
 **position.html** — One ridgeline chart: each selected driver's finishing-position histogram through the
-chosen round, normalized to its own peak. "Sort by" Median / Championship / Team (team = constructors' order,
+chosen round, normalized to its own peak. "Sort by" Most common / Championship / Team (team = constructors' order,
 then drivers' order). "Show" checkboxes: Below P10 (expand to individual positions + DNF instead of one
 "11+/DNF" bucket), Mechanical DNFs (off by default — excluded entirely, not counted as a start), Sprints
 (on by default — merged into the same histogram). All options recompute from cached data. Default
-selection is the top 8 drivers. Each ridge marks its **median** (a line from baseline to curve) and its
-**most common** position(s) (a small triangle above the curve; every one when tied), with a key under the
-chart (#30).
+selection is the top 8 drivers. Each ridge marks its **most common** finish(es) with a small triangle above
+the curve, every one when tied (#30). The mode is always taken over individual positions plus DNF, so the
+grouped "11+/DNF" bucket never wins just for being a group; when the most common finish is below P10 and
+those positions are grouped, the triangle sits on that bucket labelled with the real position(s) ("P13",
+"DNF", "P12/P14"). "Most common" sorting (the default) uses the best most-common finish, ties by standings.
 
 **simulator.html** — Simulates the rest of the season for the **whole grid**. Each race order is drawn slot
 by slot from each driver's own finishing-position histogram (GP results only, finished races only —
@@ -167,7 +169,9 @@ and rank for each simulated season (`lastRun`), so changing the tracked set redr
 re-running; changing a setting or the round keeps the results with a "Settings changed since this run" note
 and a Run again button; loading another season clears them. Results: win probability plus ridgeline charts
 of final-points distribution and final championship position, ranked against the full grid, each ridge
-marking its median (#30; on the points chart, the exact median total placed between bins). Default
+marking its most common value (#30): the position chart uses exact ranks (one outside the top k is marked on
+the last column, labelled "P14"); the points chart marks the most common 10-point range, labelled with the
+most common exact total in it. Both are ordered by that most common value. Default
 tracked set is the top 8.
 
 **index.html** — Static landing page with four cards.

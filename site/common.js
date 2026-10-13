@@ -136,36 +136,34 @@ const F1Common = (() => {
     };
   }
 
-  // #30: median (and mode) markers on a ridgeline chart. Each ridge dataset can carry _median (a category
-  // index; fractional for a value between two categories) and _modes (category indexes of the most common
-  // position, every one if tied). The median is a line in the ridge's colour from its baseline up to the
-  // curve; each mode is a small triangle just above the curve.
+  // #30: "most common" (mode) markers on a ridgeline chart. Each ridge dataset can carry _modes (category
+  // indexes of its most common value, every one if tied) and _modeLabels ({index: text}, e.g. the points
+  // total, or the real position when it falls in a grouped bucket like "11+/DNF"). Each mode is a small
+  // triangle just above the curve, with its label (if any) above that.
   function ridgeMarkers(){
     return {
       id:'ridgeMarkers',
       afterDatasetsDraw(chart){
-        const {ctx, scales:{x, y}}=chart, ring=F1Theme.chart().pointRing;
-        const step=x.getPixelForValue(1)-x.getPixelForValue(0);
+        const {ctx, chartArea:area, scales:{x}}=chart, ring=F1Theme.chart().pointRing;
+        const ff=getComputedStyle(document.body).fontFamily;
         chart.data.datasets.forEach((ds,di)=>{
-          if(ds._baseline || (ds._median==null && !(ds._modes||[]).length)) return;
-          const pts=chart.getDatasetMeta(di).data, last=pts.length-1;
-          const base=y.getPixelForValue(chart.data.datasets[di-1].data[0]);
-          const curveY = xi => {
-            if(ds.stepped) return pts[Math.max(0,Math.min(last,Math.round(xi)))].y;
-            const i=Math.max(0,Math.min(last,Math.floor(xi))), j=Math.min(last,i+1), f=Math.max(0,Math.min(1,xi-i));
-            return pts[i].y+(pts[j].y-pts[i].y)*f;
-          };
+          if(ds._baseline || !(ds._modes||[]).length) return;
+          const pts=chart.getDatasetMeta(di).data;
           ctx.save();
-          if(ds._median!=null){
-            const px=x.getPixelForValue(0)+step*ds._median;
-            ctx.strokeStyle=ds.borderColor; ctx.lineWidth=2.5;
-            ctx.beginPath(); ctx.moveTo(px, base); ctx.lineTo(px, curveY(ds._median)); ctx.stroke();
-          }
-          (ds._modes||[]).forEach(i=>{
-            const px=x.getPixelForValue(i), top=curveY(i)-3;
+          ds._modes.forEach(i=>{
+            const px=x.getPixelForValue(i), top=pts[i].y-3;
             ctx.fillStyle=ds.borderColor; ctx.strokeStyle=ring; ctx.lineWidth=1.5;
             ctx.beginPath(); ctx.moveTo(px, top); ctx.lineTo(px-5, top-8); ctx.lineTo(px+5, top-8); ctx.closePath();
             ctx.fill(); ctx.stroke();
+            const text=(ds._modeLabels||{})[i];
+            if(text){
+              ctx.font='600 10.5px '+ff; ctx.textBaseline='bottom';
+              const w=ctx.measureText(text).width;
+              // keep the label inside the plot: centred, or pulled in at either edge
+              ctx.textAlign = px+w/2>area.right+4 ? 'right' : px-w/2<area.left-4 ? 'left' : 'center';
+              const tx = ctx.textAlign==='right' ? px+5 : ctx.textAlign==='left' ? px-5 : px;
+              ctx.lineWidth=3; ctx.strokeText(text, tx, top-10); ctx.fillText(text, tx, top-10);
+            }
           });
           ctx.restore();
         });
@@ -173,9 +171,8 @@ const F1Common = (() => {
     };
   }
   // The key under a ridgeline chart for the markers above.
-  function ridgeKeyHTML(withMode){
-    return `<span class="ridgeKeyItem"><i class="ridgeKeyMedian"></i>median</span>`
-      + (withMode ? `<span class="ridgeKeyItem"><i class="ridgeKeyMode"></i>most common</span>` : '');
+  function ridgeKeyHTML(text){
+    return `<span class="ridgeKeyItem"><i class="ridgeKeyMode"></i>${text||'most common'}</span>`;
   }
 
   // #20: everyone's standings order through `round`, the same ranking as the championship-position

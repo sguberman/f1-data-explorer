@@ -1,4 +1,4 @@
-// #18: national flags and driver numbers. #30: median and mode markers on the ridgeline charts.
+// #18: national flags and driver numbers. #30: "most common" (mode) markers on the ridgeline charts.
 // Expected values come from the fixture's own tables, not the site's helpers.
 const fs = require('fs'), path = require('path');
 const { DRIVER_NAT, DRIVER_NUM, TEAM_NAT, CIRCUITS } = require('./lib/fixture');
@@ -63,25 +63,64 @@ module.exports = async (t, h) => {
     await p.done();
   }
 
-  // #30: position page markers vs an independent median/mode of each ridge's counts.
+  // #30: position page "most common" markers, from an independent count over individual positions.
   {
     const p = await h.openPage('position'); await h.loaded(p);
-    const m = await p.evaluate(() => ridgeChart.data.datasets.filter(d => !d._baseline).map(d => ({ counts:d._counts, median:d._median, modes:d._modes })));
-    const bad = m.filter(d => {
-      const tot = d.counts.reduce((a,b) => a+b, 0); let c = 0, med = null;
-      for(let i = 0; i < d.counts.length; i++){ c += d.counts[i]; if(c*2 >= tot){ med = i; break; } }
-      const top = Math.max(...d.counts), modes = d.counts.map((v,i) => v === top ? i : -1).filter(i => i >= 0);
-      return d.median !== med || JSON.stringify(d.modes) !== JSON.stringify(modes);
+    await p.click('#presetRow button[data-preset="all"]');
+    const read = () => p.evaluate(() => {
+      const codeToId = {};
+      F1Controls.state.seasonRounds.forEach(r => r.raceResults.forEach(q => { codeToId[q.code] = q.driverId; }));
+      return { labels: ridgeChart.data.labels, rows: ridgeChart.data.datasets.filter(d => !d._baseline)
+        .map(d => ({ id:codeToId[d._code], counts:d._counts, modes:d._modes, labels:d._modeLabels, median:d._median })) };
     });
-    t.check('position: each ridge marks its median and every most-common position', m.length > 0 && bad.length === 0, JSON.stringify(bad.slice(0,2)));
-    t.check('position: the fake data has a tied mode (so the check above covers ties)', m.some(d => d.modes.length > 1));
-    t.check('position: marker key shown', /median.*most common/.test(await p.$eval('#ridgeKey', e => e.textContent)));
+    // Expected: each driver's finishes through the last round, GP + sprint, mechanical DNFs left out,
+    // one category per position plus DNF; every tied most-common one.
+    const expected = () => p.evaluate(() => {
+      const rs = F1Controls.state.seasonRounds, per = {}; let worst = 10;
+      rs.forEach(r => [...r.raceResults, ...(r.sprintResults||[])].forEach(q => {
+        if(q.mechanical) return;
+        const k = q.position >= 1 ? 'P' + q.position : 'DNF';
+        if(q.position > worst) worst = q.position;
+        (per[q.driverId] = per[q.driverId] || {})[k] = (per[q.driverId][k] || 0) + 1;
+      }));
+      const order = []; for(let i = 1; i <= worst; i++) order.push('P' + i); order.push('DNF');
+      const out = {};
+      Object.entries(per).forEach(([id, c]) => { const top = Math.max(...Object.values(c)); out[id] = order.filter(k => c[k] === top); });
+      return out;
+    });
+    const exp = await expected();
+    let r = await read();
+    const shownAs = m => m === 'DNF' || +m.slice(1) > 10 ? 10 : +m.slice(1) - 1; // grouped view: 11+ and DNF share the last bucket
+    const bad = r.rows.filter(d => {
+      const want = [...new Set(exp[d.id].map(shownAs))];
+      const lab = exp[d.id].filter(m => shownAs(m) === 10).join('/');
+      return JSON.stringify(d.modes) !== JSON.stringify(want) || (d.labels[10] || '') !== lab;
+    });
+    t.check('position: markers sit on every most common finish (grouped view)', r.rows.length === 22 && bad.length === 0, JSON.stringify(bad.slice(0,2)));
+    t.check('position: no median markers', r.rows.every(d => d.median === undefined));
+    t.check('position: the fake data has a tied mode and a mode below P10 (so the checks cover them)',
+      Object.values(exp).some(m => m.length > 1) && Object.values(exp).some(m => m.some(x => shownAs(x) === 10)));
+    // e.g. a driver with 8 finishes spread over P11–P20 but 2 at P6: the grouped bucket is tallest, yet P6 is most common
+    t.check('position: the grouped 11+/DNF bucket never wins just for being a group (case present in fake data)',
+      r.rows.some(d => d.counts[10] > Math.max(...d.counts.slice(0,10)) && d.modes.some(i => i < 10)));
+    const rank = await p.evaluate(() => F1Common.standingsOrder(F1Controls.state.seasonRounds, L, 'drivers'));
+    const key = m => m === 'DNF' ? 999 : +m.slice(1);
+    const wantOrder = Object.keys(exp).sort((a,b) => key(exp[a][0]) - key(exp[b][0]) || rank.indexOf(a) - rank.indexOf(b));
+    t.check('position: sorted by most common finish (default), ties by standings', JSON.stringify(r.rows.map(d => d.id)) === JSON.stringify(wantOrder),
+      JSON.stringify([r.rows.map(d => d.id).slice(0,5), wantOrder.slice(0,5)]));
+    t.check('position: sort dropdown offers Most common (no Median)', await p.$eval('#chartSortSelect', el => [...el.options].map(o => o.textContent).join(',')) === 'Most common,Championship,Team');
+    // Below P10 shown: markers on the real positions, no labels needed.
+    await p.check('#chartOptRow input[data-opt="below10"]');
+    r = await read();
+    const bad2 = r.rows.filter(d => JSON.stringify(d.modes.map(i => r.labels[i])) !== JSON.stringify(exp[d.id]) || Object.keys(d.labels).length);
+    t.check('position: with Below P10 shown, markers sit on the real positions', bad2.length === 0, JSON.stringify(bad2.slice(0,2)));
+    t.check('position: marker key shown', /most common/.test(await p.$eval('#ridgeKey', e => e.textContent)));
     t.check('position: ridge plugins for flags and markers attached', await p.evaluate(() => ['ridgeMarkers','ridgeFlags'].every(id => ridgeChart.config.plugins.some(pl => pl.id === id))));
     t.check('position: no page errors', p.errors.length === 0, p.errors.join('; '));
     await p.done();
   }
 
-  // #30: simulator medians — position = median rank bucket, points = the median total placed between bins.
+  // #30: simulator "most common" markers — exact rank for the position chart, 10-point bin + exact total for points.
   {
     const p = await h.openPage('simulator'); await h.loaded(p);
     await p.evaluate(async () => {
@@ -89,26 +128,44 @@ module.exports = async (t, h) => {
       for(let i = 0; i < 100 && !/seasons simulated/.test(document.getElementById('status').textContent); i++) await new Promise(r => setTimeout(r, 100));
     });
     const s = await p.evaluate(() => {
+      const codeToId = {}; fullRoster.forEach(d => { codeToId[d.code] = d.driverId; });
+      const series = id => { const i = lastRun.ids.indexOf(id), v = []; for(let k = 0; k < lastRun.N; k++) v.push([lastRun.totals[k*lastRun.n+i], lastRun.ranks[k*lastRun.n+i]]); return v; };
+      const k = selectedDriverIds.length;
       const ch = Chart.getChart('ridgePointsCanvas'), cp = Chart.getChart('ridgePosCanvas');
-      const labels = ch.data.labels.map(Number), bin = labels[1] - labels[0];
+      const min = +ch.data.labels[0], nb = ch.data.labels.length;
       const pts = ch.data.datasets.filter(d => !d._baseline).map(d => {
-        const id = lastRun.ids[lastRun.ids.findIndex(x => fullRoster.find(r => r.driverId === x && r.code === d._code))];
-        const i = lastRun.ids.indexOf(id), v = [];
-        for(let k = 0; k < lastRun.N; k++) v.push(lastRun.totals[k*lastRun.n + i]);
-        v.sort((a,b) => a-b); const q = (v.length-1)/2, med = (v[Math.floor(q)] + v[Math.ceil(q)]) / 2;
-        return { got:d._median, exp:(med - labels[0] - bin/2) / bin };
+        const v = series(codeToId[d._code]).map(x => x[0]), bins = new Array(nb).fill(0);
+        v.forEach(x => bins[Math.min(Math.floor((x-min)/10), nb-1)]++);
+        const top = Math.max(...bins), modes = bins.map((c,i) => c === top ? i : -1).filter(i => i >= 0), labels = {};
+        modes.forEach(bi => { const f = {}; v.forEach(x => { if(Math.min(Math.floor((x-min)/10), nb-1) === bi) f[x] = (f[x]||0) + 1; });
+          labels[bi] = String(Math.round(+Object.keys(f).sort((a,b) => f[b]-f[a] || a-b)[0])); });
+        return { ok: JSON.stringify(d._modes) === JSON.stringify(modes) && JSON.stringify(d._modeLabels) === JSON.stringify(labels),
+                 best: Math.max(...modes.map(bi => +labels[bi])), got:[d._modes, d._modeLabels], want:[modes, labels], median:d._median };
       });
       const pos = cp.data.datasets.filter(d => !d._baseline).map(d => {
-        let c = 0, med = null; for(let i = 0; i < d._pct.length; i++){ c += d._pct[i]; if(c >= 50 - 1e-9){ med = i; break; } }
-        return { got:d._median, exp:med };
+        const rc = {}; series(codeToId[d._code]).forEach(x => { rc[x[1]] = (rc[x[1]]||0) + 1; });
+        const top = Math.max(...Object.values(rc)), ranks = Object.keys(rc).map(Number).filter(r => rc[r] === top).sort((a,b) => a-b);
+        const modes = [...new Set(ranks.map(r => r <= k ? r-1 : k))], labels = {};
+        ranks.filter(r => r > k).forEach(r => { labels[k] = labels[k] ? labels[k] + '/P' + r : 'P' + r; });
+        return { ok: JSON.stringify(d._modes) === JSON.stringify(modes) && JSON.stringify(d._modeLabels) === JSON.stringify(labels), best: ranks[0], got:[d._modes, d._modeLabels], want:[modes, labels] };
       });
-      return { pts, pos, keys: document.querySelectorAll('#ridgePosCard .ridgeKey, #ridgePointsCard .ridgeKey').length,
+      return { pts, pos, keys: [...document.querySelectorAll('#ridgePosCard .ridgeKey, #ridgePointsCard .ridgeKey')].map(e => e.textContent),
                oddsFlags: document.querySelectorAll('#odds img.flag').length, oddsRows: document.querySelectorAll('#odds .driver-row').length };
     });
-    t.check('simulator: points ridges mark the median final points', s.pts.length > 0 && s.pts.every(x => Math.abs(x.got - x.exp) < 1e-6), JSON.stringify(s.pts.slice(0,2)));
-    t.check('simulator: position ridges mark the median final position', s.pos.length > 0 && s.pos.every(x => x.got === x.exp), JSON.stringify(s.pos.slice(0,3)));
-    t.check('simulator: median key under both ridge charts', s.keys === 2);
+    t.check('simulator: points ridges mark the most common 10-point range, labelled with the most common total in it', s.pts.length > 0 && s.pts.every(x => x.ok), JSON.stringify(s.pts.filter(x => !x.ok).slice(0,2)));
+    t.check('simulator: points ridges sorted by most common points, highest first', s.pts.every((x,i) => i === 0 || s.pts[i-1].best >= x.best), JSON.stringify(s.pts.map(x => x.best)));
+    t.check('simulator: position ridges mark the most common exact finish', s.pos.length > 0 && s.pos.every(x => x.ok), JSON.stringify(s.pos.filter(x => !x.ok).slice(0,2)));
+    t.check('simulator: position ridges sorted by most common finish, best first', s.pos.every((x,i) => i === 0 || s.pos[i-1].best <= x.best), JSON.stringify(s.pos.map(x => x.best)));
+    t.check('simulator: no median markers', s.pts.every(x => x.median === undefined));
+    t.check('simulator: most-common key under both ridge charts', s.keys.length === 2 && s.keys.every(k => /most common/.test(k)), JSON.stringify(s.keys));
     t.check('simulator: win-probability rows show flags', s.oddsFlags === s.oddsRows && s.oddsRows > 0, JSON.stringify(s));
+    // Track more drivers than the default so some most-common finishes can fall outside the top k... and fewer so they must.
+    const few = await p.evaluate(() => {
+      document.querySelector('#presetRow button[data-preset="5"]') ? document.querySelector('#presetRow button[data-preset="5"]').click() : null;
+      const cp = Chart.getChart('ridgePosCanvas');
+      return cp.data.datasets.filter(d => !d._baseline).map(d => d._modeLabels);
+    });
+    t.check('simulator: tracking 5 still draws markers with labels only on the last column', few.every(l => Object.keys(l).every(k => +k === 5)), JSON.stringify(few));
     t.check('simulator: no page errors', p.errors.length === 0, p.errors.join('; '));
     await p.done();
   }
