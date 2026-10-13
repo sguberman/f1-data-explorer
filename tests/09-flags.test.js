@@ -73,24 +73,23 @@ module.exports = async (t, h) => {
       return { labels: ridgeChart.data.labels, rows: ridgeChart.data.datasets.filter(d => !d._baseline)
         .map(d => ({ id:codeToId[d._code], counts:d._counts, modes:d._modes, labels:d._modeLabels, median:d._median })) };
     });
-    // Expected: each driver's finishes through the last round, GP + sprint, mechanical DNFs left out,
-    // one category per position plus DNF; every tied most-common one.
+    // Expected: each driver's finishes through the last round, GP + sprint, one category per classified
+    // position plus NC (no classified position, #46); every tied most-common one.
     const expected = () => p.evaluate(() => {
       const rs = F1Controls.state.seasonRounds, per = {}; let worst = 10;
       rs.forEach(r => [...r.raceResults, ...(r.sprintResults||[])].forEach(q => {
-        if(q.mechanical) return;
-        const k = q.position >= 1 ? 'P' + q.position : 'DNF';
+        const k = q.position >= 1 ? 'P' + q.position : 'NC';
         if(q.position > worst) worst = q.position;
         (per[q.driverId] = per[q.driverId] || {})[k] = (per[q.driverId][k] || 0) + 1;
       }));
-      const order = []; for(let i = 1; i <= worst; i++) order.push('P' + i); order.push('DNF');
+      const order = []; for(let i = 1; i <= worst; i++) order.push('P' + i); order.push('NC');
       const out = {};
       Object.entries(per).forEach(([id, c]) => { const top = Math.max(...Object.values(c)); out[id] = order.filter(k => c[k] === top); });
       return out;
     });
     const exp = await expected();
     let r = await read();
-    const shownAs = m => m === 'DNF' || +m.slice(1) > 10 ? 10 : +m.slice(1) - 1; // grouped view: 11+ and DNF share the last bucket
+    const shownAs = m => m === 'NC' || +m.slice(1) > 10 ? 10 : +m.slice(1) - 1; // grouped view: 11+ and NC share the last bucket
     const bad = r.rows.filter(d => {
       const want = [...new Set(exp[d.id].map(shownAs))];
       const lab = exp[d.id].filter(m => shownAs(m) === 10).join('/');
@@ -101,10 +100,10 @@ module.exports = async (t, h) => {
     t.check('position: the fake data has a tied mode and a mode below P10 (so the checks cover them)',
       Object.values(exp).some(m => m.length > 1) && Object.values(exp).some(m => m.some(x => shownAs(x) === 10)));
     // e.g. a driver with 8 finishes spread over P11–P20 but 2 at P6: the grouped bucket is tallest, yet P6 is most common
-    t.check('position: the grouped 11+/DNF bucket never wins just for being a group (case present in fake data)',
+    t.check('position: the grouped 11+/NC bucket never wins just for being a group (case present in fake data)',
       r.rows.some(d => d.counts[10] > Math.max(...d.counts.slice(0,10)) && d.modes.some(i => i < 10)));
     const rank = await p.evaluate(() => F1Common.standingsOrder(F1Controls.state.seasonRounds, L, 'drivers'));
-    const key = m => m === 'DNF' ? 999 : +m.slice(1);
+    const key = m => m === 'NC' ? 999 : +m.slice(1);
     const wantOrder = Object.keys(exp).sort((a,b) => key(exp[a][0]) - key(exp[b][0]) || rank.indexOf(a) - rank.indexOf(b));
     t.check('position: sorted by most common finish (default), ties by standings', JSON.stringify(r.rows.map(d => d.id)) === JSON.stringify(wantOrder),
       JSON.stringify([r.rows.map(d => d.id).slice(0,5), wantOrder.slice(0,5)]));

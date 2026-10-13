@@ -12,15 +12,15 @@ module.exports = async (t, h) => {
     F1Controls.state.seasonRounds.filter(x => x.round <= L).forEach(x => x.raceResults.forEach(q => {
       const e = exp[q.driverId] = exp[q.driverId] || {starts:0, dnfs:0, finishes:0};
       e.starts++;
-      if(Number.isFinite(q.position) && q.position >= 1 && !q.mechanical) e.finishes++; else e.dnfs++;
+      if(Number.isFinite(q.position) && q.position >= 1) e.finishes++; else e.dnfs++;
     }));
     return fullRoster.map(d => ({ id:d.driverId, rate:d.dnfRate, histTotal:d.posHist.reduce((a,b)=>a+b,0), exp:exp[d.driverId] }));
   });
   const badRate = r.filter(d => Math.abs(d.rate - d.exp.dnfs / d.exp.starts) > 1e-9);
-  t.check('DNF rate = DNFs of any cause / Grand Prix starts', badRate.length === 0, JSON.stringify(badRate.slice(0,2)));
+  t.check('DNF rate = results with no classified position / Grand Prix starts (#46)', badRate.length === 0, JSON.stringify(badRate.slice(0,2)));
   const badHist = r.filter(d => d.histTotal !== d.exp.finishes);
   t.check('finishing-position data counts only finished races', badHist.length === 0, JSON.stringify(badHist.slice(0,2)));
-  t.check('the fake season has drivers with non-mechanical DNFs (so the checks above mean something)', r.some(d => d.exp.dnfs > 0 && d.rate > 0));
+  t.check('the fake season has unclassified results (so the checks above mean something)', r.some(d => d.exp.dnfs > 0 && d.rate > 0));
 
   // The settings card: every tracked driver starts on auto for both DNFs and wins.
   const ui = await p.evaluate(() => ({

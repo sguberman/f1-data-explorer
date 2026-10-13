@@ -36,7 +36,7 @@ site/                 The website (deployed as the site root, so URLs are unchan
   position.html       Race finishing-position ridgeline chart per driver, with sort/show options.
   simulator.html      Monte Carlo rest-of-season title simulator with ridgeline result charts.
   common.js           F1Common: helpers shared by the chart pages (issue #44 and later).
-  data.js             F1Data: fetch, cache (localStorage), normalize f1api.dev data; MANUAL_OVERRIDES.
+  data.js             F1Data: fetch, cache (localStorage), normalize f1api.dev data; SPRINT_OVERRIDES.
   controls.js         F1Controls: shared season dropdown + "as of round" slider; emits events.
   theme.js            Light/dark/system theme (dropdown in .theme-bar) + canvas color palette (F1Theme).
   theme.css           Shared CSS variables (both themes), controls, pills, dropdowns, legends, pickers.
@@ -74,7 +74,8 @@ Move something into `common.js` only once it's genuinely identical on every page
 - `F1Data.loadSeason(year, {onProgress})` walks rounds 1, 2, 3… until the API returns no results, and
   resolves to `{rounds, failed, fetchedAt}`. Each round becomes `{round, raceName, raceResults,
   sprintResults, country}` (`country` = the circuit's, #18); result rows carry `driverId, code, name, teamId,
-  teamName, number, nationality, teamNationality, position, points, mechanical`.
+  teamName, number, nationality, teamNationality, position, points, session`. `position` is the classified
+  finishing position, or `null` when not classified (f1api.dev sends null, "-" or "NC").
   `failed` is true if any fetch failed (the load stops at the first failed round; a failed sprint reads as
   "no sprint"), issue #48. `fetchedAt` is the newest fetch time of the data used, issue #49.
 - Caching: completed rounds are cached permanently in `localStorage` under `f1cache:v2:` (bumped from
@@ -84,12 +85,11 @@ Move something into `common.js` only once it's genuinely identical on every page
   `F1Data.clearCache()` removes every `f1cache:v2:` entry (issue #23); the theme and the
   `f1cache:selectedSeason` key are kept.
 - `F1Data.getCalendar(year)` gives total rounds, race names and sprint rounds for the full season.
-- `F1Data.cumulative(seasonRounds, throughRound, mode)` returns `{drivers, teams}` with per-round points;
-  `mode` is `'include'` or `'exclude'` (exclude drops points from mechanical-DNF rounds).
-- **Mechanical DNFs:** f1api.dev's `retired` field is documented as `boolean|null` and is **always `null`**
-  in practice, so the API gives no retirement cause. `isMechanical()` keyword matching is effectively dead
-  code. The only real source is **`MANUAL_OVERRIDES`**, keyed `'year:round:driverId'` → `true`
-  (mechanical) / `false` (crash or other), hand-researched from real race reports for 2026 rounds 1–16.
+- `F1Data.cumulative(seasonRounds, throughRound)` returns `{drivers, teams}` with per-round points.
+- **Finishes and NC (#46):** retirement causes aren't tracked (f1api.dev gives none; the old hand-researched
+  mechanical/non-mechanical table was removed). A result with a classified position counts as that finish,
+  even if the driver retired; a result with no classified position is **NC** ("not classified") on the
+  position page and a **DNF** in the simulator — the same rule on both.
   Drivers with a real classified position who aren't listed are correctly left as normal finishers.
   This table needs manual upkeep after every new round.
 
@@ -141,21 +141,20 @@ Knockout line based on the highest-ranked selected team. Presets All/None/Top 2/
 
 **position.html** — One ridgeline chart: each selected driver's finishing-position histogram through the
 chosen round, normalized to its own peak. "Sort by" Most common / Championship / Team (team = constructors' order,
-then drivers' order). "Show" checkboxes: Below P10 (expand to individual positions + DNF instead of one
-"11+/DNF" bucket), Mechanical DNFs (off by default — excluded entirely, not counted as a start), Sprints
+then drivers' order). "Show" checkboxes: Below P10 (expand to individual positions + NC instead of one
+"11+/NC" bucket; NC = not classified, explained under the chart), Sprints
 (on by default — merged into the same histogram). All options recompute from cached data. Default
 selection is the top 8 drivers. Each ridge marks its **most common** finish(es) with a small triangle above
-the curve, every one when tied (#30). The mode is always taken over individual positions plus DNF, so the
-grouped "11+/DNF" bucket never wins just for being a group; when the most common finish is below P10 and
+the curve, every one when tied (#30). The mode is always taken over individual positions plus NC, so the
+grouped "11+/NC" bucket never wins just for being a group; when the most common finish is below P10 and
 those positions are grouped, the triangle sits on that bucket labelled with the real position(s) ("P13",
-"DNF", "P12/P14"). "Most common" sorting (the default) uses the best most-common finish, ties by standings.
+"NC", "P12/P14"). "Most common" sorting (the default) uses the best most-common finish, ties by standings.
 
 **simulator.html** — Simulates the rest of the season for the **whole grid**. Each race order is drawn slot
-by slot from each driver's own finishing-position histogram (GP results only, finished races only —
-DNFs of any cause are left out; `HIST_SMOOTH = 0.5`). Retirements are modeled separately (#39): drivers
-on **auto** retire in each event at their own DNF rate this season (DNFs of any cause ÷ GP starts; a result
-counts as a finish only with a classified position and no mechanical flag). So the simulator doesn't
-depend on the mechanical/non-mechanical split in `MANUAL_OVERRIDES`. Everyone is on auto unless set
+by slot from each driver's own finishing-position histogram (GP results only, every classified result —
+DNFs, i.e. no classified position, are left out; `HIST_SMOOTH = 0.5`). Retirements are modeled separately
+(#39): drivers on **auto** retire in each event at their own DNF rate this season (results with no classified
+position ÷ GP starts — the same rule as the position page's NC, #46). Everyone is on auto unless set
 otherwise in the "Tracked drivers in the remaining races" card: each tracked driver has a **DNFs** and a
 **Wins** stepper, both showing grey "auto" by default (#42, #14); − from auto sets 0, + sets 1, − at 0 goes
 back to auto. "Reset all to auto" clears both; "Reset all to 0" sets both to 0. A set DNF count = retire
@@ -231,8 +230,6 @@ tracked set is the top 8.
   preset is highlighted on first load (owner was told; no decision yet).
 - The simulator's histograms use **GP results only**, while position.html now includes sprints by
   default, so the two pages' "form" can differ.
-- `isMechanical()` keyword matching is dead code with live data (kept, hardened against non-string input).
-- Some 2026 DNFs are still unclassified, and every future round needs new overrides (see #21).
 - The season list and per-season round/sprint estimates come from the hardcoded `SEASON_META` in `common.js`.
 - Mobile Safari behavior can't be fully verified with headless Chromium. Check owner screenshots.
 
@@ -245,12 +242,12 @@ position projection` to run only matching files). Screenshots of every page go t
 since fonts render differently on different machines.
 
 - `lib/harness.js` serves `site/` at `http://site.test/`, answers f1api.dev from `lib/fixture.js` (a fake
-  2026 season: 22 drivers, 12 of 23 rounds, sprints, DNFs, one unknown team id), serves Chart.js from
+  2026 season: 22 drivers, 12 of 23 rounds, sprints, unclassified results, one unknown team id), serves Chart.js from
   `node_modules`, and can simulate f1api.dev failures (`fail`) or slow responses (`delay`).
 - Test files (`NN-name.test.js`) export `async (t, h) => { t.check(name, ok, detail) ... }`. Current files:
   smoke (every page, both themes, desktop + phone, no errors), common (#44), knockout (#45/#46),
   status (#23/#48/#49), movement (#47), position (#9), projection (#10),
-  simulator (#39 DNF modeling, #42 auto DNFs, #14 wins, #11 collisions, #17 results kept), flags and markers
+  simulator (#39 DNF modeling, #42 auto DNFs, #14 wins, #11 collisions, #17 results kept), NC/finish rule shared by the position page and simulator (#46), flags and markers
   (#18/#30; movement also covers #20's tie-breaks). The fixture's names mix country names and demonyms, with
   one unknown. Logic is checked against
   independent calculations written in the tests, not against the site's own helpers.
@@ -287,8 +284,7 @@ since fonts render differently on different machines.
    default attribution guidance.
 4. When the owner says "log an issue", log it only; work on it when told.
 5. To verify official F1 results, use <https://www.formula1.com/en/results/2026/races> directly rather
-   than news articles or Wikipedia. For DNF *causes*, which that site doesn't give, race reports and news
-   coverage are acceptable (approved for issue #36). The 2026 season is real: e.g. the Bahrain GP was moved
+   than news articles or Wikipedia. The 2026 season is real: e.g. the Bahrain GP was moved
    to Malaysia, and DNF counts are high because of new engine rules and new teams.
 6. Keep the site static (GitHub Pages), data live from f1api.dev, and interactions free of extra fetches.
 7. For design-heavy changes the owner has liked seeing a few options or mockups first, and has answered

@@ -175,15 +175,15 @@ async function buildFromSelection(detail){
  recompute(detail.round);
 }
 
-// issue #39: a Grand Prix result counts as a finish only with a real classified position and no
-// mechanical retirement (a driver can be classified despite retiring with a failure). Everything else
-// is a DNF, whatever the cause.
+// #46: a result counts as a finish when it has a classified position — even if the driver retired late
+// and was still classified — the same rule as the finishing-position chart. A result with no classified
+// position (NC there) is what this page calls a DNF.
 function isFinish(res){
- return Number.isFinite(res.position) && res.position >= 1 && !res.mechanical;
+ return Number.isFinite(res.position) && res.position >= 1;
 }
 
 // Per-driver race-finish histogram over the Grand Prix results they FINISHED (buckets: P1..P10, then
-// "11+" — same convention as the finishing-position chart). DNFs of any cause are left out here and
+// "11+" — same convention as the finishing-position chart). DNFs (no classified position) are left out here and
 // modeled separately as retirements (dnfRate below / the tracked drivers' DNF steppers).
 // Built straight from the raw race results, not F1Data.cumulative (which strips the position field).
 function buildPosHist(){
@@ -199,7 +199,7 @@ function buildPosHist(){
  return hist;
 }
 
-// Per driver: Grand Prix starts and DNFs (any cause) so far, for this season's DNF rate.
+// Per driver: Grand Prix starts and DNFs (no classified position) so far, for this season's DNF rate.
 function buildDnfStats(){
  const stats = {};
  currentSeasonRounds.forEach(r=>{
@@ -213,10 +213,10 @@ function buildDnfStats(){
  return stats;
 }
 
-// Per-driver current points and this season's DNF rate (any cause) — for literally every driver who
+// Per-driver current points and this season's DNF rate (no classified position) — for literally every driver who
 // has raced, not just tracked ones — plus the finish histogram above that drives simulated results.
 function recomputeRoster(){
- const cumInc = F1Data.cumulative(currentSeasonRounds, L, 'include');
+ const cumInc = F1Data.cumulative(currentSeasonRounds, L);
  const posHist = buildPosHist(), dnfStats = buildDnfStats();
  const rank = F1Common.standingsRank(currentSeasonRounds, L, 'drivers'); // #20: standings order, ties by countback
  fullRoster = Object.keys(cumInc.drivers).map(id=>{
@@ -441,7 +441,7 @@ function buildOutcomeInputs(){
    </div>`;
  }).join('');
  document.getElementById('outcomeNote').textContent=
-   `DNFs: how many of the ${E} remaining event${E===1?'':'s'} each driver fails to finish. Wins: how many of the ${nGP} remaining ${nGP===1?'Grand Prix':'Grands Prix'} they win. Grey auto = their actual season form: they retire at their real DNF rate and win as often as their results suggest. Press − or + to set an exact number (− below 0 goes back to auto). The events are picked at random in each simulated season.`;
+   `DNFs: how many of the ${E} remaining event${E===1?'':'s'} each driver fails to finish (a DNF here means no classified finish). Wins: how many of the ${nGP} remaining ${nGP===1?'Grand Prix':'Grands Prix'} they win. Grey auto = their actual season form: they retire at their real DNF rate and win as often as their results suggest. Press − or + to set an exact number (− below 0 goes back to auto). The events are picked at random in each simulated season.`;
  renderCollisions();
  syncOutcomes();
 }

@@ -146,7 +146,7 @@ function pickerRowHTML(t, rank, moves){
 // changes, and at the end of every recompute() so point totals stay current while scrubbing.
 function renderTeamPicker(){
  if(!currentSeasonRounds.length) return;
- const cum = F1Data.cumulative(currentSeasonRounds, L, 'include');
+ const cum = F1Data.cumulative(currentSeasonRounds, L);
  const rank = F1Common.standingsRank(currentSeasonRounds, L, 'teams');
  const roster = Object.values(cum.teams).map(t=>({...t,total:t.rounds.reduce((s,x)=>s+x.points,0)}))
    .sort((a,b)=>rank[a.teamId]-rank[b.teamId]);
@@ -165,7 +165,7 @@ function renderTeamPicker(){
 // issue #13: highlight whichever preset button (if any) exactly matches the current selection, so
 // it's clear what's picked — not highlighted at all if the selection was built by hand-checking boxes.
 function updatePresetActive(){
- const cum = F1Data.cumulative(currentSeasonRounds, L, 'include');
+ const cum = F1Data.cumulative(currentSeasonRounds, L);
  const ranked = rankedTeamIds();
  const sets = { all: Object.keys(cum.teams), none: [], 2: ranked.slice(0,2), 5: ranked.slice(0,5) };
  F1Common.markActivePreset(sets, selectedTeamIds);
@@ -173,7 +173,7 @@ function updatePresetActive(){
 
 document.getElementById('presetRow').addEventListener('click', e=>{
  const btn=e.target.closest('button[data-preset]'); if(!btn) return;
- const cum = F1Data.cumulative(currentSeasonRounds, L, 'include'); // ranking as of the CURRENT round
+ const cum = F1Data.cumulative(currentSeasonRounds, L); // ranking as of the CURRENT round
  const ranked = rankedTeamIds();
  const p = btn.dataset.preset;
  selectedTeamIds = p==='all' ? Object.keys(cum.teams) : p==='none' ? [] : ranked.slice(0,+p);
@@ -183,7 +183,7 @@ document.getElementById('presetRow').addEventListener('click', e=>{
 // Pure recompute from already-loaded season data — no network, safe to call on every drag-handle move.
 function recompute(round){
  const year = currentYear, seasonRounds = currentSeasonRounds;
- const cum = F1Data.cumulative(seasonRounds, round, 'include');
+ const cum = F1Data.cumulative(seasonRounds, round);
  const meta = F1Common.seasonMeta(year);
  const cal = currentCalendar;
  const haveCalendar = cal && cal.totalRounds > 0;

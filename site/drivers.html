@@ -141,7 +141,7 @@ function pickerRowHTML(d, rank, moves){
 // changes, and at the end of every recompute() so a "by ranking" sort stays current while scrubbing.
 function renderDriverPicker(){
  if(!currentSeasonRounds.length) return;
- const cum = F1Data.cumulative(currentSeasonRounds, L, 'include');
+ const cum = F1Data.cumulative(currentSeasonRounds, L);
  let roster = Object.values(cum.drivers).map(d=>({...d,total:d.rounds.reduce((s,x)=>s+x.points,0)}));
  const rank = F1Common.standingsRank(currentSeasonRounds, L, 'drivers'); // #20: same order as the standings
  roster.sort((a,b)=>rank[a.driverId]-rank[b.driverId]);
@@ -172,7 +172,7 @@ function renderDriverPicker(){
 // issue #13: highlight whichever preset button (if any) exactly matches the current selection, so
 // it's clear what's picked — not highlighted at all if the selection was built by hand-checking boxes.
 function updatePresetActive(){
- const cum = F1Data.cumulative(currentSeasonRounds, L, 'include');
+ const cum = F1Data.cumulative(currentSeasonRounds, L);
  const ranked = F1Common.standingsOrder(currentSeasonRounds, L, 'drivers');
  const sets = { all: Object.keys(cum.drivers), none: [], 5: ranked.slice(0,5), 10: ranked.slice(0,10) };
  F1Common.markActivePreset(sets, selectedDriverIds);
@@ -184,7 +184,7 @@ document.getElementById('sortSeg').addEventListener('change', e=>{
 });
 document.getElementById('presetRow').addEventListener('click', e=>{
  const btn=e.target.closest('button[data-preset]'); if(!btn) return;
- const cum = F1Data.cumulative(currentSeasonRounds, L, 'include'); // ranking as of the CURRENT round
+ const cum = F1Data.cumulative(currentSeasonRounds, L); // ranking as of the CURRENT round
  const ranked = F1Common.standingsOrder(currentSeasonRounds, L, 'drivers');
  const p = btn.dataset.preset;
  selectedDriverIds = p==='all' ? Object.keys(cum.drivers) : p==='none' ? [] : ranked.slice(0,+p);
@@ -194,7 +194,7 @@ document.getElementById('presetRow').addEventListener('click', e=>{
 // Pure recompute from already-loaded season data — no network, safe to call on every drag-handle move.
 function recompute(round){
  const year = currentYear, seasonRounds = currentSeasonRounds;
- const cum = F1Data.cumulative(seasonRounds, round, 'include');
+ const cum = F1Data.cumulative(seasonRounds, round);
  const meta = F1Common.seasonMeta(year);
  const cal = currentCalendar;
  const haveCalendar = cal && cal.totalRounds > 0;

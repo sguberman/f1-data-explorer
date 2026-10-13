@@ -276,7 +276,7 @@ const F1Common = (() => {
    actual.ids.forEach(id=>{ pts[id]=new Array(M).fill(null); pos[id]=new Array(M).fill(null); });
    for(let k=1;k<=M;k++){
      const N=Math.max(totalRounds, k);
-     const rows = Object.values(F1Data.cumulative(seasonRounds, k, 'include')[kind]).map(e=>{
+     const rows = Object.values(F1Data.cumulative(seasonRounds, k)[kind]).map(e=>{
        const id = kind==='teams' ? e.teamId : e.driverId;
        const w = Array.from({length:k},(_,ri)=>e.rounds.filter(x=>x.round===ri+1).reduce((s,x)=>s+x.points,0));
        const total = w.reduce((a,b)=>a+b,0);

@@ -38,7 +38,6 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
  <span style="font-size:12px;color:var(--sub);flex:0 0 100%;">Show</span>
  <div class="optCheckRow" id="chartOptRow">
   <label class="optCheck"><input type="checkbox" data-opt="below10"> Below P10</label>
-  <label class="optCheck"><input type="checkbox" data-opt="mech"> Mechanical DNFs</label>
   <label class="optCheck"><input type="checkbox" data-opt="sprint" checked> Sprints</label>
  </div>
 </div>
@@ -70,19 +69,19 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
 <script>
 const ff=getComputedStyle(document.body).fontFamily;
 
-let LAB=['P1','P2','P3','P4','P5','P6','P7','P8','P9','P10','11+/DNF'];
+let LAB=['P1','P2','P3','P4','P5','P6','P7','P8','P9','P10','11+/NC'];
 
 let D=[], L=0, P, FULL=[];
 // issue #35: chart display options — all computed purely from already-loaded season data, no network.
 // chartSort: 'mode' (default, best most-common finish on top, #30), 'champ' (current drivers' standings order),
 // 'team' (teams grouped by constructors' standings order, drivers within a team by standings order).
-// showBelowP10: false (default) folds everything below P10 into one "11+/DNF" bucket, same as before;
-// true expands individual positions down to the worst classified finish seen, plus a separate DNF bucket.
-// includeMechanical: false (default, matches the site's usual convention) excludes mechanical DNFs
-// entirely (not even counted as a start); true counts them as a start, bucketed as a DNF/no-position.
+// showBelowP10: false (default) folds everything below P10 into one "11+/NC" bucket, same as before;
+// true expands individual positions down to the worst classified finish seen, plus a separate NC bucket.
+// #46: a result with a classified position counts as that position, even if the driver retired; NC ("not
+// classified") is every result with no finishing position.
 // includeSprints: true (default, new as of #35) folds sprint-session results into the same histogram as
 // Grand Prix results; false restricts the chart to Grand Prix classification only, as it was before.
-let chartSort='mode', showBelowP10=false, includeMechanical=false, includeSprints=true;
+let chartSort='mode', showBelowP10=false, includeSprints=true;
 
 // issue #33: single ridgeline (joyplot) chart for the selected drivers — same mechanism as the
 // simulator's ridgeline plots (#32): each driver gets a baseline row (invisible flat dataset) and a
@@ -90,12 +89,12 @@ let chartSort='mode', showBelowP10=false, includeMechanical=false, includeSprint
 // to each driver's OWN peak bucket (a shape comparison, not an absolute-count one).
 const RIDGE_ROW=1, RIDGE_PEAK=0.82, RIDGE_ROW_PX=58, RIDGE_PAD_PX=34, RIDGE_FILL_ALPHA=0.35;
 let ridgeChart=null;
-// #30: a driver's most common finish(es), always over individual positions plus DNF (P1…Pworst, DNF) —
-// even when the chart groups everything below P10 into one "11+/DNF" bucket, which must not win just for
+// #30: a driver's most common finish(es), always over individual positions plus NC (P1…Pworst, NC) —
+// even when the chart groups everything below P10 into one "11+/NC" bucket, which must not win just for
 // being a group. Returns indexes into fullLabels(), every one if tied; [] with no starts.
 function fullLabels(){
  const labs=[]; for(let p=1, max=maxClassifiedPosition(); p<=max; p++) labs.push('P'+p);
- labs.push('DNF');
+ labs.push('NC');
  return labs;
 }
 function modesOf(counts){
@@ -121,13 +120,12 @@ function sessionRowsFor(r){
 }
 
 // Worst classified position seen across all loaded rounds (through L), respecting the current
-// mechanical/sprint toggles — used to size the expanded "show positions below P10" bucket range.
+// sprint toggle — used to size the expanded "show positions below P10" bucket range.
 function maxClassifiedPosition(){
  let max = 10;
  currentSeasonRounds.forEach(r=>{
    if(r.round > L) return;
    sessionRowsFor(r).forEach(res=>{
-     if(res.mechanical && !includeMechanical) return;
      if(res.position!=null && res.position>max) max = res.position;
    });
  });
@@ -135,27 +133,26 @@ function maxClassifiedPosition(){
 }
 
 function buildLabels(){
- if(!showBelowP10) return ['P1','P2','P3','P4','P5','P6','P7','P8','P9','P10','11+/DNF'];
+ if(!showBelowP10) return ['P1','P2','P3','P4','P5','P6','P7','P8','P9','P10','11+/NC'];
  const max = maxClassifiedPosition();
  const labs = []; for(let p=1; p<=max; p++) labs.push('P'+p);
- labs.push('DNF');
+ labs.push('NC');
  return labs;
 }
 
-// Finishing-position histogram for one driver through round L, honoring the current mechanical/sprint/
+// Finishing-position histogram for one driver through round L, honoring the current sprint/
 // below-P10 toggles — pure in-memory aggregation over already-loaded data, safe on every drag/slider step.
 function bucketsFor(driverId, labels){
- const n = labels.length, dnfIdx = n-1;
+ const n = labels.length, ncIdx = n-1;
  const v = Array(n).fill(0);
  let starts = 0;
  currentSeasonRounds.forEach(r=>{
    if(r.round > L) return;
    sessionRowsFor(r).forEach(res=>{
      if(res.driverId !== driverId) return;
-     if(res.mechanical && !includeMechanical) return; // excluded entirely, not even counted as a start
      starts++;
      const pos = res.position;
-     const idx = (pos!=null && pos>=1 && pos<=dnfIdx) ? pos-1 : dnfIdx;
+     const idx = (pos!=null && pos>=1 && pos<=ncIdx) ? pos-1 : ncIdx;
      v[idx]++;
    });
  });
@@ -166,7 +163,7 @@ function bucketsFor(driverId, labels){
 // option toggle.
 function recompute(round){
  L = round;
- const cum = F1Data.cumulative(currentSeasonRounds, L, 'include');
+ const cum = F1Data.cumulative(currentSeasonRounds, L);
  const driverRanked = F1Common.standingsOrder(currentSeasonRounds, L, 'drivers');
  const driverRank = {}; driverRanked.forEach((id,i)=>{ driverRank[id]=i; });
  const teamRanked = F1Common.standingsOrder(currentSeasonRounds, L, 'teams');
@@ -195,7 +192,7 @@ function draw(){
    .sort((a,b)=>{
      if(chartSort==='champ') return a.driverRank-b.driverRank;
      if(chartSort==='team') return (a.teamRank-b.teamRank) || (a.driverRank-b.driverRank);
-     // 'mode' (default): best most-common finish first (DNF counts as the worst); ties by standings
+     // 'mode' (default): best most-common finish first (NC counts as the worst); ties by standings
      const best=d=>d.modes.length ? d.modes[0] : Infinity;
      return (best(a)-best(b)) || (a.driverRank-b.driverRank);
    });
@@ -208,7 +205,7 @@ function draw(){
    const heights=counts.map(v=>baseline+(v/peak)*RIDGE_PEAK);
    datasets.push({ data:LAB.map(()=>baseline), borderWidth:0, pointRadius:0, fill:false, _baseline:true });
    // #30: most common position(s), every tied one, drawn by F1Common.ridgeMarkers. One below P10 while
-   // those positions are grouped goes on the "11+/DNF" bucket, labelled with the real position(s).
+   // those positions are grouped goes on the "11+/NC" bucket, labelled with the real position(s).
    const shown=[], labels={};
    modes.forEach(m=>{
      const j = showBelowP10 || m<10 ? m : LAB.length-1;
@@ -240,7 +237,7 @@ function draw(){
        }
      },
      scales:{
-       // issue #13 (mobile): narrow screens rotate the bucket labels (P1...P10, 11+/DNF), which don't fit
+       // issue #13 (mobile): narrow screens rotate the bucket labels (P1...P10, 11+/NC), which don't fit
      // horizontally since autoSkip is deliberately off for the default <=12-bucket case.
      x:{grid:{color:P.grid}, ticks:{color:P.text, maxRotation:F1Common.isNarrow()?60:0, minRotation:F1Common.isNarrow()?60:0,
          autoSkip:LAB.length>12, font:{size:F1Common.isNarrow()?9:11}}},
@@ -259,7 +256,7 @@ function draw(){
    }
  });
  document.getElementById('ridgeKey').innerHTML = F1Common.ridgeKeyHTML('most common finish');
- note.textContent = 'Races counted: ' + order.map(o=>`${o.code} ${o.starts}`).join(' · ');
+ note.textContent = 'NC = not classified (no finishing position). Races counted: ' + order.map(o=>`${o.code} ${o.starts}`).join(' · ');
  updateSub();
 }
 
@@ -268,7 +265,6 @@ function draw(){
 function updateSub(){
  const opts = [
    includeSprints ? 'Grand Prix and sprint results' : 'Grand Prix results only',
-   includeMechanical ? 'mechanical DNFs counted' : 'mechanical DNFs left out',
    showBelowP10 ? 'full finishing order shown' : 'positions below P10 grouped'
  ];
  document.getElementById('pageSub').textContent =
@@ -282,7 +278,7 @@ function pickerRowHTML(d, rank, moves){
 
 function renderDriverPicker(){
  if(!currentSeasonRounds.length) return;
- const cum = F1Data.cumulative(currentSeasonRounds, L, 'include');
+ const cum = F1Data.cumulative(currentSeasonRounds, L);
  let roster = Object.values(cum.drivers).map(d=>({...d,total:d.rounds.reduce((s,x)=>s+x.points,0)}));
  const rank = F1Common.standingsRank(currentSeasonRounds, L, 'drivers'); // #20: same order as the standings
  roster.sort((a,b)=>rank[a.driverId]-rank[b.driverId]);
@@ -313,7 +309,7 @@ function renderDriverPicker(){
 // issue #13: highlight whichever preset button (if any) exactly matches the current selection, so
 // it's clear what's picked — not highlighted at all if the selection was built by hand-checking boxes.
 function updatePresetActive(){
- const cum = F1Data.cumulative(currentSeasonRounds, L, 'include');
+ const cum = F1Data.cumulative(currentSeasonRounds, L);
  const ranked = F1Common.standingsOrder(currentSeasonRounds, L, 'drivers');
  const sets = { all: Object.keys(cum.drivers), none: [], 5: ranked.slice(0,5), 10: ranked.slice(0,10) };
  F1Common.markActivePreset(sets, selectedDriverIds);
@@ -327,7 +323,6 @@ document.getElementById('chartOptRow').addEventListener('change', e=>{
  const cb=e.target.closest('input[data-opt]'); if(!cb) return;
  const opt=cb.dataset.opt;
  if(opt==='below10') showBelowP10=cb.checked;
- else if(opt==='mech') includeMechanical=cb.checked;
  else if(opt==='sprint') includeSprints=cb.checked;
  recompute(L); // these all change what the buckets count — rebuild from already-loaded data, no network
 });
@@ -337,7 +332,7 @@ document.getElementById('sortSeg').addEventListener('change', e=>{
 });
 document.getElementById('presetRow').addEventListener('click', e=>{
  const btn=e.target.closest('button[data-preset]'); if(!btn) return;
- const cum = F1Data.cumulative(currentSeasonRounds, L, 'include');
+ const cum = F1Data.cumulative(currentSeasonRounds, L);
  const ranked = F1Common.standingsOrder(currentSeasonRounds, L, 'drivers');
  const p = btn.dataset.preset;
  selectedDriverIds = p==='all' ? Object.keys(cum.drivers) : p==='none' ? [] : ranked.slice(0,+p);

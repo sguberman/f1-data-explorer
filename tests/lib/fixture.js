@@ -1,5 +1,6 @@
 // Fake f1api.dev responses for the tests (issue #53): a deterministic 2026 season with 11 teams / 22 drivers,
-// 12 of 23 rounds completed, sprints, a few DNFs, and one team id the site has no color for
+// 12 of 23 rounds completed, sprints, a few unclassified results (position null, "NC" or "-", as f1api.dev
+// varies), and one team id the site has no color for
 // ("mystery_gp", to exercise the hashed hsl() fallback). Any other season returns 404.
 // #18: drivers have numbers and nationalities, teams nationalities and circuits countries, written both as
 // country names and demonyms (f1api.dev isn't consistent), plus one unknown name ("Atlantis") with no flag.
@@ -27,7 +28,7 @@ function results(round, sprint){
   return order(round, sprint ? 1 : 0).map((d,i) => {
     const dnf = !sprint && (round*3 + i) % 17 === 0;
     return { driver:{driverId:d.driverId, number:d.number, shortName:d.shortName, name:d.name, surname:d.surname, nationality:d.nationality},
-      team:{teamId:d.teamId, teamName:d.teamName, nationality:d.teamNationality}, position: dnf ? null : String(i+1),
+      team:{teamId:d.teamId, teamName:d.teamName, nationality:d.teamNationality}, position: dnf ? [null, 'NC', '-'][round % 3] : String(i+1),
       points: dnf ? 0 : ((sprint ? SP : GP)[i] || 0), retired:null };
   });
 }
