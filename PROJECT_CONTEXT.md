@@ -220,3 +220,10 @@ since fonts render differently on different machines.
    clarifying questions on ambiguous scope before work starts.
 8. Verify visually-significant changes by actually rendering them (light and dark, desktop and mobile
    width), not just by logic tests.
+9. Explain proposed changes before applying them, and preserve the current design and behavior unless the
+   owner asks otherwise. Vanilla HTML, CSS and JavaScript only.
+10. Ideas in `BRAINSTORM.md` aren't issues. When the owner promotes one, log it in `TODO.md` with the next
+    issue number and remove it from `BRAINSTORM.md`; remove rejected ideas too.
+11. Open a pull request and merge it only when the owner asks. Rebase-merge, so each `issue #xx:` commit
+    lands on `main` as written.
+12. Add or update tests in `tests/` with every feature or fix (issue #53), and run them before pushing.
