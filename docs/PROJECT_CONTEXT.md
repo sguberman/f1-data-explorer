@@ -141,9 +141,12 @@ then drivers' order). "Show" checkboxes: Below P10 (expand to individual positio
 selection is the top 8 drivers.
 
 **simulator.html** — Simulates the rest of the season for the **whole grid**. Each race order is drawn slot
-by slot from each driver's own finishing-position histogram (GP results only, mechanical DNFs excluded,
-`HIST_SMOOTH = 0.5`). Tracked drivers get manual DNF counts per remaining event via steppers; untracked
-drivers use their own season mechanical-DNF rate. Results: ridgeline charts of final-points distribution
+by slot from each driver's own finishing-position histogram (GP results only, finished races only —
+DNFs of any cause are left out; `HIST_SMOOTH = 0.5`). Retirements are modeled separately (#39): tracked
+drivers retire in exactly as many remaining events as their DNF stepper says (and no others); untracked
+drivers retire in each event at their own DNF rate this season (DNFs of any cause ÷ GP starts; a result
+counts as a finish only with a classified position and no mechanical flag). So the simulator doesn't
+depend on the mechanical/non-mechanical split in `MANUAL_OVERRIDES`. Results: ridgeline charts of final-points distribution
 and final championship position, ranked against the full grid. Default tracked set is the top 8.
 
 **index.html** — Static landing page with four cards.
@@ -212,7 +215,8 @@ since fonts render differently on different machines.
   `node_modules`, and can simulate f1api.dev failures (`fail`) or slow responses (`delay`).
 - Test files (`NN-name.test.js`) export `async (t, h) => { t.check(name, ok, detail) ... }`. Current files:
   smoke (every page, both themes, desktop + phone, no errors), common (#44), knockout (#45/#46),
-  status (#23/#48/#49), movement (#47), position (#9), projection (#10). Logic is checked against
+  status (#23/#48/#49), movement (#47), position (#9), projection (#10),
+  simulator DNF modeling (#39). Logic is checked against
   independent calculations written in the tests, not against the site's own helpers.
 - Add tests for each new feature in the same PR. Before trusting a new check, make sure it fails when the
   feature is broken.

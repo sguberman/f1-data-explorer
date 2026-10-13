@@ -73,7 +73,7 @@ canvas{max-width:100%;}
       <button type="button" class="pill" data-preset="10">Top 10</button>
     </div>
     <div id="driverPicker" class="f1-skel"></div>
-    <div class="note">The simulation itself always models every driver who has scored this season — this just controls who's reported on below.</div>
+    <div class="note">The simulation itself always models every driver who has raced this season — this just controls who's reported on below.</div>
   </div>
 
   <div class="card">
@@ -82,7 +82,7 @@ canvas{max-width:100%;}
       <button class="reset" id="resetDnf">Reset to 0</button>
     </div>
     <div class="dnf-grid" id="dnfGrid"></div>
-    <div class="note">Set how many of the remaining events each tracked driver fails to finish. Which specific event(s) each DNF lands on is randomized fresh in every simulated season. Every other driver on the grid uses their own mechanical-DNF rate from this season so far.</div>
+    <div class="note">Set how many of the remaining events each tracked driver fails to finish. Which specific event(s) each DNF lands on is randomized fresh in every simulated season. Every other driver on the grid retires at their own DNF rate from this season so far (any cause).</div>
   </div>
 
   <div class="card row">
@@ -107,7 +107,7 @@ canvas{max-width:100%;}
   <div class="card" id="ridgePosCard" style="display:none;">
     <h2>Projected final championship position</h2>
     <div class="ridgeWrap" id="ridgePosWrap"><canvas id="ridgePosCanvas"></canvas></div>
-    <div class="note">Each ridge is one tracked driver's share of simulated seasons landing at each final position, tallest at their most likely finish. Position is rank in the full simulated standings — every driver who's scored this season, not just the tracked set — so finishing behind an untracked driver is possible. Ordered by median finish, best on top.</div>
+    <div class="note">Each ridge is one tracked driver's share of simulated seasons landing at each final position, tallest at their most likely finish. Position is rank in the full simulated standings — every driver who has raced this season, not just the tracked set — so finishing behind an untracked driver is possible. Ordered by median finish, best on top.</div>
   </div>
 
   <div class="card" id="ridgePointsCard" style="display:none;">
@@ -145,41 +145,68 @@ async function buildFromSelection(detail){
  recompute(detail.round);
 }
 
-// Per-driver race-finish histogram (buckets: P1..P10, then "11+/other" — same convention as the
-// finishing-position chart): mechanical DNFs are fully excluded (not even counted), a non-mechanical
-// DNF or a finish outside the top 10 both land in the last bucket, which is fine since both score 0.
+// issue #39: a Grand Prix result counts as a finish only with a real classified position and no
+// mechanical retirement (a driver can be classified despite retiring with a failure). Everything else
+// is a DNF, whatever the cause.
+function isFinish(res){
+ return Number.isFinite(res.position) && res.position >= 1 && !res.mechanical;
+}
+
+// Per-driver race-finish histogram over the Grand Prix results they FINISHED (buckets: P1..P10, then
+// "11+" — same convention as the finishing-position chart). DNFs of any cause are left out here and
+// modeled separately as retirements (dnfRate below / the tracked drivers' DNF steppers).
 // Built straight from the raw race results, not F1Data.cumulative (which strips the position field).
 function buildPosHist(){
  const hist = {};
  currentSeasonRounds.forEach(r=>{
    if(r.round > L) return;
    (r.raceResults||[]).forEach(res=>{
-     if(res.mechanical) return;
      if(!hist[res.driverId]) hist[res.driverId]=new Array(11).fill(0);
-     const pos=res.position;
-     const idx = (pos!=null && pos>=1 && pos<=10) ? pos-1 : 10;
-     hist[res.driverId][idx]++;
+     if(!isFinish(res)) return;
+     hist[res.driverId][res.position <= 10 ? res.position-1 : 10]++;
    });
  });
  return hist;
 }
 
-// Per-driver current points and this season's mechanical-DNF rate — for literally every driver who
-// has appeared, not just tracked ones — plus the finish histogram above that drives simulated results.
+// Per driver: Grand Prix starts and DNFs (any cause) so far, for this season's DNF rate.
+function buildDnfStats(){
+ const stats = {};
+ currentSeasonRounds.forEach(r=>{
+   if(r.round > L) return;
+   (r.raceResults||[]).forEach(res=>{
+     const st = stats[res.driverId] = stats[res.driverId] || {starts:0, dnfs:0};
+     st.starts++;
+     if(!isFinish(res)) st.dnfs++;
+   });
+ });
+ return stats;
+}
+
+// Per-driver current points and this season's DNF rate (any cause) — for literally every driver who
+// has raced, not just tracked ones — plus the finish histogram above that drives simulated results.
 function recomputeRoster(){
  const cumInc = F1Data.cumulative(currentSeasonRounds, L, 'include');
- const cumExc = F1Data.cumulative(currentSeasonRounds, L, 'exclude');
- const posHist = buildPosHist();
+ const posHist = buildPosHist(), dnfStats = buildDnfStats();
  fullRoster = Object.keys(cumInc.drivers).map(id=>{
-   const di = cumInc.drivers[id], de = cumExc.drivers[id];
+   const di = cumInc.drivers[id];
    const now = di.rounds.reduce((s,x)=>s+x.points,0);
-   const incRoundSet = new Set(di.rounds.map(x=>x.round));
-   const excByRound = {};
-   (de?de.rounds:[]).forEach(x=>{ excByRound[x.round]=(excByRound[x.round]||0)+x.points; });
-   const excCounts = Object.values(excByRound);
-   const mechRate = incRoundSet.size ? Math.max(0, incRoundSet.size-excCounts.length)/incRoundSet.size : 0;
-   return { driverId:id, code:di.code, name:di.name, teamId:di.teamId, teamName:di.teamName, now, mechRate,
+   const st = dnfStats[id];
+   const dnfRate = st && st.starts ? st.dnfs / st.starts : 0;
+   return { driverId:id, code:di.code, name:di.name, teamId:di.teamId, teamName:di.teamName, now, dnfRate,
             posHist: posHist[id] || new Array(11).fill(0) };
+ });
+}
+
+// issue #39: which of the E remaining events each driver retires from, for one simulated season.
+// Tracked drivers: exactly the number set on their DNF stepper (random events). Everyone else: each
+// event independently, at their own DNF rate this season.
+function buildDnfSets(roster, trackedSet, E){
+ return roster.map(d=>{
+   if(trackedSet.has(d.driverId)) return randomRounds(dnfState[d.driverId]||0, E);
+   const set=new Set();
+   for(let e=0;e<E;e++) if(Math.random()<d.dnfRate) set.add(e);
+   return set;
  });
 }
 
@@ -223,7 +250,7 @@ function updateLede(){
  document.getElementById('lede').textContent =
    `Monte Carlo projection for the rest of the season: ${nGP} remaining ${nGP===1?'Grand Prix':'Grands Prix'}`
    + (nSprint ? ` plus ${nSprint} sprint${nSprint===1?'':'s'}` : '')
-   + ` (as of Round ${L}${totalRounds?(' of '+totalRounds):''}). Pace comes from each driver's actual finishing-position distribution this season so far (mechanical DNFs excluded from that read). Every driver who has scored this season is simulated, not just the ones tracked below, so a result outside the tracked set can still take points or the title — reliability for tracked drivers is set manually below; everyone else uses their own mechanical-DNF rate from this season. Not a prediction — a range of plausible outcomes if current form holds.`;
+   + ` (as of Round ${L}${totalRounds?(' of '+totalRounds):''}). Pace comes from each driver's finishing positions in the races they finished this season. Every driver who has raced this season is simulated, not just the ones tracked below, so a result outside the tracked set can still take points or the title — DNFs for tracked drivers are set manually below; everyone else retires at their own DNF rate from this season (any cause). Not a prediction — a range of plausible outcomes if current form holds.`;
 }
 
 function updateReadiness(){
@@ -391,12 +418,7 @@ document.getElementById('run').addEventListener('click',()=>{
    const posCounts=trackedIdx.map(()=>new Array(k+1).fill(0));
    for(let s=0;s<N;s++){
      const totals=nowPts.slice();
-     const dnfSet=roster.map(d=>{
-       if(trackedSet.has(d.driverId)) return randomRounds(dnfState[d.driverId]||0, E);
-       const p=d.mechRate, set=new Set();
-       for(let e=0;e<E;e++) if(Math.random()<p) set.add(e);
-       return set;
-     });
+     const dnfSet=buildDnfSets(roster, trackedSet, E);
      for(let e=0;e<E;e++){
        const alive=[];
        for(let i=0;i<n;i++) if(!dnfSet[i].has(e)) alive.push(i);
