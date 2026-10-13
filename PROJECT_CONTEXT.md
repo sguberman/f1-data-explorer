@@ -181,15 +181,25 @@ and final championship position, ranked against the full grid. Default tracked s
 - The season list and per-season round/sprint estimates come from the hardcoded `SEASON_META` in `common.js`.
 - Mobile Safari behavior can't be fully verified with headless Chromium. Check owner screenshots.
 
-## Testing approach used so far
+## Tests (`tests/`, issue #53)
 
-No test files are in the repo. Previous verification used throwaway scripts outside it:
-- Playwright (headless Chromium) smoke tests that serve the site locally, intercept `f1api.dev` with
-  synthetic fixtures, and stub `window.Chart` to capture chart configs for logic checks.
-- Real-Chart.js screenshot tests at desktop and ~390px widths in light and dark themes for visual checks
-  (the cdnjs Chart.js URL was intercepted and served a local copy).
-- A Node `vm` harness that loads `data.js` with a stubbed `fetch` to test caching and `MANUAL_OVERRIDES`.
-Note: requests for sprint rounds legitimately produce 404 console noise.
+Browser tests live in `tests/` (not deployed) and run on every pull request via
+`.github/workflows/tests.yml`. To run them locally: `cd tests && npm ci && npm test` (or `node run.js
+position projection` to run only matching files). Screenshots of every page go to `tests/artifacts/`
+(git-ignored; uploaded as a CI artifact) for a person to look at — they're not compared automatically,
+since fonts render differently on different machines.
+
+- `lib/harness.js` serves `site/` at `http://site.test/`, answers f1api.dev from `lib/fixture.js` (a fake
+  2026 season: 22 drivers, 12 of 23 rounds, sprints, DNFs, one unknown team id), serves Chart.js from
+  `node_modules`, and can simulate f1api.dev failures (`fail`) or slow responses (`delay`).
+- Test files (`NN-name.test.js`) export `async (t, h) => { t.check(name, ok, detail) ... }`. Current files:
+  smoke (every page, both themes, desktop + phone, no errors), common (#44), knockout (#45/#46),
+  status (#23/#48/#49), movement (#47), position (#9), projection (#10). Logic is checked against
+  independent calculations written in the tests, not against the site's own helpers.
+- Add tests for each new feature in the same PR. Before trusting a new check, make sure it fails when the
+  feature is broken.
+- `F1Controls` and page globals are top-level `const`/`let`, so they're reachable by name in
+  `page.evaluate()` but not as `window.*`. Sprint-round 404s in the console are expected.
 
 ## Instructions to preserve (owner's standing workflow)
 

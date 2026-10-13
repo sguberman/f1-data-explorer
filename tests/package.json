@@ -1,0 +1,12 @@
+{
+  "name": "f1-data-explorer-tests",
+  "private": true,
+  "description": "Browser tests for the site in ../site (issue #53). Not deployed.",
+  "scripts": {
+    "test": "node run.js"
+  },
+  "devDependencies": {
+    "chart.js": "4.4.1",
+    "playwright": "1.56.1"
+  }
+}
