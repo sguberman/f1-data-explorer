@@ -138,3 +138,9 @@ slower older load from overwriting a newer one.
 Cache entries record their fetch time (`t`). The status line shows "updated 5 min ago" for the newest data
 used, with the exact time on hover, refreshed every minute without fetching. Entries cached before this
 change have no time until they're refetched.
+
+## #9 — Championship position by round
+New card below the picker on drivers.html and constructors.html: every driver/team as a line, P1 at the
+top, a flat segment at each round's position joined to the next round by an angled line. Always shows the
+whole loaded season (independent of the round slider and picker); ties on points broken by countback of
+Grand Prix finishes. Shared renderer in `common.js` (`standingsByRound()`, `renderPositionChart()`).

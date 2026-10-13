@@ -1,13 +1,12 @@
 # Open issues
 
-Numbered issues that are logged but not yet done. Numbers are permanent. New issues continue from #50.
+Numbered issues that are logged but not yet done. Numbers are permanent. New issues continue from #51.
 An issue moves to `DONE.md` **only when the owner explicitly says it is closed**. Finishing and verifying
 the work is not enough on its own.
 
 | # | Area | Issue |
 |---|------|-------|
 | 8 | New tool | A qualifying-pace comparison tool for any drivers, not limited to teammates. |
-| 9 | New chart | A chart showing championship **position** (not points) by round. |
 | 10 | New chart | A chart showing projected championship finishing position and/or projected final points by round. |
 | 11 | simulator.html | Option to simulate two specific drivers taking each other out in the same race. |
 | 14 | New tool | A head-to-head tool comparing various stats for two drivers. |
@@ -18,6 +17,7 @@ the work is not enough on its own.
 | 41 | simulator.html | Changing which drivers are tracked should not require re-running the simulation. (Today `onSelectionChanged()` calls `hideResults()`, which discards results.) |
 | 42 | All pages | Add national flags to driver names, team names, and rounds (round names/numbers). Add driver numbers to driver names. |
 | 43 | data.js | Research mechanical-vs-other DNF causes for prior (pre-2026) seasons and add them to `MANUAL_OVERRIDES`, using the same hand-researched approach as issue #36. |
+| 50 | Pickers | Picker order and the ▲/▼ movement arrows sort by points only, while the championship-position chart (#9) breaks ties by countback of Grand Prix finishes. When two entries are level on points the picker order can disagree with the chart. Make them use the same ranking (`F1Common.standingsByRound()`). |
 
 ## Pending research inside a closed issue (#36)
 
