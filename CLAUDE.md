@@ -4,8 +4,8 @@ Static Formula 1 statistics site (2026 season), hosted on GitHub Pages, with liv
 
 **Read `docs/PROJECT_CONTEXT.md` first.** It's the full handoff: architecture, data layer, design
 requirements, decisions, known issues, tests, and the owner's standing rules. Then the open
-[GitHub issues](https://github.com/sguberman/f1-data-explorer/issues), `docs/DONE.md` (archive of legacy
-issues #1–#55) and `docs/BRAINSTORM.md` (ideas, not yet approved). Issue numbers before the move to GitHub
+[GitHub issues](https://github.com/sguberman/f1-data-explorer/issues?q=is%3Aissue+is%3Aopen+-label%3Aidea) (work, excluding ideas), the [ideas](https://github.com/sguberman/f1-data-explorer/issues?q=is%3Aissue+is%3Aopen+label%3Aidea) (issues labelled
+`idea`, not yet approved) and `docs/DONE.md` (archive of legacy issues #1–#55). Issue numbers before the move to GitHub
 (issue #9) are legacy and overlap GitHub's; see "Issue numbers" in `docs/PROJECT_CONTEXT.md`.
 
 ## Layout
@@ -21,7 +21,8 @@ issues #1–#55) and `docs/BRAINSTORM.md` (ideas, not yet approved). Issue numbe
 
 ## Standing rules (summary; details in docs/PROJECT_CONTEXT.md)
 
-- Track every request as a GitHub issue (default labels: enhancement, bug, documentation). "Log an issue" means log
+- Track every request as a GitHub issue (labels: enhancement, bug, documentation; unapproved ideas: idea).
+  Promote an idea by swapping `idea` for `enhancement`; close rejected ideas as "not planned". "Log an issue" means log
   only; work on it when told.
 - Only the owner closes issues: each issue's PR says `Closes #NN`, and the owner merging it (or saying to
   merge) closes it.

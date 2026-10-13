@@ -1,8 +1,8 @@
 # Project context — 2026 F1 Analytics site
 
 Handoff summary for a coding agent taking over this project. Read this first, then the open
-[GitHub issues](https://github.com/sguberman/f1-data-explorer/issues), `DONE.md` (archive of legacy issues
-#1–#55) and `BRAINSTORM.md` (unapproved ideas).
+[GitHub issues](https://github.com/sguberman/f1-data-explorer/issues?q=is%3Aissue+is%3Aopen+-label%3Aidea) (open work, excluding ideas), the [ideas](https://github.com/sguberman/f1-data-explorer/issues?q=is%3Aissue+is%3Aopen+label%3Aidea) (issues
+labelled `idea`), and `DONE.md` (archive of legacy issues #1–#55).
 
 **Issue numbers.** Issues are tracked in GitHub Issues since GitHub issue #9. Before that they lived in
 `docs/TODO.md` with their own numbering (legacy #1–#55), which overlaps GitHub's. References in `DONE.md`,
@@ -36,7 +36,7 @@ site/                 The website (deployed as the site root, so URLs are unchan
 .github/workflows/    static.yml deploys site/ on pushes to main that touch site/ (or the workflow).
 tests/                Browser tests, run on every PR (see "Tests" below). Not deployed.
 docs/                 Project docs (not deployed): PROJECT_CONTEXT.md (this file), DONE.md (archive of
-                      legacy issues #1–#55), TODO.md (legacy → GitHub issue numbers), BRAINSTORM.md (ideas).
+                      legacy issues #1–#55), TODO.md (legacy → GitHub issue numbers).
 README.md             What the project is, links, how to run the tests. CLAUDE.md: Claude Code session notes
                       (stays at the repo root, where Claude Code looks for it).
 ```
@@ -250,9 +250,10 @@ since fonts render differently on different machines.
    width), not just by logic tests.
 9. Explain proposed changes before applying them, and preserve the current design and behavior unless the
    owner asks otherwise. Vanilla HTML, CSS and JavaScript only.
-10. Ideas in `BRAINSTORM.md` aren't issues. When the owner promotes one, create a GitHub issue for it and
-    remove it from `BRAINSTORM.md`; remove rejected ideas too. (How brainstorm ideas are kept is still to be
-    discussed with the owner.)
+10. Unapproved ideas are GitHub issues labelled `idea` (#23); they aren't work to do. New idea → an
+    issue labelled `idea`. When the owner promotes one, swap `idea` for `enhancement` (or `bug`); when they
+    reject one, close it as "not planned". Links: [open work, excluding ideas](https://github.com/sguberman/f1-data-explorer/issues?q=is%3Aissue+is%3Aopen+-label%3Aidea),
+    [ideas](https://github.com/sguberman/f1-data-explorer/issues?q=is%3Aissue+is%3Aopen+label%3Aidea).
 11. Work each issue on its own branch (`claude/issue-NN`) and open a PR when it's ready for review, so it
     gets a preview (legacy #52). Merge only when the owner asks. Rebase-merge, so each `issue #xx:` commit
     lands on `main` as written.
