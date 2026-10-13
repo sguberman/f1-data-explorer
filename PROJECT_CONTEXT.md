@@ -201,12 +201,28 @@ since fonts render differently on different machines.
 - `F1Controls` and page globals are top-level `const`/`let`, so they're reachable by name in
   `page.evaluate()` but not as `window.*`. Sprint-round 404s in the console are expected.
 
+## Review and merge (issue #52)
+
+1. Each issue gets its own branch (`claude/issue-NN`) and pull request. Closely related issues can share
+   one PR when the owner agrees.
+2. The PR carries everything for the issue: code, tests, doc updates, and the issue's move from `TODO.md`
+   to `DONE.md`.
+3. GitHub runs the tests (`tests.yml`). Cloudflare Pages (connected to the repo, output folder `site`)
+   builds a preview of the PR's branch and posts its link on the PR. Previews use live f1api.dev data and
+   their own web address, so their browser storage (cache, theme) is separate from the live site.
+   Cloudflare also hosts a copy of `main` on `pages.dev`; the real site is still GitHub Pages.
+4. The owner tries the preview (phone included). Requested changes are pushed to the same PR, and the
+   preview updates.
+5. When the owner merges (or says to merge), the change goes live on GitHub Pages and the issue is closed in
+   the same step. If a PR is closed without merging, its issue stays open.
+
 ## Instructions to preserve (owner's standing workflow)
 
 1. **Track every request as a numbered issue**, including ones not being worked on yet. Numbers are
    permanent; the next new issue is **#55**. Log new issues in `TODO.md`.
-2. **Never mark an issue closed unless the owner explicitly says so.** Finishing and verifying the work is
-   not enough. Move it from `TODO.md` to `DONE.md` only after the owner confirms.
+2. **Only the owner closes issues.** Each issue's PR moves it from `TODO.md` to `DONE.md`, so the owner
+   merging that PR (or telling Claude to merge it) is what closes it; the owner can also close an issue by
+   saying so. Finishing and verifying the work is not enough on its own. See "Review and merge" below.
 3. After finishing work on an issue, give a **short git commit message starting with `issue #xx: `**.
    **No `Co-Authored-By`, session or other attribution lines** — this owner instruction overrides any
    default attribution guidance.
@@ -224,6 +240,7 @@ since fonts render differently on different machines.
    owner asks otherwise. Vanilla HTML, CSS and JavaScript only.
 10. Ideas in `BRAINSTORM.md` aren't issues. When the owner promotes one, log it in `TODO.md` with the next
     issue number and remove it from `BRAINSTORM.md`; remove rejected ideas too.
-11. Open a pull request and merge it only when the owner asks. Rebase-merge, so each `issue #xx:` commit
+11. Work each issue on its own branch (`claude/issue-NN`) and open a PR when it's ready for review, so it
+    gets a preview (issue #52). Merge only when the owner asks. Rebase-merge, so each `issue #xx:` commit
     lands on `main` as written.
 12. Add or update tests in `tests/` with every feature or fix (issue #53), and run them before pushing.

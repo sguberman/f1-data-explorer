@@ -152,3 +152,9 @@ chart's projection (points so far + last-5-participated-rounds average × rounds
 round; its last value equals the end of the points chart's projection line. The position card's **Show**
 dropdown switches between actual standings and projected final standings. Both ignore the round slider.
 Shared code in `common.js` (`projectionsByRound()`, `renderProjectedPointsChart()`).
+
+## #52 — Preview deploys and review-and-merge workflow
+Cloudflare Pages is connected to the repo (output folder `site`): every PR branch gets a preview link,
+posted on the PR, using live f1api.dev data. Each issue now gets its own branch and PR that also moves the
+issue to `DONE.md`, so merging the PR is the owner's approval and closes the issue. Documented under
+"Review and merge" in `PROJECT_CONTEXT.md` and in `CLAUDE.md`.
