@@ -105,6 +105,83 @@ const F1Common = (() => {
    ctx.save();ctx.textAlign='center';ctx.fillText(text,cx,y.getPixelForValue(0)-10);ctx.restore();
   }
 
+  // issue #9: championship position after every round, for every driver ('drivers') or team ('teams').
+  // Ranked by points; ties broken by countback of Grand Prix finishes (most wins, then most second
+  // places, ...), which is how the real standings separate equal points. Entries that haven't appeared
+  // yet have no position (null) for those rounds. Returns { ids (final standings order), pos: {id: [..]},
+  // info: {id: {code, teamId, teamName}} }.
+  function standingsByRound(seasonRounds, kind){
+   const idOf = res => kind==='teams' ? res.teamId : res.driverId;
+   const info={}, pos={}, pts={}, finishes={};
+   const countback = (a,b) => {
+     const A=finishes[a]||[], B=finishes[b]||[];
+     for(let i=0;i<Math.max(A.length,B.length);i++){ const d=(B[i]||0)-(A[i]||0); if(d) return d; }
+     return 0;
+   };
+   seasonRounds.forEach((r,ri)=>{
+     [...r.raceResults, ...(r.sprintResults||[])].forEach(res=>{
+       const id=idOf(res);
+       if(!info[id]){ info[id]={code:res.code, teamId:res.teamId, teamName:res.teamName}; pos[id]=new Array(seasonRounds.length).fill(null); }
+       pts[id]=(pts[id]||0)+res.points;
+     });
+     r.raceResults.forEach(res=>{
+       if(!res.position) return;
+       const f=finishes[idOf(res)]=finishes[idOf(res)]||[];
+       f[res.position-1]=(f[res.position-1]||0)+1;
+     });
+     Object.keys(pts).sort((a,b)=>pts[b]-pts[a] || countback(a,b)).forEach((id,i)=>{ pos[id][ri]=i+1; });
+   });
+   const last=seasonRounds.length-1;
+   const ids=Object.keys(info).sort((a,b)=>pos[a][last]-pos[b][last]);
+   return { ids, pos, info };
+  }
+
+  // issue #9: the "Championship position by round" chart on the drivers and constructors pages. Always
+  // shows every loaded round (it ignores the as-of-round slider). Each round's position is a flat segment
+  // joined to the next round's by an angled line; P1 at the top. Teammates follow the points chart's
+  // convention (better-placed driver solid, the other dashed). Returns the new Chart; pass the previous
+  // one to replace it.
+  function renderPositionChart(canvas, seasonRounds, kind, prevChart){
+   if(prevChart) prevChart.destroy();
+   if(!seasonRounds.length) return null;
+   const {ids, pos, info} = standingsByRound(seasonRounds, kind);
+   const N=seasonRounds.length, n=ids.length, P=F1Theme.chart();
+   const ff=getComputedStyle(document.body).fontFamily;
+   const label = id => kind==='teams' ? shortTeamName(id, info[id].teamName) : info[id].code;
+   const HALF=0.28; // half-width of each round's flat segment, in rounds
+   const leadSeen={};
+   const ds = ids.map(id=>{
+     const data=[];
+     pos[id].forEach((p,i)=>{ const r=i+1; if(p==null) data.push({x:r,y:null}); else data.push({x:r-HALF,y:p},{x:r+HALF,y:p}); });
+     const t=info[id].teamId, dash = kind==='drivers' && leadSeen[t] ? [5,3] : [];
+     leadSeen[t]=true;
+     const c=F1Theme.team(teamColor(t));
+     return {data, borderColor:c, borderDash:dash, borderWidth:2, tension:0, pointRadius:0, spanGaps:false,
+       label:label(id), fin:pos[id][N-1]};
+   });
+   canvas.parentElement.style.height = (n*(isNarrow()?20:22)+50)+'px';
+   const font='600 11px '+ff;
+   const mc=document.createElement('canvas').getContext('2d'); mc.font=font;
+   const PR=Math.ceil(Math.max(...ds.map(d=>mc.measureText(d.label).width)))+12;
+   const ends={id:'posEnds',afterDatasetsDraw(ch){
+     const {ctx,chartArea:a,scales:{y}}=ch; ctx.save(); ctx.font=font; ctx.textBaseline='middle';
+     ds.forEach(d=>{ ctx.fillStyle=d.borderColor; ctx.fillText(d.label, a.right+6, y.getPixelForValue(d.fin)); });
+     ctx.restore();
+   }};
+   return new Chart(canvas, {type:'line', data:{datasets:ds}, plugins:[ends],
+     options:{responsive:true, maintainAspectRatio:false, animation:false, parsing:false,
+       layout:{padding:{right:PR, top:4}}, plugins:{legend:{display:false}, tooltip:{enabled:false}},
+       scales:{
+         x:{type:'linear', min:0.5, max:N+0.5, grid:{color:P.grid},
+            ticks:{color:P.text, autoSkip:false, maxRotation:0, callback:v=>(!isNarrow()||v%2===1)?v:''},
+            afterBuildTicks:ax=>{ ax.ticks=Array.from({length:N},(_,i)=>({value:i+1})); },
+            title:{display:true, text:'Round', color:P.text}},
+         y:{type:'linear', reverse:true, min:0.5, max:n+0.5, grid:{display:false},
+            ticks:{color:P.text, autoSkip:false, callback:v=>'P'+v},
+            afterBuildTicks:ax=>{ ax.ticks=Array.from({length:n},(_,i)=>({value:i+1})); }}}}});
+  }
+
   return { TEAM_COLORS, teamColor, SHORT_TEAM_NAMES, shortTeamName, SEASON_META, seasonMeta, YEARS,
-    isNarrow, withAlpha, rankedDriverIds, standingsMoves, moveHTML, driverPickerRowHTML, markActivePreset, drawKnockoutLabel };
+    isNarrow, withAlpha, rankedDriverIds, standingsMoves, moveHTML, driverPickerRowHTML, markActivePreset, drawKnockoutLabel,
+    standingsByRound, renderPositionChart };
 })();

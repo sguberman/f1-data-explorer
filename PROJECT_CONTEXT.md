@@ -32,7 +32,8 @@ across pages lives in shared files instead (issue #44), so a change is made once
 - `common.js` (global `F1Common`, loaded after `theme.js`, before `data.js`/`controls.js`): `TEAM_COLORS` /
   `teamColor()`, `SHORT_TEAM_NAMES` / `shortTeamName()`, `SEASON_META` / `seasonMeta()` / `YEARS`,
   `isNarrow()`, `withAlpha()`, `rankedDriverIds()`, `driverPickerRowHTML()`, `markActivePreset()`,
-  `drawKnockoutLabel()` (the "Below the knockout line" label on both championship charts).
+  `drawKnockoutLabel()` (the "Below the knockout line" label on both championship charts),
+  `standingsByRound()` / `renderPositionChart()` (the championship-position chart, issue #9).
 - `theme.css`: picker list styles (`.pickerRow`, `.pickerDot`, …).
 Still per page, because they really differ: chart code, `renderDriverPicker()` / `renderTeamPicker()`
 (sorting/grouping), constructors' team picker row, each page's preset lists in `updatePresetActive()`, and
@@ -91,6 +92,12 @@ win the title) based on the **highest-ranked selected driver**, eliminated / pro
 legend grouped by short team name, end-of-line labels (replaced by a ranked list below the chart on screens
 ≤600px). Picker below the chart: "Sort by" Team/Ranking dropdown, presets All/None/Top 5/Top 10, default
 Top 5.
+
+Both championship pages also have a **Championship position by round** card below the picker (issue #9):
+every driver/team as a line, P1 at the top, a flat segment at each round's position joined to the next
+round by an angled line. It always shows the whole loaded season (ignores the round slider and the
+picker), ranks by points with ties broken by countback of Grand Prix finishes, uses short team names /
+driver codes as end labels and the solid/dashed teammate convention.
 
 **constructors.html** — Same chart pattern for teams (remaining points per weekend 43 GP + 15 sprint).
 Knockout line based on the highest-ranked selected team. Presets All/None/Top 2/Top 5, default Top 5.
