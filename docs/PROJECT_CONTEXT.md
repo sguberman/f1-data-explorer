@@ -147,7 +147,7 @@ counts as a finish only with a classified position and no mechanical flag). So t
 depend on the mechanical/non-mechanical split in `MANUAL_OVERRIDES`. Everyone is on auto unless set
 otherwise in the "Tracked drivers in the remaining races" card: each tracked driver has a **DNFs** and a
 **Wins** stepper, both showing grey "auto" by default (#42, #14); − from auto sets 0, + sets 1, − at 0 goes
-back to auto. "Reset all to auto" clears both; "Reset to 0" sets every DNF to 0. A set DNF count = retire
+back to auto. "Reset all to auto" clears both; "Reset all to 0" sets both to 0. A set DNF count = retire
 in exactly that many random remaining events; a set win count = win exactly that many random GPs (and
 never P1 in other GPs; sprints aren't affected). **Collisions** (#11) pair any two drivers for n GPs where
 both retire, on top of their DNFs. Per simulated season (`planSeason`): forced wins, then collisions, then

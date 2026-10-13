@@ -96,7 +96,7 @@ canvas{max-width:100%;}
     <div class="oc-head">
       <h2>Tracked drivers in the remaining races</h2>
       <button class="reset" id="resetAuto">Reset all to auto</button>
-      <button class="reset" id="resetDnf">Reset to 0</button>
+      <button class="reset" id="resetZero">Reset all to 0</button>
     </div>
     <div class="oc-grid" id="outcomeGrid"></div>
     <div class="note" id="outcomeNote"></div>
@@ -505,8 +505,8 @@ document.getElementById('addCollision').addEventListener('click', ()=>{
 document.getElementById('resetAuto').addEventListener('click', ()=>{
  outcomes={}; onOutcomeChanged();
 });
-document.getElementById('resetDnf').addEventListener('click', ()=>{
- (selectedDriverIds||[]).forEach(id=>{ outcomes[id]={...getOutcome(id), dnf:0}; });
+document.getElementById('resetZero').addEventListener('click', ()=>{
+ outcomes={}; (selectedDriverIds||[]).forEach(id=>{ outcomes[id]={dnf:0, win:0}; });
  onOutcomeChanged();
 });
 function recolorOutcomeTags(){

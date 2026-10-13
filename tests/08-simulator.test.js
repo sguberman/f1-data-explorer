@@ -44,16 +44,16 @@ module.exports = async (t, h) => {
     btn('dnf',-1).click(); out.zero = val('dnf');
     btn('dnf',-1).click(); out.backToAuto = val('dnf');
     btn('win',1).click(); btn('win',1).click(); out.wins = val('win');
-    document.getElementById('resetDnf').click();
-    out.afterZero = selectedDriverIds.map(x => outcomes[x].dnf);
-    out.winKept = outcomes[id].win;
+    document.getElementById('resetZero').click();
+    out.afterZero = selectedDriverIds.map(x => [outcomes[x].dnf, outcomes[x].win]);
+    out.zeroShown = [...document.querySelectorAll('#outcomeGrid .val')].map(v => v.textContent);
     document.getElementById('resetAuto').click();
     out.afterAuto = [...document.querySelectorAll('#outcomeGrid .val')].map(v => v.textContent);
     return out;
   });
   t.check('steppers: + from auto is 1, − to 0, − again back to auto', st.plus === '1' && st.zero === '0' && st.backToAuto === 'auto', JSON.stringify(st));
   t.check('steppers: − from auto is 0, and − at 0 goes back to auto', st.minusFromAuto === '0' && st.minusFromZero === 'auto', JSON.stringify(st));
-  t.check('Reset to 0 sets every DNF to 0 and leaves wins alone', st.afterZero.every(v => v === 0) && st.winKept === 2, JSON.stringify(st));
+  t.check('Reset all to 0 sets every DNF and win to 0', st.afterZero.every(([d,w]) => d === 0 && w === 0) && st.zeroShown.every(v => v === '0'), JSON.stringify(st));
   t.check('Reset all to auto puts everything back on auto', st.afterAuto.every(v => v === 'auto'));
 
   // Season plans: exact counts are honoured, auto follows the real rate, collisions retire both drivers.
