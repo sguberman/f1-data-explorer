@@ -10,8 +10,8 @@ Interactive charts and a title simulator for the 2026 Formula 1 season (2021–2
   season and a "knockout line" for who can still win the title, plus how the projection changed over time
   and each driver's or team's championship position round by round.
 - **Race finishing positions**: each driver's spread of finishing positions so far, as a ridgeline chart.
-- **Title simulator**: a Monte Carlo simulation of the rest of the season, with optional DNFs for the
-  drivers you pick.
+- **Title simulator**: a Monte Carlo simulation of the rest of the season. Set DNFs and wins for the
+  drivers you pick, or collisions between any two drivers.
 
 Every page has a season picker and an "as of round" slider, and light, dark and system themes.
 

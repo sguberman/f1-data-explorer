@@ -36,14 +36,29 @@ h2{font-size:14px;font-weight:650;margin:0 0 12px;color:var(--sub);text-transfor
 .pct{font-variant-numeric:tabular-nums;font-size:13px;text-align:right;}
 .note{font-size:11.5px;color:var(--sub);line-height:1.5;margin-top:2px;}
 .ridgeWrap{position:relative;width:100%;margin-bottom:4px;}
-.dnf-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px 14px;}
-.dnf-item{display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--inset);border:1px solid var(--line);border-radius:7px;padding:7px 8px 7px 10px;}
-.dnf-item .tag{font-size:12.5px;}
+.oc-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px;}
+.oc-head h2{margin:0;flex:1;min-width:200px;}
+.oc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:10px 14px;}
+.oc-item{display:flex;align-items:center;gap:6px;background:var(--inset);border:1px solid var(--line);border-radius:7px;padding:7px 8px 7px 10px;}
+.oc-item .tag{font-size:12.5px;min-width:30px;}
+.oc-ctl{display:flex;align-items:center;gap:4px;margin-left:auto;}
+.oc-ctl + .oc-ctl{margin-left:8px;}
+.oc-lbl{font-size:11px;color:var(--sub);}
+.oc-sub{font-size:12.5px;font-weight:600;color:var(--sub);margin:16px 0 8px;}
+.col-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--inset);border:1px solid var(--line);border-radius:7px;padding:7px 10px;margin-bottom:8px;font-size:12.5px;color:var(--sub);}
+.col-row select{padding:4px 6px;font-size:12.5px;}
+.col-row .col-n{display:inline-flex;align-items:center;gap:6px;}
+.col-row .col-x{margin-left:auto;background:transparent;color:var(--sub);border:none;padding:2px 6px;font-size:16px;font-weight:400;}
+.col-row .col-warn{flex-basis:100%;color:var(--elim);}
+.stale{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--inset);border:1px solid var(--line);border-left:3px solid #e0a020;border-radius:7px;padding:8px 12px;margin-bottom:14px;font-size:12.5px;color:var(--ink2);}
+.stale[hidden]{display:none;}
+.stale button{padding:6px 12px;font-size:12.5px;}
 .stepper{display:flex;align-items:center;gap:2px;}
 .stepper button{width:26px;height:26px;padding:0;border-radius:6px;background:var(--ctrl);color:var(--ink);border:1px solid var(--line);font-size:15px;font-weight:600;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;}
 .stepper button:active{background:var(--ctrl-active);}
 .stepper button:disabled{opacity:.35;cursor:default;}
-.stepper .val{width:20px;text-align:center;font-variant-numeric:tabular-nums;font-size:13px;}
+.stepper .val{width:30px;text-align:center;font-variant-numeric:tabular-nums;font-size:13px;}
+.stepper .val.auto{color:var(--sub);font-style:italic;font-size:12px;}
 .reset{background:transparent;color:var(--sub);border:1px solid var(--line);border-radius:6px;padding:7px 12px;font-size:12.5px;cursor:pointer;}
 canvas{max-width:100%;}
 </style>
@@ -76,13 +91,19 @@ canvas{max-width:100%;}
     <div class="note">The simulation always includes every driver who has raced this season; this only chooses who's shown in the results.</div>
   </div>
 
+  <!-- #42/#14/#11: per-driver DNF and win settings for tracked drivers, plus collisions between any two drivers -->
   <div class="card">
-    <div class="row" style="margin-bottom:12px;">
-      <h2 style="margin:0;">DNFs in the remaining events, for tracked drivers</h2>
+    <div class="oc-head">
+      <h2>Tracked drivers in the remaining races</h2>
+      <button class="reset" id="resetAuto">Reset all to auto</button>
       <button class="reset" id="resetDnf">Reset to 0</button>
     </div>
-    <div class="dnf-grid" id="dnfGrid"></div>
-    <div class="note">Set how many of the remaining events each tracked driver fails to finish; which events is random in each simulated season. Everyone else retires at their own DNF rate this season (any cause).</div>
+    <div class="oc-grid" id="outcomeGrid"></div>
+    <div class="note" id="outcomeNote"></div>
+    <div class="oc-sub">Collisions</div>
+    <div id="collisionList"></div>
+    <button class="reset" id="addCollision" type="button">+ Add a collision</button>
+    <div class="note">In each collision, both drivers retire from the same Grand Prix, on top of their DNFs above.</div>
   </div>
 
   <div class="card row">
@@ -97,6 +118,8 @@ canvas{max-width:100%;}
     <button id="run">Run simulation</button>
   </div>
   <div class="status" id="status">Loading…</div>
+  <!-- #17: results stay visible when settings change; this says they're from the previous settings -->
+  <div class="stale" id="staleNote" hidden><span>Settings changed since this run — the results below are from the previous settings.</span><button type="button" id="rerun">Run again</button></div>
 
   <div class="card" id="oddsCard" style="display:none;">
     <h2>Championship win probability</h2>
@@ -125,8 +148,11 @@ const PTS_SPRINT=[8,7,6,5,4,3,2,1];
 
 let currentYear=null, currentSeasonRounds=[], currentCalendar=null;
 let L=0, fullRoster=[], remainingEvents=[];
-let selectedDriverIds=null, pickerSort='team', dnfState={};
-let lastOdds=null, lastFinals=null, lastTrackedRoster=null, lastPosCounts=null, lastK=0, lastN=0;
+let selectedDriverIds=null, pickerSort='team';
+// #42/#14: per tracked driver {dnf, win}; null = auto (actual DNF rate / no forced wins). #11: collisions.
+let outcomes={}, collisions=[];
+// #17: the last run, kept so results can be redrawn for any tracked set without re-running.
+let lastRun=null;
 
 async function buildFromSelection(detail){
  currentYear = detail.year;
@@ -134,12 +160,14 @@ async function buildFromSelection(detail){
  if(!currentSeasonRounds.length){
    fullRoster=[]; remainingEvents=[]; selectedDriverIds=[];
    document.getElementById('driverPicker').innerHTML='';
-   document.getElementById('dnfGrid').innerHTML='';
+   outcomes={}; collisions=[]; lastRun=null;
+   document.getElementById('outcomeGrid').innerHTML=''; document.getElementById('collisionList').innerHTML='';
    updateLede(); updateReadiness(); hideResults();
    return;
  }
  L = detail.round;
  currentCalendar = await F1Data.getCalendar(currentYear);
+ outcomes={}; collisions=[]; lastRun=null; hideResults(); // a new season starts from scratch
  recomputeRoster();
  selectedDriverIds = [...fullRoster].sort((a,b)=>b.now-a.now).slice(0,8).map(d=>d.driverId);
  recompute(detail.round);
@@ -198,16 +226,63 @@ function recomputeRoster(){
  });
 }
 
-// issue #39: which of the E remaining events each driver retires from, for one simulated season.
-// Tracked drivers: exactly the number set on their DNF stepper (random events). Everyone else: each
-// event independently, at their own DNF rate this season.
-function buildDnfSets(roster, trackedSet, E){
- return roster.map(d=>{
-   if(trackedSet.has(d.driverId)) return randomRounds(dnfState[d.driverId]||0, E);
-   const set=new Set();
-   for(let e=0;e<E;e++) if(Math.random()<d.dnfRate) set.add(e);
-   return set;
+// ---- Simulation engine (#39, #42, #14, #11) ----
+// A snapshot of everything one run needs, so settings changed mid-run can't leak in. Per roster index:
+// wins[i] / dnfs[i] = exact counts set for a tracked driver, or null for auto.
+function buildSimContext(){
+ const roster=fullRoster, n=roster.length, E=remainingEvents.length;
+ const index={}; roster.forEach((d,i)=>{ index[d.driverId]=i; });
+ const tracked=new Set(selectedDriverIds||[]);
+ const wins=roster.map(d=>tracked.has(d.driverId) && outcomes[d.driverId] ? outcomes[d.driverId].win : null);
+ const dnfs=roster.map(d=>tracked.has(d.driverId) && outcomes[d.driverId] ? outcomes[d.driverId].dnf : null);
+ const cols=validCollisions().map(c=>({a:index[c.a], b:index[c.b], n:c.n})).filter(c=>c.a!=null && c.b!=null);
+ const gpIdx=remainingEvents.map((e,i)=>e.type==='gp'?i:-1).filter(i=>i>=0);
+ return { roster, n, E, events:remainingEvents, gpIdx, wins, dnfs, cols,
+          posHist:roster.map(d=>d.posHist), nowPts:roster.map(d=>d.now), forcedWinner:wins.map(w=>w!=null) };
+}
+const pickRandom=(arr,k)=>{ const a=arr.slice(); for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a.slice(0,Math.max(0,k)); };
+
+// One simulated season's fixed outcomes: winnerOf[e] (roster index or null) and out[i] = events driver i
+// doesn't finish. Order matters: forced wins first, then collisions (both drivers out of the same GP,
+// never one either of them wins), then exact DNFs, then everyone on auto retires at their own rate in
+// the events still open to them (never in a race they're set to win).
+function planSeason(ctx){
+ const {n,E,gpIdx}=ctx;
+ const winnerOf=new Array(E).fill(null), out=Array.from({length:n},()=>new Set());
+ const busy=i=>e=>winnerOf[e]===i || out[i].has(e);
+ pickRandom(Array.from({length:n},(_,i)=>i), n).forEach(i=>{
+   if(!ctx.wins[i]) return;
+   pickRandom(gpIdx.filter(e=>winnerOf[e]===null), ctx.wins[i]).forEach(e=>{ winnerOf[e]=i; });
  });
+ ctx.cols.forEach(c=>{
+   pickRandom(gpIdx.filter(e=>!busy(c.a)(e) && !busy(c.b)(e)), c.n).forEach(e=>{ out[c.a].add(e); out[c.b].add(e); });
+ });
+ for(let i=0;i<n;i++){
+   const all=Array.from({length:E},(_,e)=>e);
+   if(ctx.dnfs[i]!=null){
+     pickRandom(all.filter(e=>!busy(i)(e)), ctx.dnfs[i]).forEach(e=>out[i].add(e));
+   }else{
+     const p=ctx.roster[i].dnfRate;
+     all.forEach(e=>{ if(!busy(i)(e) && Math.random()<p) out[i].add(e); });
+   }
+ }
+ return {winnerOf, out};
+}
+
+// One whole simulated season: points totals per roster index (and, for tests, each event's order).
+function simulateSeason(ctx, keepOrders){
+ const plan=planSeason(ctx), totals=ctx.nowPts.slice(), orders=keepOrders?[]:null;
+ for(let e=0;e<ctx.E;e++){
+   const alive=[]; for(let i=0;i<ctx.n;i++) if(!plan.out[i].has(e)) alive.push(i);
+   const gp=ctx.events[e].type==='gp', w=plan.winnerOf[e];
+   // A driver with a set number of wins wins exactly those GPs: they're never drawn for P1 elsewhere.
+   const order = gp && w!=null ? [w, ...sampleOrder(alive.filter(i=>i!==w), ctx.posHist, 1)]
+               : sampleOrder(alive, ctx.posHist, 0, gp ? ctx.forcedWinner : null);
+   const pts = gp ? PTS_GP : PTS_SPRINT;
+   order.forEach((idx,rank)=>{ if(rank<pts.length) totals[idx]+=pts[rank]; });
+   if(orders) orders.push(order);
+ }
+ return {totals, plan, orders};
 }
 
 // The real remaining schedule from the live calendar — each GP, plus a separate "event" for any
@@ -228,19 +303,19 @@ function recompute(round){
  L = round;
  recomputeRoster();
  recomputeRemainingEvents();
- buildDnfInputs();
+ buildOutcomeInputs();
  renderDriverPicker();
  updateLede();
  updateReadiness();
- hideResults();
+ refreshResults(); // #17: keep the last results; they're marked out of date if the round changed
 }
 
 function onSelectionChanged(){
- buildDnfInputs();
+ buildOutcomeInputs();
  renderDriverPicker();
  updateLede();
  updateReadiness();
- hideResults();
+ refreshResults(); // #17: redraw the same run for the new tracked set, no re-run needed
 }
 
 function updateLede(){
@@ -250,7 +325,7 @@ function updateLede(){
  document.getElementById('lede').textContent =
    `Simulates the rest of the season thousands of times: ${nGP} ${nGP===1?'Grand Prix':'Grands Prix'}`
    + (nSprint ? ` and ${nSprint} sprint${nSprint===1?'':'s'}` : '')
-   + ` left after Round ${L}${totalRounds?(' of '+totalRounds):''}. Results are drawn from where each driver has finished this season, and each driver retires at their own DNF rate, except the drivers you track below, whose DNFs you set. Every driver who has raced this season is simulated, so someone you don't track can still score points or win the title. It shows a range of plausible outcomes if current form holds, not a prediction.`;
+   + ` left after Round ${L}${totalRounds?(' of '+totalRounds):''}. Results are drawn from where each driver has finished this season, and each driver retires at their own DNF rate, unless you set DNFs, wins or collisions below. Every driver who has raced this season is simulated, so someone you don't track can still score points or win the title. It shows a range of plausible outcomes if current form holds, not a prediction.`;
 }
 
 function updateReadiness(){
@@ -266,31 +341,26 @@ function hideResults(){
  document.getElementById('oddsCard').style.display='none';
  document.getElementById('ridgePosCard').style.display='none';
  document.getElementById('ridgePointsCard').style.display='none';
- lastOdds=null; lastFinals=null; lastTrackedRoster=null; lastPosCounts=null; lastK=0; lastN=0;
+ document.getElementById('staleNote').hidden=true;
 }
 
-// pick k distinct event indices out of E (partial Fisher-Yates)
-function randomRounds(k, E){
- k=Math.max(0,Math.min(k,E));
- const a=Array.from({length:E},(_,i)=>i);
- for(let i=0;i<k;i++){
-   const j=i+Math.floor(Math.random()*(E-i));
-   [a[i],a[j]]=[a[j],a[i]];
- }
- return new Set(a.slice(0,k));
-}
 // issue #30: draw a race order from each driver's own finish-position histogram, not a single pace
 // number — slot by slot (who takes P1, then P2, ...), weighting the still-unplaced drivers by their
 // own probability mass at that exact position and removing the winner before moving to the next slot.
 // A small flat smoothing constant keeps a position from being impossible just because it hasn't
 // happened yet in a small sample, and guarantees the weights never all go to zero.
+// startSlot: the first position being filled (1 when P1 is already decided, #14). noWin[i] true: driver i
+// can't be drawn for P1 (they have a set number of wins and this isn't one of those races).
 const HIST_SMOOTH = 0.5;
-function sampleOrder(alive, posHist){
+function sampleOrder(alive, posHist, startSlot=0, noWin=null){
  const remaining = alive.slice();
  const order = [];
- const nSlots = Math.min(10, remaining.length); // only the top 10 need an exact order — the rest all score 0
- for(let slot=0; slot<nSlots; slot++){
-   const weights = remaining.map(i => (posHist[i][slot]||0) + HIST_SMOOTH);
+ const nSlots = Math.min(10-startSlot, remaining.length); // only the top 10 need an exact order — the rest all score 0
+ for(let s=0; s<nSlots; s++){
+   const slot = s+startSlot;
+   const allowed = i => !(slot===0 && noWin && noWin[i]);
+   const anyAllowed = remaining.some(allowed); // if nobody may win (everyone has a set count), let anyone
+   const weights = remaining.map(i => anyAllowed && !allowed(i) ? 0 : (posHist[i][slot]||0) + HIST_SMOOTH);
    const total = weights.reduce((a,b)=>a+b,0);
    let r = Math.random()*total, pick=weights.length-1;
    for(let w=0; w<weights.length; w++){ if((r-=weights[w])<=0){ pick=w; break; } }
@@ -306,48 +376,145 @@ function quantile(arr,q){
  return lo===hi ? s[lo] : s[lo]+(s[hi]-s[lo])*(pos-lo);
 }
 
-function buildDnfInputs(){
- const E=remainingEvents.length;
- const newState={};
- (selectedDriverIds||[]).forEach(id=>{ newState[id]=Math.min(E, dnfState[id]||0); });
- dnfState=newState;
- const roster = fullRoster.filter(d=>(selectedDriverIds||[]).includes(d.driverId)).sort((a,b)=>b.now-a.now);
- document.getElementById('dnfGrid').innerHTML=roster.map(d=>`
-   <div class="dnf-item">
-     <span class="tag" data-id="${d.driverId}" style="color:${F1Theme.team(F1Common.teamColor(d.teamId))}">${d.code}</span>
-     <div class="stepper">
-       <button type="button" data-id="${d.driverId}" data-dir="-1" aria-label="Decrease ${d.code} DNFs">−</button>
-       <span class="val" id="dnfVal-${d.driverId}">${dnfState[d.driverId]}</span>
-       <button type="button" data-id="${d.driverId}" data-dir="1" aria-label="Increase ${d.code} DNFs">+</button>
-     </div>
-   </div>`).join('');
- syncStepperDisabled();
- document.querySelectorAll('#dnfGrid .stepper button').forEach(btn=>{
-   btn.addEventListener('click',()=>{
-     const id=btn.dataset.id, dir=+btn.dataset.dir, E=remainingEvents.length;
-     dnfState[id]=Math.min(E,Math.max(0,(dnfState[id]||0)+dir));
-     document.getElementById('dnfVal-'+id).textContent=dnfState[id];
-     syncStepperDisabled();
-   });
+// ---- Tracked drivers' DNFs and wins (#42, #14) and collisions (#11) ----
+const nGPLeft = ()=>remainingEvents.filter(e=>e.type==='gp').length;
+const trackedRoster = ()=>fullRoster.filter(d=>(selectedDriverIds||[]).includes(d.driverId)).sort((a,b)=>b.now-a.now);
+const getOutcome = id=>outcomes[id] || {dnf:null, win:null};
+// Collisions that can actually happen: two different drivers who are both in this season's roster.
+function validCollisions(){
+ const ids=new Set(fullRoster.map(d=>d.driverId));
+ return collisions.filter(c=>c.a && c.b && c.a!==c.b && ids.has(c.a) && ids.has(c.b) && c.n>=1);
+}
+const colsOf = (id, except)=>validCollisions().filter(c=>c!==except && (c.a===id || c.b===id)).reduce((s,c)=>s+c.n,0);
+// The most each setting can be without making a simulated season impossible: one winner per Grand Prix,
+// and a driver can't win, collide in and fail to finish more events than are left.
+function winMax(id){
+ const o=getOutcome(id), nGP=nGPLeft(), E=remainingEvents.length;
+ const others=Object.keys(outcomes).filter(x=>x!==id).reduce((s,x)=>s+(outcomes[x].win||0),0);
+ return Math.max(0, Math.min(nGP-others, nGP-colsOf(id), E-(o.dnf||0)-colsOf(id)));
+}
+function dnfMax(id){ return Math.max(0, remainingEvents.length-(getOutcome(id).win||0)-colsOf(id)); }
+function colMax(c){
+ const nGP=nGPLeft(), E=remainingEvents.length;
+ const room=id=>{ const o=getOutcome(id); return Math.min(nGP-(o.win||0), E-(o.win||0)-(o.dnf||0)) - colsOf(id,c); };
+ return Math.max(0, Math.min(room(c.a), room(c.b)));
+}
+// Keep every setting inside its limit after the round, the tracked set or another setting changes.
+function clampOutcomes(){
+ const next={};
+ (selectedDriverIds||[]).forEach(id=>{ if(outcomes[id]) next[id]={...outcomes[id]}; });
+ outcomes=next;
+ const nGP=nGPLeft();
+ let winsLeft=nGP;
+ trackedRoster().forEach(d=>{ const o=outcomes[d.driverId]; if(o && o.win!=null){ o.win=Math.max(0,Math.min(o.win,winsLeft)); winsLeft-=o.win; } });
+ validCollisions().forEach(c=>{ c.n=Math.max(1, Math.min(c.n, colMax(c))); });
+ Object.keys(outcomes).forEach(id=>{
+   const o=outcomes[id];
+   if(o.win!=null) o.win=Math.min(o.win, winMax(id));
+   if(o.dnf!=null) o.dnf=Math.min(o.dnf, dnfMax(id));
  });
 }
-function recolorDnfTags(){
- document.querySelectorAll('#dnfGrid .tag[data-id]').forEach(el=>{
+// What the results depend on: the round, every non-auto setting of a tracked driver and the collisions.
+function settingsKey(){
+ const o={};
+ Object.keys(outcomes).sort().forEach(id=>{ const x=outcomes[id]; if(x.dnf!=null || x.win!=null) o[id]=[x.dnf,x.win]; });
+ return JSON.stringify({L, o, c:validCollisions().map(c=>[c.a,c.b,c.n])});
+}
+
+const stepperHTML=(kind,key,label,val)=>`
+     <div class="stepper">
+       <button type="button" data-kind="${kind}" data-key="${key}" data-dir="-1" aria-label="Fewer ${label}">−</button>
+       <span class="val${val==null?' auto':''}" data-kind="${kind}" data-key="${key}">${val==null?'auto':val}</span>
+       <button type="button" data-kind="${kind}" data-key="${key}" data-dir="1" aria-label="More ${label}">+</button>
+     </div>`;
+function buildOutcomeInputs(){
+ clampOutcomes();
+ const E=remainingEvents.length, nGP=nGPLeft();
+ document.getElementById('outcomeGrid').innerHTML=trackedRoster().map(d=>{
+   const o=getOutcome(d.driverId);
+   return `
+   <div class="oc-item">
+     <span class="tag" data-id="${d.driverId}" style="color:${F1Theme.team(F1Common.teamColor(d.teamId))}">${d.code}</span>
+     <div class="oc-ctl"><span class="oc-lbl">DNFs</span>${stepperHTML('dnf',d.driverId,d.code+' DNFs',o.dnf)}</div>
+     <div class="oc-ctl"><span class="oc-lbl">Wins</span>${stepperHTML('win',d.driverId,d.code+' wins',o.win)}</div>
+   </div>`;
+ }).join('');
+ document.getElementById('outcomeNote').textContent=
+   `DNFs: how many of the ${E} remaining event${E===1?'':'s'} each driver fails to finish. Wins: how many of the ${nGP} remaining ${nGP===1?'Grand Prix':'Grands Prix'} they win. Grey auto = their actual season form: they retire at their real DNF rate and win as often as their results suggest. Press − or + to set an exact number (− below 0 goes back to auto). The events are picked at random in each simulated season.`;
+ renderCollisions();
+ syncOutcomes();
+}
+function renderCollisions(){
+ const tracked=trackedRoster(), trackedIds=new Set(tracked.map(d=>d.driverId));
+ const others=[...fullRoster].filter(d=>!trackedIds.has(d.driverId)).sort((a,b)=>b.now-a.now);
+ const opts=sel=>`<optgroup label="Tracked">${tracked.map(d=>`<option value="${d.driverId}"${d.driverId===sel?' selected':''}>${d.code}</option>`).join('')}</optgroup>`
+   + (others.length?`<optgroup label="Others">${others.map(d=>`<option value="${d.driverId}"${d.driverId===sel?' selected':''}>${d.code}</option>`).join('')}</optgroup>`:'');
+ document.getElementById('collisionList').innerHTML=collisions.map((c,i)=>`
+   <div class="col-row" data-i="${i}">
+     <select data-i="${i}" data-side="a" aria-label="First driver">${opts(c.a)}</select> and
+     <select data-i="${i}" data-side="b" aria-label="Second driver">${opts(c.b)}</select>
+     <span class="col-n">collide in ${stepperHTML('col',i,'collisions',c.n)} GP</span>
+     <button type="button" class="col-x" data-i="${i}" aria-label="Remove this collision">×</button>
+     <span class="col-warn" data-i="${i}" hidden>Pick two different drivers.</span>
+   </div>`).join('');
+}
+// Update the shown values and which − / + buttons work, in place (no re-render, so focus stays put).
+function syncOutcomes(){
+ document.querySelectorAll('#outcomeGrid .val, #collisionList .val').forEach(el=>{
+   const v = el.dataset.kind==='col' ? collisions[+el.dataset.key].n : getOutcome(el.dataset.key)[el.dataset.kind];
+   el.textContent = v==null ? 'auto' : v;
+   el.classList.toggle('auto', v==null);
+ });
+ document.querySelectorAll('#outcomeGrid .stepper button, #collisionList .stepper button').forEach(btn=>{
+   const {kind,key}=btn.dataset, dir=+btn.dataset.dir;
+   if(kind==='col'){ const c=collisions[+key]; btn.disabled = dir<0 ? c.n<=1 : c.n>=colMax(c); return; }
+   const v=getOutcome(key)[kind], max = kind==='win' ? winMax(key) : dnfMax(key);
+   btn.disabled = dir<0 ? false : (v==null ? max<1 : v>=max); // − always works: auto → 0 → auto
+ });
+ document.querySelectorAll('#collisionList .col-warn').forEach(el=>{ const c=collisions[+el.dataset.i]; el.hidden = c.a!==c.b; });
+}
+function onOutcomeChanged(){ syncOutcomes(); refreshResults(); }
+
+document.getElementById('outcomeGrid').addEventListener('click', e=>{
+ const btn=e.target.closest('.stepper button'); if(!btn || btn.disabled) return;
+ const {kind,key}=btn.dataset, dir=+btn.dataset.dir;
+ const o=outcomes[key]=outcomes[key]||{dnf:null, win:null};
+ // From auto, − sets 0 and + sets 1; − at 0 goes back to auto.
+ o[kind] = o[kind]==null ? (dir<0 ? 0 : 1) : (o[kind]+dir<0 ? null : o[kind]+dir);
+ onOutcomeChanged();
+});
+document.getElementById('collisionList').addEventListener('click', e=>{
+ const x=e.target.closest('.col-x');
+ if(x){ collisions.splice(+x.dataset.i,1); renderCollisions(); onOutcomeChanged(); return; }
+ const btn=e.target.closest('.stepper button'); if(!btn || btn.disabled) return;
+ collisions[+btn.dataset.key].n += +btn.dataset.dir;
+ onOutcomeChanged();
+});
+document.getElementById('collisionList').addEventListener('change', e=>{
+ const sel=e.target.closest('select'); if(!sel) return;
+ const c=collisions[+sel.dataset.i]; c[sel.dataset.side]=sel.value;
+ clampOutcomes(); onOutcomeChanged();
+});
+document.getElementById('addCollision').addEventListener('click', ()=>{
+ const ids=[...trackedRoster(), ...[...fullRoster].sort((a,b)=>b.now-a.now)].map(d=>d.driverId);
+ const uniq=[...new Set(ids)];
+ if(uniq.length<2) return;
+ collisions.push({a:uniq[0], b:uniq[1], n:1});
+ clampOutcomes(); renderCollisions(); onOutcomeChanged();
+});
+document.getElementById('resetAuto').addEventListener('click', ()=>{
+ outcomes={}; onOutcomeChanged();
+});
+document.getElementById('resetDnf').addEventListener('click', ()=>{
+ (selectedDriverIds||[]).forEach(id=>{ outcomes[id]={...getOutcome(id), dnf:0}; });
+ onOutcomeChanged();
+});
+function recolorOutcomeTags(){
+ document.querySelectorAll('#outcomeGrid .tag[data-id]').forEach(el=>{
    const d=fullRoster.find(x=>x.driverId===el.dataset.id);
    if(d) el.style.color=F1Theme.team(F1Common.teamColor(d.teamId));
  });
 }
-function syncStepperDisabled(){
- const E=remainingEvents.length;
- document.querySelectorAll('#dnfGrid .stepper button').forEach(btn=>{
-   const id=btn.dataset.id, dir=+btn.dataset.dir, v=dnfState[id]||0;
-   btn.disabled = dir<0 ? v<=0 : v>=E;
- });
-}
-document.getElementById('resetDnf').addEventListener('click', ()=>{
- (selectedDriverIds||[]).forEach(id=>{ dnfState[id]=0; });
- buildDnfInputs();
-});
 
 function pickerRowHTML(d, rank, moves){
  return F1Common.driverPickerRowHTML(d, {rank, checked:(selectedDriverIds||[]).includes(d.driverId), points:d.now, move:moves[d.driverId]});
@@ -399,58 +566,62 @@ document.getElementById('presetRow').addEventListener('click', e=>{
  onSelectionChanged();
 });
 
-document.getElementById('run').addEventListener('click',()=>{
+// #17: a run simulates every driver and keeps each season's final points and championship rank for the
+// whole grid, so the results can be redrawn for any tracked set (refreshResults) without re-running.
+function runSimulation(N){
+ const ctx=buildSimContext(), n=ctx.n;
+ const totals=new Float32Array(N*n), ranks=new Uint16Array(N*n);
+ for(let s=0;s<N;s++){
+   const t=simulateSeason(ctx).totals;
+   const standing=Array.from({length:n},(_,i)=>i).sort((a,b)=>t[b]-t[a]);
+   standing.forEach((idx,r)=>{ ranks[s*n+idx]=r+1; });
+   for(let i=0;i<n;i++) totals[s*n+i]=t[i];
+ }
+ return { key:settingsKey(), N, n, ids:ctx.roster.map(d=>d.driverId), totals, ranks };
+}
+// Draws the last run for the drivers tracked now; marks it out of date if the settings changed since.
+function refreshResults(){
+ const tracked=lastRun ? trackedRoster().filter(d=>lastRun.ids.includes(d.driverId)) : [];
+ if(!lastRun || !tracked.length){ hideResults(); return; }
+ const {N,n,ids,totals,ranks}=lastRun, k=tracked.length;
+ const odds=[], finals=[], posCounts=[];
+ tracked.forEach(d=>{
+   const i=ids.indexOf(d.driverId);
+   // issue #31: posCounts[p] = seasons finished at that exact championship rank (p=0 → 1st, ...
+   // p=k-1 → kth), the last slot catching "outside the top k" — k being the tracked-set size.
+   const f=new Array(N), pc=new Array(k+1).fill(0);
+   let champ=0;
+   for(let s=0;s<N;s++){
+     f[s]=totals[s*n+i];
+     const r=ranks[s*n+i];
+     if(r===1) champ++;
+     pc[r<=k ? r-1 : k]++;
+   }
+   odds.push(100*champ/N); finals.push(f); posCounts.push(pc);
+ });
+ renderOdds(tracked, odds);
+ renderRidgePosition(tracked, posCounts, k, N);
+ renderRidgePoints(tracked, finals);
+ document.getElementById('oddsCard').style.display='block';
+ document.getElementById('ridgePosCard').style.display='block';
+ document.getElementById('ridgePointsCard').style.display='block';
+ document.getElementById('staleNote').hidden = lastRun.key===settingsKey();
+}
+function startRun(){
  const btn=document.getElementById('run'); btn.disabled=true;
+ document.getElementById('rerun').disabled=true;
  document.getElementById('status').textContent='Simulating…';
  setTimeout(()=>{
    const N=+document.getElementById('n').value;
-   const roster=fullRoster, n=roster.length, E=remainingEvents.length;
-   const posHist=roster.map(d=>d.posHist);
-   const nowPts=roster.map(d=>d.now);
-   const trackedSet=new Set(selectedDriverIds||[]);
-   const trackedIdx=[]; roster.forEach((d,i)=>{ if(trackedSet.has(d.driverId)) trackedIdx.push(i); });
-   const finals=trackedIdx.map(()=>[]);
-   const wins=new Array(n).fill(0);
-   const k=trackedIdx.length;
-   // issue #31: posCounts[ti][p] = how many simulated seasons tracked driver ti finished at that exact
-   // championship rank (p=0 → 1st, ... p=k-1 → kth), with the last slot catching "outside the top k" —
-   // k being the tracked-set size, so the buckets adapt to however many drivers are being tracked.
-   const posCounts=trackedIdx.map(()=>new Array(k+1).fill(0));
-   for(let s=0;s<N;s++){
-     const totals=nowPts.slice();
-     const dnfSet=buildDnfSets(roster, trackedSet, E);
-     for(let e=0;e<E;e++){
-       const alive=[];
-       for(let i=0;i<n;i++) if(!dnfSet[i].has(e)) alive.push(i);
-       const order=sampleOrder(alive, posHist);
-       const pts = remainingEvents[e].type==='sprint' ? PTS_SPRINT : PTS_GP;
-       order.forEach((idx,rank)=>{ if(rank<pts.length) totals[idx]+=pts[rank]; });
-     }
-     // full standings order this simulated season, to get both the winner and every tracked driver's rank
-     const standing=Array.from({length:n},(_,i)=>i).sort((a,b)=>totals[b]-totals[a]);
-     wins[standing[0]]++;
-     const rankOf=new Array(n);
-     standing.forEach((idx,r)=>{ rankOf[idx]=r+1; });
-     trackedIdx.forEach((idx,ti)=>{
-       finals[ti].push(totals[idx]);
-       const r=rankOf[idx];
-       posCounts[ti][ r<=k ? r-1 : k ]++;
-     });
-   }
-   const trackedRoster=trackedIdx.map(i=>roster[i]);
-   const odds=trackedIdx.map(i=>100*wins[i]/N);
-   lastTrackedRoster=trackedRoster; lastOdds=odds; lastFinals=finals;
-   lastPosCounts=posCounts; lastK=k; lastN=N;
-   renderOdds(trackedRoster, odds);
-   renderRidgePosition(trackedRoster, posCounts, k, N);
-   renderRidgePoints(trackedRoster, finals);
-   document.getElementById('oddsCard').style.display='block';
-   document.getElementById('ridgePosCard').style.display='block';
-   document.getElementById('ridgePointsCard').style.display='block';
-   document.getElementById('status').textContent=`${N.toLocaleString()} seasons simulated.`;
+   lastRun=runSimulation(N);
+   refreshResults();
    updateReadiness();
+   document.getElementById('rerun').disabled=false;
+   document.getElementById('status').textContent=`${N.toLocaleString()} seasons simulated.`;
  },30);
-});
+}
+document.getElementById('run').addEventListener('click', startRun);
+document.getElementById('rerun').addEventListener('click', ()=>{ if(!document.getElementById('run').disabled) startRun(); });
 
 // issue #32: ridgeline (joyplot) rendering shared by the points and position cards — each driver gets
 // its own baseline row (a flat, invisible reference dataset) and a filled curve/step dataset drawn
@@ -550,11 +721,9 @@ function renderOdds(roster, odds){
 window.addEventListener('f1selection', e=>buildFromSelection(e.detail));
 window.addEventListener('f1roundchange', e=>{ if(currentSeasonRounds.length) recompute(e.detail.round); });
 window.addEventListener('themechange', ()=>{
- recolorDnfTags();
+ recolorOutcomeTags();
  renderDriverPicker();
- if(lastOdds) renderOdds(lastTrackedRoster,lastOdds);
- if(lastPosCounts) renderRidgePosition(lastTrackedRoster,lastPosCounts,lastK,lastN);
- if(lastFinals) renderRidgePoints(lastTrackedRoster,lastFinals);
+ refreshResults();
 });
 F1Controls.mount('f1controls', {defaultYear:2026});
 </script>

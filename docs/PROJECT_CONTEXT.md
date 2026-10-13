@@ -141,12 +141,24 @@ selection is the top 8 drivers.
 
 **simulator.html** — Simulates the rest of the season for the **whole grid**. Each race order is drawn slot
 by slot from each driver's own finishing-position histogram (GP results only, finished races only —
-DNFs of any cause are left out; `HIST_SMOOTH = 0.5`). Retirements are modeled separately (#39): tracked
-drivers retire in exactly as many remaining events as their DNF stepper says (and no others); untracked
-drivers retire in each event at their own DNF rate this season (DNFs of any cause ÷ GP starts; a result
+DNFs of any cause are left out; `HIST_SMOOTH = 0.5`). Retirements are modeled separately (#39): drivers
+on **auto** retire in each event at their own DNF rate this season (DNFs of any cause ÷ GP starts; a result
 counts as a finish only with a classified position and no mechanical flag). So the simulator doesn't
-depend on the mechanical/non-mechanical split in `MANUAL_OVERRIDES`. Results: ridgeline charts of final-points distribution
-and final championship position, ranked against the full grid. Default tracked set is the top 8.
+depend on the mechanical/non-mechanical split in `MANUAL_OVERRIDES`. Everyone is on auto unless set
+otherwise in the "Tracked drivers in the remaining races" card: each tracked driver has a **DNFs** and a
+**Wins** stepper, both showing grey "auto" by default (#42, #14); − from auto sets 0, + sets 1, − at 0 goes
+back to auto. "Reset all to auto" clears both; "Reset to 0" sets every DNF to 0. A set DNF count = retire
+in exactly that many random remaining events; a set win count = win exactly that many random GPs (and
+never P1 in other GPs; sprints aren't affected). **Collisions** (#11) pair any two drivers for n GPs where
+both retire, on top of their DNFs. Per simulated season (`planSeason`): forced wins, then collisions, then
+exact DNFs, then auto retirements in the events still open. Steppers stop at what's possible (one winner per
+GP; wins + collisions ≤ GPs left; DNFs + wins + collisions ≤ events left). Settings only exist for tracked
+drivers and are dropped when a driver is untracked. Results (#17): a run stores every driver's final points
+and rank for each simulated season (`lastRun`), so changing the tracked set redraws the same run without
+re-running; changing a setting or the round keeps the results with a "Settings changed since this run" note
+and a Run again button; loading another season clears them. Results: win probability plus ridgeline charts
+of final-points distribution and final championship position, ranked against the full grid. Default
+tracked set is the top 8.
 
 **index.html** — Static landing page with four cards.
 
@@ -218,7 +230,7 @@ since fonts render differently on different machines.
 - Test files (`NN-name.test.js`) export `async (t, h) => { t.check(name, ok, detail) ... }`. Current files:
   smoke (every page, both themes, desktop + phone, no errors), common (#44), knockout (#45/#46),
   status (#23/#48/#49), movement (#47), position (#9), projection (#10),
-  simulator DNF modeling (#39). Logic is checked against
+  simulator (#39 DNF modeling, #42 auto DNFs, #14 wins, #11 collisions, #17 results kept). Logic is checked against
   independent calculations written in the tests, not against the site's own helpers.
 - Add tests for each new feature in the same PR. Before trusting a new check, make sure it fails when the
   feature is broken.
