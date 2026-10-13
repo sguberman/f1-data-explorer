@@ -1,4 +1,4 @@
-# Project context — 2026 F1 Analytics site
+# Project context — F1 Data Explorer
 
 Handoff summary for a coding agent taking over this project. Read this first, then the open
 [GitHub issues](https://github.com/sguberman/f1-data-explorer/issues?q=is%3Aissue+is%3Aopen+-label%3Aidea) (open work, excluding ideas), the [ideas](https://github.com/sguberman/f1-data-explorer/issues?q=is%3Aissue+is%3Aopen+label%3Aidea) (issues
@@ -53,7 +53,6 @@ across pages lives in shared files instead (issue #44), so a change is made once
 - `common.js` (global `F1Common`, loaded after `theme.js`, before `data.js`/`controls.js`): `TEAM_COLORS` /
   `teamColor()`, `SHORT_TEAM_NAMES` / `shortTeamName()`, `SEASON_META` / `seasonMeta()` / `YEARS`,
   `isNarrow()`, `withAlpha()`, `rankedDriverIds()`, `driverPickerRowHTML()`, `markActivePreset()`,
-  `drawKnockoutLabel()` (the "Below the knockout line" label on both championship charts),
   `standingsByRound()` / `renderPositionChart()` (the championship-position chart, issue #9),
   `projectionsByRound()` / `renderProjectedPointsChart()` (projection history, issue #10).
 - `theme.css`: picker list styles (`.pickerRow`, `.pickerDot`, …).
@@ -153,6 +152,10 @@ and final championship position, ranked against the full grid. Default tracked s
 
 ## Design requirements (owner-approved — keep these)
 
+- Site name: **F1 Data Explorer**. Page headings: Drivers' Championship, Constructors' Championship, Race
+  Finishing Positions, Title Simulator (the landing-page cards use the same names). Each page's `<title>` is
+  "Name · F1 Data Explorer" without a year; `controls.js` prefixes the selected season (#16).
+- Page introductions say what the page shows, then how to use it, in plain sentences (#15/#16).
 - Team colors via `F1Common.TEAM_COLORS` (Mercedes teal, McLaren papaya, Ferrari red, Red Bull navy, Alpine pink,
   Audi salmon/red, Haas black, …). Unknown team ids get a stable hashed `hsl()` color; use `F1Common.withAlpha()`
   for transparency, since a hex alpha suffix breaks on `hsl()`.
@@ -179,7 +182,8 @@ and final championship position, ranked against the full grid. Default tracked s
 
 - The knockout line on both championship pages deliberately uses the **highest-ranked selected** entry as
   the leader, not the true full-field leader (issue #26).
-  For that reason both charts say "below the line" rather than "eliminated" (label and summary, issue #46).
+  For that reason both charts say "below the line" rather than "eliminated" (legacy #46). Since #16 there's no
+  label on the chart; the text under it explains the line and names the selected entry it's based on.
 - Projections use each entry's last 5 **participated** rounds, so a driver who missed rounds isn't
   penalized for them.
 - Remaining-points math uses the real calendar when available (25 per GP + 8 per sprint for drivers;
@@ -191,8 +195,6 @@ and final championship position, ranked against the full grid. Default tracked s
 
 ## Known bugs and rough edges
 
-- **index.html subtitle is hardcoded** to "through Round 15 (Azerbaijan)" and is stale. Card descriptions
-  also predate later features (e.g. position.html now includes sprints by default). Covered by #15/#16.
 - position.html and simulator.html default to the **top 8**, which no longer matches any preset, so no
   preset is highlighted on first load (owner was told; no decision yet).
 - The simulator's histograms use **GP results only**, while position.html now includes sprints by

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>2026 F1 Constructors' Championship — Cumulative Points</title>
+<title>Constructors' Championship · F1 Data Explorer</title>
 <link rel="stylesheet" href="theme.css">
 <script src="theme.js"></script>
 <script src="common.js"></script>
@@ -20,13 +20,13 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
 <body>
 <div class="wrap">
 <div class="theme-bar" id="themeToggle"></div>
-<h1>F1 Constructors' Championship — Cumulative Points</h1>
-<p class="sub">Defaults to the top 5 teams as of the selected round — use a preset or pick anyone below · projections from each team's last 5 races</p>
+<h1>Constructors' Championship</h1>
+<p class="sub">Points for the teams you pick below (top 5 by default), projected to the end of the season from each team's last 5 races. Move the slider, or drag the handle on the chart, to see the standings as of any round.</p>
 <div id="f1controls" class="f1c"></div>
 <div class="card" style="margin-bottom:16px;">
 <div id="lg" style="display:flex;flex-wrap:wrap;gap:6px 16px;margin:0 0 10px;font-size:12px;color:var(--ink2);"></div>
 <div style="position:relative;width:100%;height:440px;" id="chartWrap" class="f1-skel">
-<canvas id="c" role="img" aria-label="Line chart of cumulative 2026 F1 constructors' points by round for the selected teams, with a knockout line showing the minimum points needed to still catch the highest-ranked selected team.">Cumulative constructors' championship points by round for the selected teams, with a knockout line based on the highest-ranked selected team.</canvas>
+<canvas id="c" role="img" aria-label="Line chart of championship points by round for the selected teams, with a knockout line showing the fewest points needed to still catch the highest-ranked selected team.">Championship points by round for the selected teams, with a knockout line showing the fewest points needed to still catch the highest-ranked selected team.</canvas>
 <div class="drag-handle" id="dragHandle" title="Drag to change the as-of round"></div>
 </div>
 <div id="endLegend" class="endLegend"></div>
@@ -249,7 +249,7 @@ function draw(){
    ctx.beginPath();ctx.arc(px,py,5.5,0,7);
    if(d.out<L){ctx.fillStyle=P.elim;ctx.fill();ctx.strokeStyle=P.pointRing;ctx.lineWidth=1.5;ctx.stroke();}
    else{ctx.fillStyle=P.pointRing;ctx.fill();ctx.strokeStyle=P.elim;ctx.lineWidth=2;ctx.stroke();}});
-  ctx.fillStyle=P.elimText;ctx.font='11px '+ff;F1Common.drawKnockoutLabel(ch,N);ctx.restore();}};
+  ctx.restore();}};
  const ends={id:'ends',afterDatasetsDraw(ch){
   if(F1Common.isNarrow())return; // mobile: shown as a legend list below the chart instead (see #endLegend)
   const it=[];ch.data.datasets.forEach((s,i)=>{if(s.kind!=='p')return;const p=ch.getDatasetMeta(i).data[N-1];it.push({x:p.x,y:p.y,ly:p.y,s});});
@@ -280,8 +280,10 @@ function draw(){
  ).join('');
  const lab=d=>`${d.n} (R${d.out+1})`;
  const now=D.filter(d=>d.out>=0&&d.out<L).sort((a,b)=>a.out-b.out),proj=D.filter(d=>d.out>=L).sort((a,b)=>a.out-b.out);
- document.getElementById('sm').innerHTML=
-  `<b>After round ${L}:</b> knockout line at ${Math.round(thr[L-1])} pts, based on the highest-ranked <i>selected</i> team (${Math.round(lead[L-1])} pts, minus ${Math.round(lead[L-1]-thr[L-1])} still available over the rest of the season${usingRealCalendar?'':', estimated — the real calendar was not available this load'}).`
+ // issue #16: name the highest-ranked selected entry (the one the knockout line is based on).
+ const ko=DC.reduce((b,d)=>d.cum[L-1]>b.cum[L-1]?d:b, DC[0]).n;
+  document.getElementById('sm').innerHTML=
+  `<b>Knockout line:</b> the fewest points a team needs to still catch ${ko}, the highest-ranked team you've selected. After round ${L}, ${ko} has ${Math.round(lead[L-1])} pts with ${Math.round(lead[L-1]-thr[L-1])} still available${usingRealCalendar?'':' (estimated — the real calendar wasn\'t available this load)'}, so the line is at ${Math.round(thr[L-1])} pts. A team who falls below it can't catch ${ko} even with a 1–2 finish in every remaining race while ${ko} scores nothing.`
   +`<br><span style="color:var(--elim);">●</span> Below the line: ${now.length?now.map(lab).join(', '):'none'} &nbsp; <span style="color:var(--elim);">○</span> Projected to fall below at current form: ${proj.length?proj.map(lab).join(', '):'none'}`;
  positionHandle();
 }

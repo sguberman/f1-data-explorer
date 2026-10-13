@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>2026 F1 Drivers — Race Finishing Position</title>
+<title>Race Finishing Positions · F1 Data Explorer</title>
 <link rel="stylesheet" href="theme.css">
 <script src="theme.js"></script>
 <script src="common.js"></script>
@@ -22,8 +22,8 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
 <body>
 <div class="wrap">
 <div class="theme-bar" id="themeToggle"></div>
-<h1>2026 F1 Drivers — Race Finishing Position</h1>
-<p class="sub" id="pageSub">Defaults to the top 8 drivers as of the selected round — sort, use a preset, or pick anyone below</p>
+<h1>Race Finishing Positions</h1>
+<p class="sub" id="pageSub">How often each selected driver has finished in each position.</p>
 <div id="f1controls" class="f1c"></div>
 <div class="card" style="margin-bottom:16px;">
 <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:10px;">
@@ -242,20 +242,21 @@ function draw(){
      }
    }
  });
- note.textContent = 'Starts counted — ' + order.map(o=>`${o.code}: ${o.starts}`).join(' · ');
+ note.textContent = 'Races counted: ' + order.map(o=>`${o.code} ${o.starts}`).join(' · ');
  updateSub();
 }
 
+// issue #16: the page introduction, reflecting the round and the Show options (the race name is in the
+// round label right below, so it isn't repeated here).
 function updateSub(){
- const r=currentSeasonRounds.find(x=>x.round===L);
- const bits = [
-   `${D.length} driver${D.length===1?'':'s'} selected`,
-   `through Round ${L}${r?(' — '+r.raceName):''}`,
-   includeSprints ? 'Grand Prix + sprint sessions' : 'Grand Prix classification only',
-   includeMechanical ? 'mechanical DNFs included' : 'mechanical DNFs excluded',
-   showBelowP10 ? 'full finishing order shown' : 'below P10 folded into one bucket'
+ const opts = [
+   includeSprints ? 'Grand Prix and sprint results' : 'Grand Prix results only',
+   includeMechanical ? 'mechanical DNFs counted' : 'mechanical DNFs left out',
+   showBelowP10 ? 'full finishing order shown' : 'positions below P10 grouped'
  ];
- document.getElementById('pageSub').textContent = bits.join(' · ');
+ document.getElementById('pageSub').textContent =
+   `How often each selected driver has finished in each position, through Round ${L}. `
+   + opts.join('; ').replace(/^./, c=>c.toUpperCase()) + '.';
 }
 
 function pickerRowHTML(d, rank, moves){

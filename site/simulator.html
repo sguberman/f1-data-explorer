@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>2026 Title Simulator</title>
+<title>Title Simulator · F1 Data Explorer</title>
 <link rel="stylesheet" href="theme.css">
 <script src="theme.js"></script>
 <script src="common.js"></script>
@@ -51,7 +51,7 @@ canvas{max-width:100%;}
 <body>
 <div class="wrap">
   <div class="theme-bar" id="themeToggle"></div>
-  <h1>Drivers' title — rest-of-season simulation</h1>
+  <h1>Title Simulator</h1>
   <p class="lede" id="lede">Loading season data…</p>
 
   <div id="f1controls" class="f1c"></div>
@@ -73,7 +73,7 @@ canvas{max-width:100%;}
       <button type="button" class="pill" data-preset="10">Top 10</button>
     </div>
     <div id="driverPicker" class="f1-skel"></div>
-    <div class="note">The simulation itself always models every driver who has raced this season — this just controls who's reported on below.</div>
+    <div class="note">The simulation always includes every driver who has raced this season; this only chooses who's shown in the results.</div>
   </div>
 
   <div class="card">
@@ -82,7 +82,7 @@ canvas{max-width:100%;}
       <button class="reset" id="resetDnf">Reset to 0</button>
     </div>
     <div class="dnf-grid" id="dnfGrid"></div>
-    <div class="note">Set how many of the remaining events each tracked driver fails to finish. Which specific event(s) each DNF lands on is randomized fresh in every simulated season. Every other driver on the grid retires at their own DNF rate from this season so far (any cause).</div>
+    <div class="note">Set how many of the remaining events each tracked driver fails to finish; which events is random in each simulated season. Everyone else retires at their own DNF rate this season (any cause).</div>
   </div>
 
   <div class="card row">
@@ -248,9 +248,9 @@ function updateLede(){
  const nSprint = remainingEvents.filter(e=>e.type==='sprint').length;
  const totalRounds = currentCalendar ? currentCalendar.totalRounds : null;
  document.getElementById('lede').textContent =
-   `Monte Carlo projection for the rest of the season: ${nGP} remaining ${nGP===1?'Grand Prix':'Grands Prix'}`
-   + (nSprint ? ` plus ${nSprint} sprint${nSprint===1?'':'s'}` : '')
-   + ` (as of Round ${L}${totalRounds?(' of '+totalRounds):''}). Pace comes from each driver's finishing positions in the races they finished this season. Every driver who has raced this season is simulated, not just the ones tracked below, so a result outside the tracked set can still take points or the title — DNFs for tracked drivers are set manually below; everyone else retires at their own DNF rate from this season (any cause). Not a prediction — a range of plausible outcomes if current form holds.`;
+   `Simulates the rest of the season thousands of times: ${nGP} ${nGP===1?'Grand Prix':'Grands Prix'}`
+   + (nSprint ? ` and ${nSprint} sprint${nSprint===1?'':'s'}` : '')
+   + ` left after Round ${L}${totalRounds?(' of '+totalRounds):''}. Results are drawn from where each driver has finished this season, and each driver retires at their own DNF rate, except the drivers you track below, whose DNFs you set. Every driver who has raced this season is simulated, so someone you don't track can still score points or win the title. It shows a range of plausible outcomes if current form holds, not a prediction.`;
 }
 
 function updateReadiness(){

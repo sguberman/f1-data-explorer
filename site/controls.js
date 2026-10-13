@@ -34,8 +34,12 @@ const F1Controls = (() => {
   // issue #48: a token per load, so a slow earlier load (e.g. before a season switch) can't overwrite a
   // later one's status, error or loading state when it finally finishes.
   let loadToken = 0;
+  // issue #16: each page's <title> is written without a year ("Drivers' Championship · F1 Data Explorer");
+  // the selected season is prefixed here, so the browser tab always names the season being shown.
+  const baseTitle = document.title;
   async function loadYear(container, year, statusEl){
     const token = ++loadToken;
+    document.title = `${year} ${baseTitle}`;
     const root = document.documentElement, errorEl = container.querySelector('.f1c-error');
     const refreshBtn = container.querySelector('.f1c-refresh');
     root.classList.add('f1-loading'); // pages show a placeholder in their chart/picker slots (theme.css)

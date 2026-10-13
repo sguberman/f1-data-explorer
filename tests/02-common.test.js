@@ -18,5 +18,12 @@ module.exports = async (t, h) => {
   t.check('teamColor: unknown team gets a stable hsl()', /^hsl\(/.test(r.unknown) && r.unknown === r.unknownAgain, r.unknown);
   t.check('shortTeamName: known and fallback', r.short === 'Red Bull' && r.shortFallback === 'Mystery Grand Prix Team');
   t.check('season dropdown lists SEASON_META years, newest first', JSON.stringify(r.dropdown) === JSON.stringify(r.years) && r.years[0] === 2026, JSON.stringify(r.dropdown));
+  // GitHub #16: the browser tab title names the selected season.
+  t.check('tab title starts with the selected season', (await p.title()) === "2026 Drivers' Championship · F1 Data Explorer", await p.title());
+  await p.selectOption('.f1c-year', '2025'); await h.loaded(p);
+  t.check('tab title follows the season picker', (await p.title()).startsWith('2025 '), await p.title());
   await p.done();
+  const idx = await h.openPage('index'); await idx.waitForTimeout(300);
+  t.check('landing page tab title', (await idx.title()) === 'F1 Data Explorer', await idx.title());
+  await idx.done();
 };
