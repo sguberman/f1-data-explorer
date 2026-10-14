@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- #68: red rising points line on a checkered flag -->
+  <clipPath id="tile"><rect width="64" height="64" rx="14"/></clipPath>
+  <rect width="64" height="64" rx="14" fill="#fff"/>
+  <g clip-path="url(#tile)" fill="#111">
+    <rect x="0" y="0" width="16" height="16"/><rect x="32" y="0" width="16" height="16"/>
+    <rect x="16" y="16" width="16" height="16"/><rect x="48" y="16" width="16" height="16"/>
+    <rect x="0" y="32" width="16" height="16"/><rect x="32" y="32" width="16" height="16"/>
+    <rect x="16" y="48" width="16" height="16"/><rect x="48" y="48" width="16" height="16"/>
+  </g>
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M10 50 L24 36 L34 42 L52 16" stroke="#fff" stroke-width="13"/>
+    <path d="M10 50 L24 36 L34 42 L52 16" stroke="#E10600" stroke-width="7"/>
+  </g>
+</svg>

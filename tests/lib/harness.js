@@ -7,7 +7,7 @@ const { api } = require('./fixture');
 const SITE = path.join(__dirname, '..', '..', 'site');
 const ARTIFACTS = path.join(__dirname, '..', 'artifacts');
 const CHART_JS = fs.readFileSync(path.join(__dirname, '..', 'node_modules', 'chart.js', 'dist', 'chart.umd.js'));
-const TYPES = { '.html':'text/html', '.js':'application/javascript', '.css':'text/css', '.svg':'image/svg+xml' };
+const TYPES = { '.html':'text/html', '.js':'application/javascript', '.css':'text/css', '.svg':'image/svg+xml', '.png':'image/png', '.ico':'image/x-icon' };
 
 let browser;
 async function launch(){ browser = await chromium.launch(); }

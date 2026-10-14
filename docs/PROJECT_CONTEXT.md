@@ -43,6 +43,8 @@ site/                 The website (deployed as the site root, so URLs are unchan
   nav.js              Site navigation (#62): home link + Pages menu at the left of .theme-bar (data pages).
   theme.css           Shared CSS variables (both themes), controls, pills, dropdowns, legends, pickers.
   flags/              Flag SVGs (#18).
+  favicon.svg         Favicon (#68): red rising line on a checkered flag. favicon.ico (16/32/48px) and
+                      apple-touch-icon.png (180px, square; iOS rounds it) are rendered from it.
   data/               {year}.json: one file per season, written by the snapshot workflow (#13). Don't edit by hand.
 .github/workflows/    static.yml deploys site/ on pushes to main that touch site/ (or the workflow).
                       tests.yml runs tests/ on PRs. snapshot.yml refreshes site/data/ (#13).
@@ -312,7 +314,7 @@ since fonts render differently on different machines.
   loads, live check only after the file, complete seasons with no API calls, fallback, Refresh), daily check (#60: one check reused across pages and
   season switches, rechecked after a day or on Refresh, failed checks not kept), navigation (#62: home link and Pages menu on every
   data page, keyboard, season kept between pages, phone layout), layout (#64: every data page has the same page frame —
-  margins, width, title, intro text, card style). The harness
+  margins, width, title, intro text, card style), favicon (#68: every page links it; the files are valid). The harness
   never serves the real `site/data/*.json`: tests pass `snapshots` built from the fake season. The fixture's names mix country names and demonyms, with
   one unknown. Logic is checked against
   independent calculations written in the tests, not against the site's own helpers.
