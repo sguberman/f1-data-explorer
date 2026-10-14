@@ -6,7 +6,18 @@ const F1Common = (() => {
   const TEAM_COLORS={mercedes:'#00A79D',ferrari:'#DC0000',mclaren:'#FF8000',red_bull:'#1B2A6B',redbull:'#1B2A6B',
    alpine:'#FF1493',haas:'#1A1A1A',williams:'#00A3E0',audi:'#E8534D',sauber:'#E8534D',
    aston_martin:'#229971',astonmartin:'#229971',rb:'#2B4EE6',racing_bulls:'#2B4EE6',visa_rb:'#2B4EE6',cadillac:'#B8860B'};
+  // #72: teams that only raced in earlier seasons get that season's real colour (F1's official team colour,
+  // via FastF1's per-season table), darkened where needed to read on the light background; theme.js lightens
+  // them for dark mode. Every other team keeps its one colour above for all seasons.
+  const SEASON_TEAM_COLORS={
+   alfa:{2021:'#900000',2022:'#B12039',2023:'#C92D4B'},          // Alfa Romeo
+   alphatauri:{2021:'#2B4562',2022:'#4E7C9B',2023:'#5E8FAA'},    // AlphaTauri
+   sauber:{2024:'#399E39',2025:'#399E39'}};                      // Kick Sauber (neon green #52E252)
+  let season=null; // the season being shown, set by F1Controls when a season loads
+  function setSeason(year){ season=year; }
   function teamColor(teamId){
+   const bySeason=SEASON_TEAM_COLORS[teamId];
+   if(bySeason) return bySeason[season] || Object.values(bySeason).pop();
    if(TEAM_COLORS[teamId]) return TEAM_COLORS[teamId];
    let h=0; for(const ch of teamId) h=(h*31+ch.charCodeAt(0))>>>0;
    return `hsl(${h%360} 55% 45%)`;
@@ -15,7 +26,7 @@ const F1Common = (() => {
   // Short display names by teamId — f1api.dev's own teamName is the full official sponsor-laden version
   // ("Mercedes Formula 1 Team", "Scuderia Ferrari", "Audi Revolut F1 Team"...), too long for a legend.
   const SHORT_TEAM_NAMES={mercedes:'Mercedes',ferrari:'Ferrari',mclaren:'McLaren',red_bull:'Red Bull',redbull:'Red Bull',
-   alpine:'Alpine',haas:'Haas',williams:'Williams',audi:'Audi',sauber:'Audi',
+   alpine:'Alpine',haas:'Haas',williams:'Williams',audi:'Audi',sauber:'Sauber',alfa:'Alfa Romeo',alphatauri:'AlphaTauri',
    aston_martin:'Aston Martin',astonmartin:'Aston Martin',rb:'Racing Bulls',racing_bulls:'Racing Bulls',visa_rb:'Racing Bulls',cadillac:'Cadillac'};
   function shortTeamName(teamId, fallback){ return SHORT_TEAM_NAMES[teamId] || fallback || teamId; }
 
@@ -387,7 +398,7 @@ const F1Common = (() => {
          y:{grid:{color:P.grid}, ticks:{color:P.text}, title:{display:true, text:'Projected final points', color:P.text}}}}});
   }
 
-  return { TEAM_COLORS, teamColor, SHORT_TEAM_NAMES, shortTeamName, SEASON_META, seasonMeta, YEARS,
+  return { TEAM_COLORS, SEASON_TEAM_COLORS, setSeason, teamColor, SHORT_TEAM_NAMES, shortTeamName, SEASON_META, seasonMeta, YEARS,
     isNarrow, withAlpha, standingsMoves, moveHTML, driverPickerRowHTML, markActivePreset,
     flagCode, flagHTML, flagSpace, FLAG_ROOM, drawFlag, indexPeople, nationalityOf, numberOf, ridgeFlags, ridgeMarkers, ridgeKeyHTML, standingsOrder, standingsRank, pickerTeamLabelHTML,
     standingsByRound, renderPositionChart, projectionsByRound, renderProjectedPointsChart };

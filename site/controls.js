@@ -69,6 +69,7 @@ const F1Controls = (() => {
       errorEl.hidden = false;
     }
     state.year = year;
+    F1Common.setSeason(year); // #72: season-specific team colours
     state.seasonRounds = rounds;
     state.maxRound = rounds.length;
     state.round = rounds.length; // default to "as of the latest round loaded"

@@ -247,6 +247,11 @@ navy lightened in dark). The page loads no data.
   team flags, and the drivers chart legend has no team names (#70): driver-picker team headings are the name only. Driver numbers only in driver pickers, muted, before the name. Not in tooltips or
   under x-axis rounds. Nationalities come from f1api.dev as names or demonyms; unknown ones get no flag,
   and canvas labels keep the flag's space so they still line up.
+- Team colours: one colour per team (`TEAM_COLORS`) for every season, except teams that only raced in earlier
+  seasons, which get that season's colour (`SEASON_TEAM_COLORS`, #72): Alfa Romeo and AlphaTauri (2021–23) and
+  Sauber (2024–25, Kick green; its short name is "Sauber", not "Audi"). Values are F1's official team colours
+  from FastF1's per-season table, darkened where needed to read on white; `theme.js` (`DARK_SWAP`) lightens the
+  dark ones for dark mode. `F1Controls` calls `F1Common.setSeason(year)` when a season loads.
 - Charts: driver codes (VER, NOR…) on chart labels; **short team names** (`shortTeamName()`) in chart
   legends and end labels; **full names** in pickers (driver full name + small muted code tag; full official
   team names).
@@ -315,7 +320,7 @@ since fonts render differently on different machines.
   loads, live check only after the file, complete seasons with no API calls, fallback, Refresh), daily check (#60: one check reused across pages and
   season switches, rechecked after a day or on Refresh, failed checks not kept), navigation (#62: home link and Pages menu on every
   data page, keyboard, season kept between pages, phone layout), layout (#64: every data page has the same page frame —
-  margins, width, title, intro text, card style), favicon (#68: every page links it; the files are valid). The harness
+  margins, width, title, intro text, card style), favicon (#68: every page links it; the files are valid), team seasons (#72: Sauber/Alfa Romeo/AlphaTauri names and season colours). The harness
   never serves the real `site/data/*.json`: tests pass `snapshots` built from the fake season. The fixture's names mix country names and demonyms, with
   one unknown. Logic is checked against
   independent calculations written in the tests, not against the site's own helpers.

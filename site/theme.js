@@ -16,7 +16,9 @@
       knock:'#eef0f2',knockFill:'rgba(239,83,80,0.13)',knockFillProj:'rgba(239,83,80,0.07)',elim:'#ef5350',elimText:'#ff8a80',pointRing:'#191d24'}
   };
   // Team colours too dark to read on the dark background get a lighter stand-in
-  const DARK_SWAP={'#1B2A6B':'#6A86F0','#1A1A1A':'#B6BAC0'};
+  // (#72: plus the season colours of Alfa Romeo 2021–22, AlphaTauri 2021 and Sauber 2024–25 — see common.js)
+  const DARK_SWAP={'#1B2A6B':'#6A86F0','#1A1A1A':'#B6BAC0',
+    '#900000':'#B14C4C','#B12039':'#BD4157','#2B4562':'#556A81','#399E39':'#52E252'};
 
   let applied=null;
   function apply(){
