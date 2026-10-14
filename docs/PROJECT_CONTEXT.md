@@ -307,7 +307,8 @@ since fonts render differently on different machines.
   (#18/#30; movement also covers #20's tie-breaks), simulator runs (#56: responsive 30,000 run, progress, Cancel), what-if (#48: drag, keys, NC line, sprint weekends,
   points and countback), homepage (#50: card order, pictures, vertical layout, theme colours), season files (#13: one-file
   loads, live check only after the file, complete seasons with no API calls, fallback, Refresh), daily check (#60: one check reused across pages and
-  season switches, rechecked after a day or on Refresh, failed checks not kept). The harness
+  season switches, rechecked after a day or on Refresh, failed checks not kept), layout (#64: every data page has the same page frame —
+  margins, width, title, intro text, card style). The harness
   never serves the real `site/data/*.json`: tests pass `snapshots` built from the fake season. The fixture's names mix country names and demonyms, with
   one unknown. Logic is checked against
   independent calculations written in the tests, not against the site's own helpers.
