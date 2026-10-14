@@ -242,8 +242,9 @@ navy lightened in dark). The page loads no data.
   `F1Theme.chart()`, and `F1Theme.team(color)` swaps colors too dark for the dark background. Redraw on the
   `themechange` event.
 - Flags and numbers (#18): flags before driver names/codes (pickers, legends, end labels, ridge labels,
-  simulator rows), team names (picker headings, constructors rows and labels) and the race name in the round
-  label (circuit country). Driver numbers only in driver pickers, muted, before the name. Not in tooltips or
+  simulator rows), team names on **constructor views only** (constructors picker, legend and labels; the
+  what-if constructors table) and the race name in the round label (circuit country). Driver views show no
+  team flags, and the drivers chart legend has no team names (#70): driver-picker team headings are the name only. Driver numbers only in driver pickers, muted, before the name. Not in tooltips or
   under x-axis rounds. Nationalities come from f1api.dev as names or demonyms; unknown ones get no flag,
   and canvas labels keep the flag's space so they still line up.
 - Charts: driver codes (VER, NOR…) on chart labels; **short team names** (`shortTeamName()`) in chart

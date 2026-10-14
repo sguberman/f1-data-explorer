@@ -34,7 +34,7 @@ module.exports = async (t, h) => {
         const img = el.querySelector('img.flag'); return [el.textContent.trim(), img ? img.getAttribute('src') : null]; });
       const lab = document.querySelector('.f1c-roundlabel'), limg = lab.querySelector('img.flag');
       return { rows, teams, label: lab.textContent, labelFlag: limg ? limg.getAttribute('src') : null,
-               legendFlags: document.querySelectorAll('#lg img.flag').length };
+               legendFlags: document.querySelectorAll('#lg img.flag').length, legendText: document.getElementById('lg').textContent };
     });
     const idx = id => { const [, i, k] = id.match(/^d(\d+)_(\d)$/); return 2*(+i) + (+k); };
     const badFlag = r.rows.filter(x => x.flag !== (FLAG[DRIVER_NAT[idx(x.id)]] ? `flags/${FLAG[DRIVER_NAT[idx(x.id)]]}.svg` : null));
@@ -42,14 +42,24 @@ module.exports = async (t, h) => {
     t.check(`${theme}: picker flags load`, r.rows.every(x => x.loaded !== false));
     const badNum = r.rows.filter(x => x.num !== String(DRIVER_NUM[idx(x.id)]));
     t.check(`${theme}: each driver picker row shows the driver's number`, badNum.length === 0, JSON.stringify(badNum.slice(0,3)));
-    t.check(`${theme}: team headings show the team's flag`, r.teams.length === 11 && r.teams.filter(([,f]) => f).length === 10
-      && r.teams.find(([n]) => n === 'Scuderia Ferrari')[1] === 'flags/it.svg', JSON.stringify(r.teams.slice(0,3)));
+    // #70: team headings in driver pickers are just the name — team flags only on constructor views.
+    t.check(`${theme}: team headings show the team name without a flag`, r.teams.length === 11 && r.teams.every(([, f]) => f === null)
+      && r.teams.some(([n]) => n === 'Scuderia Ferrari'), JSON.stringify(r.teams.slice(0,3)));
     t.check(`${theme}: round label shows the circuit country's flag`, r.labelFlag === `flags/${FLAG[CIRCUITS[11]]}.svg` && /^Round 12 of 12 — Round 12 Grand Prix$/.test(r.label), `${r.labelFlag} ${r.label}`);
-    t.check(`${theme}: chart legend shows flags`, r.legendFlags > 0);
+    t.check(`${theme}: chart legend shows each driver's flag and no team names (#70)`, r.legendFlags > 0
+      && !/Mercedes|Ferrari|McLaren|Red Bull/.test(r.legendText) && /Knockout line/.test(r.legendText), r.legendText);
     await h.setRound(p, 6);
     t.check(`${theme}: round label flag follows the slider (circuit sent as an array)`,
       await p.evaluate(() => document.querySelector('.f1c-roundlabel img.flag').getAttribute('src')) === `flags/${FLAG[CIRCUITS[5]]}.svg`);
     t.check(`${theme}: drivers: no page errors`, p.errors.length === 0, p.errors.join('; '));
+    await p.done();
+  }
+
+  // #70: the other driver pickers' team headings have no flag either; constructor pickers keep theirs (below).
+  for(const name of ['position', 'simulator']){
+    const p = await h.openPage(name); await h.loaded(p);
+    const heads = await p.$$eval('.pickerTeamLabel', els => els.map(e => [e.textContent.trim(), !!e.querySelector('img.flag')]));
+    t.check(`${name}: driver picker team headings have no flag`, heads.length === 11 && heads.every(([n, f]) => n && !f), JSON.stringify(heads.slice(0,2)));
     await p.done();
   }
 

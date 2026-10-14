@@ -297,10 +297,10 @@ y:{min:0,max:yMax,ticks:{stepSize:yStep},grid:{color:P.grid},border:{display:fal
 const sw=(c,d,w)=>`<svg width="22" height="8" aria-hidden="true"><line x1="1" y1="4" x2="21" y2="4" stroke="${c}" stroke-width="${w||2.5}" ${d?'stroke-dasharray="5 3"':''}/></svg>`;
 const byTeam={};
 DC.forEach(d=>{ (byTeam[d.teamId] = byTeam[d.teamId]||[]).push(d); });
+// Teammates stay side by side (solid line, then dashed); no team name or flag, just each driver (#70).
 document.getElementById('lg').innerHTML=Object.values(byTeam).map(drivers=>{
- const label=F1Common.flagHTML(F1Common.nationalityOf('teams', drivers[0].teamId))+F1Common.shortTeamName(drivers[0].teamId,drivers[0].teamName);
- const items=drivers.map((d,i)=>sw(d.c,i>0)+F1Common.flagHTML(d.nat)+d.n).join('');
- return `<span style="display:flex;align-items:center;gap:6px;"><span style="font-weight:500;">${label}</span>${items}</span>`;
+ const items=drivers.map((d,i)=>`<span style="display:inline-flex;align-items:center;gap:6px;">${sw(d.c,i>0)}${F1Common.flagHTML(d.nat)}${d.n}</span>`).join('');
+ return `<span style="display:flex;align-items:center;gap:10px;">${items}</span>`;
 }).join('')
  +`<span style="display:flex;align-items:center;gap:6px;"><span style="font-weight:500;">Knockout line</span>${sw(P.knock,0,3)}</span>`;
 // Mobile stand-in for the canvas end-of-line labels — same info (code + final points), ranked.

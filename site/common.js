@@ -218,9 +218,10 @@ const F1Common = (() => {
    </label>`;
   }
 
-  // A team heading in the driver pickers' "by team" view, with the team's flag (#18).
+  // A team heading in the driver pickers' "by team" view. Just the name: team flags are kept for constructor
+  // views only (#70).
   function pickerTeamLabelHTML(teamId, teamName){
-   return `<div class="pickerTeamLabel">${flagHTML(nationalityOf('teams', teamId))}${teamName||teamId}</div>`;
+   return `<div class="pickerTeamLabel">${teamName||teamId}</div>`;
   }
 
   // Highlights the #presetRow button whose id set exactly matches the current selection (none if no
