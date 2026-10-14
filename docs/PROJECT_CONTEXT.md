@@ -35,6 +35,7 @@ site/                 The website (deployed as the site root, so URLs are unchan
   constructors.html   Constructors' championship: same chart pattern for teams.
   position.html       Race finishing-position ridgeline chart per driver, with sort/show options.
   simulator.html      Monte Carlo rest-of-season title simulator with ridgeline result charts.
+  whatif.html         What-if: drag a finishing order for a round, see both championships after it.
   common.js           F1Common: helpers shared by the chart pages (issue #44 and later).
   data.js             F1Data: fetch, cache (localStorage), normalize f1api.dev data; SPRINT_OVERRIDES.
   controls.js         F1Controls: shared season dropdown + "as of round" slider; emits events.
@@ -173,7 +174,19 @@ the last column, labelled "P14"); the points chart marks the most common 10-poin
 most common exact total in it. Both are ordered by that most common value. Default
 tracked set is the top 8.
 
-**index.html** — Static landing page with four cards.
+**whatif.html** — What-if results (#48). The round after the slider's round gets a draggable finishing
+order: a Grand Prix list, plus a sprint list on a sprint weekend (from the actual round, or the calendar's
+sprint rounds). It starts from the actual result when that round has happened, else from the drivers'
+standings after the slider's round ("Actual result" / "Standings order" buttons reset). Drag by the handle
+(pointer events, so mouse and touch; auto-scrolls near the screen edge) or focus the handle and use ↑/↓.
+A "Not classified below" line is dragged too: everyone below it gets no position and no points. Points
+25-18-15-12-10-8-6-4-2-1, sprints 8-…-1 (3-2-1 in 2021); no fastest-lap point (noted for ≤2024). Below, the
+drivers' and constructors' tables after that round: position, ▲/▼ vs the standings before it, points
+before, gained and after, ranked with countback (`F1Common.standingsOrder` on the season with that round
+replaced by your result; later rounds left out). Full names on desktop, codes / short team names on phones.
+Live and lap-by-lap running orders were considered and left out (see #48 for the API research).
+
+**index.html** — Static landing page with five cards.
 
 ## Design requirements (owner-approved — keep these)
 
@@ -248,7 +261,8 @@ since fonts render differently on different machines.
   smoke (every page, both themes, desktop + phone, no errors), common (#44), knockout (#45/#46),
   status (#23/#48/#49), movement (#47), position (#9), projection (#10),
   simulator (#39 DNF modeling, #42 auto DNFs, #14 wins, #11 collisions, #17 results kept), NC/finish rule shared by the position page and simulator (#46), flags and markers
-  (#18/#30; movement also covers #20's tie-breaks). The fixture's names mix country names and demonyms, with
+  (#18/#30; movement also covers #20's tie-breaks), what-if (#48: drag, keys, NC line, sprint weekends,
+  points and countback). The fixture's names mix country names and demonyms, with
   one unknown. Logic is checked against
   independent calculations written in the tests, not against the site's own helpers.
 - Add tests for each new feature in the same PR. Before trusting a new check, make sure it fails when the
@@ -287,8 +301,8 @@ since fonts render differently on different machines.
    than news articles or Wikipedia. The 2026 season is real: e.g. the Bahrain GP was moved
    to Malaysia, and DNF counts are high because of new engine rules and new teams.
 6. Keep the site static (GitHub Pages), data live from f1api.dev, and interactions free of extra fetches.
-7. For design-heavy changes the owner has liked seeing a few options or mockups first, and has answered
-   clarifying questions on ambiguous scope before work starts.
+7. **Mockups only when the owner needs to choose** between options (layouts, styles, behaviours). Otherwise
+   build it and show the result. Ask clarifying questions on ambiguous scope before work starts.
 8. Verify visually-significant changes by actually rendering them (light and dark, desktop and mobile
    width), not just by logic tests.
 9. Explain proposed changes before applying them, and preserve the current design and behavior unless the
@@ -301,3 +315,5 @@ since fonts render differently on different machines.
     gets a preview (legacy #52). Merge only when the owner asks. Rebase-merge, so each `issue #xx:` commit
     lands on `main` as written.
 12. Add or update tests in `tests/` with every feature or fix (issue #53), and run them before pushing.
+13. **When done with a piece of work, always give the owner a link to the homepage on the dev site**: the
+    PR's Cloudflare branch preview, `https://claude-issue-NN.f1-data-explorer.pages.dev/`.

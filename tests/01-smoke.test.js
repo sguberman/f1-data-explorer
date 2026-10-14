@@ -2,7 +2,7 @@
 // Screenshots are saved to tests/artifacts/ for a person to look at.
 module.exports = async (t, h) => {
   for(const theme of ['light','dark']) for(const width of [1000, 390]){
-    for(const name of ['index','drivers','constructors','position','simulator']){
+    for(const name of ['index','drivers','constructors','position','simulator','whatif']){
       const p = await h.openPage(name, {theme, width});
       if(name !== 'index') await h.loaded(p);
       else await p.waitForTimeout(300);

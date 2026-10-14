@@ -27,7 +27,9 @@ requirements, decisions, known issues, tests, and the owner's standing rules. Th
   only; work on it when told.
 - Only the owner closes issues: each issue's PR says `Closes #NN`, and the owner merging it (or saying to
   merge) closes it.
-- Explain proposed changes before applying them; show mockups or options first for design-heavy work.
+- Explain proposed changes before applying them. Make/show mockups only when the owner needs to choose between
+  options; otherwise build it. When done, always give a link to the dev-site homepage (the PR's Cloudflare branch
+  preview, `https://claude-issue-NN.f1-data-explorer.pages.dev/`).
   Preserve the current design and behavior unless asked.
 - Commit messages start with `issue #xx: `. No `Co-Authored-By`, session links or other attribution lines.
 - Interactions (slider, toggles, sort, pickers) never fetch; only loading a season, Refresh data and Retry do.

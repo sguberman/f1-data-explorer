@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>What-If Results · F1 Data Explorer</title>
+<link rel="stylesheet" href="theme.css">
+<script src="theme.js"></script>
+<script src="common.js"></script>
+<script src="data.js"></script>
+<script src="controls.js"></script>
+<style>
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;padding:24px 16px 40px;}
+.wrap{max-width:820px;margin:0 auto;}
+h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
+.sub{font-size:12.5px;color:var(--sub);margin:0 0 16px;}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:16px;}
+.card h2{font-size:14px;margin:0;color:var(--ink);}
+.note{font-size:11.5px;color:var(--sub);line-height:1.5;margin-top:10px;}
+.cardHead{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;}
+.cardHead h2{flex:1;min-width:160px;}
+.orders{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;}
+.orders > div{min-width:0;}
+.orderTitle{font-size:12px;font-weight:600;color:var(--sub);margin:0 0 6px;}
+/* #48: the draggable finishing order */
+.wiList{list-style:none;margin:0;padding:0;}
+.wiRow{display:flex;align-items:center;gap:8px;padding:4px 6px 4px 2px;border-bottom:0.5px solid var(--line);background:var(--panel);font-size:13px;}
+.wiRow:last-child{border-bottom:none;}
+.wiRow.dragging{position:relative;z-index:2;box-shadow:0 4px 14px var(--shadow);border-radius:6px;background:var(--inset);}
+.wiGrip{flex:0 0 auto;width:28px;height:28px;display:flex;align-items:center;justify-content:center;border:none;border-radius:6px;
+  background:transparent;color:var(--sub);cursor:grab;touch-action:none;padding:0;font:inherit;}
+.wiGrip:hover,.wiGrip:focus-visible{background:var(--inset);color:var(--ink);outline:none;}
+.wiRow.dragging .wiGrip{cursor:grabbing;}
+.wiPos{flex:0 0 auto;width:30px;text-align:right;font-size:12px;color:var(--sub);font-variant-numeric:tabular-nums;}
+.wiName{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.wiPts{flex:0 0 auto;width:34px;text-align:right;font-size:12px;font-weight:600;color:var(--ink2);font-variant-numeric:tabular-nums;}
+.wiRow.nc .wiName,.wiRow.nc .wiPts{color:var(--sub);font-weight:400;}
+.wiDivider{display:flex;align-items:center;gap:8px;padding:4px 6px 4px 2px;font-size:11.5px;color:var(--sub);background:var(--panel);}
+.wiDivider::after{content:"";flex:1;border-top:1px dashed var(--line-strong);}
+.wiDivider.dragging{position:relative;z-index:2;background:var(--inset);border-radius:6px;box-shadow:0 4px 14px var(--shadow);}
+/* #48: championship tables */
+.tables{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px;}
+.tables > div{min-width:0;}
+.stTable{width:100%;border-collapse:collapse;font-size:13px;}
+.stTable th{font-size:11px;font-weight:500;color:var(--sub);text-align:right;padding:0 4px 6px;}
+.stTable th:nth-child(3){text-align:left;}
+.stTable td{padding:5px 4px;border-top:0.5px solid var(--line);text-align:right;font-variant-numeric:tabular-nums;}
+.stTable td.nm{text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:0;width:100%;}
+.stTable td.pos{color:var(--sub);font-size:12px;}
+.stTable td.gain{color:var(--up);font-weight:600;}
+.stTable td.gain.zero{color:var(--sub);font-weight:400;}
+.stTable td.tot{font-weight:600;}
+.stTable .pickerMove{width:auto;}
+.stTable .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:0;}
+.short{display:none;}
+@media (max-width:600px){ .long{display:none;} .short{display:inline;} }
+.reset{background:transparent;color:var(--sub);border:1px solid var(--line);border-radius:6px;padding:6px 11px;font:inherit;font-size:12.5px;cursor:pointer;}
+.reset:hover{border-color:var(--ink2);color:var(--ink);}
+#emptyMsg{font-size:12.5px;color:var(--sub);}
+</style>
+</head>
+<body>
+<div class="wrap">
+<div class="theme-bar" id="themeToggle"></div>
+<h1>What-If Results</h1>
+<p class="sub" id="pageSub">Drag the drivers into any finishing order to see what it would do to both championships.</p>
+<div id="f1controls" class="f1c"></div>
+
+<div class="card" id="orderCard">
+  <div class="cardHead">
+    <h2 id="orderHeading">Your result</h2>
+    <button class="reset" id="useActual" type="button" hidden>Actual result</button>
+    <button class="reset" id="useStandings" type="button">Standings order</button>
+  </div>
+  <div id="emptyMsg" hidden></div>
+  <div class="orders" id="orders"></div>
+  <div class="note" id="orderNote"></div>
+</div>
+
+<div class="card" id="resultCard">
+  <div class="cardHead"><h2 id="resultHeading">Championships after this result</h2></div>
+  <div class="tables">
+    <div><div class="orderTitle">Drivers</div><table class="stTable" id="driverTable"></table></div>
+    <div><div class="orderTitle">Constructors</div><table class="stTable" id="teamTable"></table></div>
+  </div>
+  <div class="note">▲/▼ are places gained or lost against the standings before this round. Ties on points are broken by countback (most wins, then most second places, and so on), the same as the championship-position charts.</div>
+</div>
+</div>
+
+<script>
+// #48: a what-if for the round after the one picked on the slider. You drag every driver into a finishing
+// order for the Grand Prix (and the sprint, on a sprint weekend); the page adds those points to the standings
+// as of the slider's round and shows the new championship tables. Everything is computed in the browser from
+// the season already loaded — dragging and the buttons never fetch.
+const PTS_GP=[25,18,15,12,10,8,6,4,2,1];
+const sprintPoints = year => year<=2021 ? [3,2,1] : [8,7,6,5,4,3,2,1];
+let year=null, seasonRounds=[], calendar=null, L=0, T=0;
+// orders[session] = [driverId…] with null as the "not classified" divider: everyone after it gets no position.
+let orders={}, sessions=[], roster={};
+
+async function buildFromSelection(detail){
+ year=detail.year; seasonRounds=detail.seasonRounds;
+ calendar = seasonRounds.length ? await F1Data.getCalendar(year) : null;
+ setRound(detail.round);
+}
+function setRound(round){
+ L=round; T=L+1;
+ const actual=seasonRounds.find(r=>r.round===T);
+ const total=calendar && calendar.totalRounds ? calendar.totalRounds : Math.max(seasonRounds.length, F1Common.seasonMeta(year).rounds);
+ const empty=document.getElementById('emptyMsg');
+ if(!seasonRounds.length || T>total){
+   empty.hidden=false;
+   empty.textContent = !seasonRounds.length ? 'No data loaded for this season.'
+     : `Round ${L} was the last round of ${year}. Move the slider back to replay a round that's already happened.`;
+   orders={}; sessions=[]; render(); return;
+ }
+ empty.hidden=true;
+ // Everyone who has raced up to here, plus anyone in the actual result of round T, with their latest team.
+ roster={};
+ seasonRounds.filter(r=>r.round<=T).forEach(r=>[...r.raceResults, ...(r.sprintResults||[])].forEach(res=>{
+   if(r.round===T && roster[res.driverId] && seasonRounds.some(x=>x.round<T)) return; // keep the team they had coming in
+   roster[res.driverId]=res;
+ }));
+ const sprint = actual ? !!actual.sprintResults : !!(calendar && calendar.sprintRounds && calendar.sprintRounds.includes(T));
+ sessions = sprint ? ['sprint','gp'] : ['gp'];
+ resetOrders(actual ? 'actual' : 'standings');
+}
+const raceName = r => (calendar && calendar.raceNames && calendar.raceNames[r]) || ('Round '+r);
+function actualRound(){ return seasonRounds.find(r=>r.round===T); }
+// Order as a list of ids (classified first, in position order) + null divider + the rest.
+function orderFrom(results){
+ const ids=Object.keys(roster);
+ const cls=(results||[]).filter(r=>r.position).sort((a,b)=>a.position-b.position).map(r=>r.driverId).filter(id=>roster[id]);
+ const rest=ids.filter(id=>!cls.includes(id));
+ return [...cls, null, ...rest];
+}
+function resetOrders(mode){
+ const act=actualRound();
+ const standing=F1Common.standingsOrder(seasonRounds, L, 'drivers').filter(id=>roster[id]);
+ const all=[...standing, ...Object.keys(roster).filter(id=>!standing.includes(id))];
+ orders={};
+ sessions.forEach(s=>{
+   if(mode==='actual' && act){
+     orders[s]=orderFrom(s==='gp' ? act.raceResults : act.sprintResults);
+   }else orders[s]=[...all, null];
+ });
+ render();
+}
+
+// ---- Result rows for one session from its order ----
+function sessionResults(s){
+ const pts = s==='gp' ? PTS_GP : sprintPoints(year), o=orders[s]||[], cut=o.indexOf(null);
+ return o.filter(id=>id).map(id=>{
+   const i=o.indexOf(id), classified = cut<0 || i<cut;
+   const base=roster[id];
+   return { ...base, position: classified ? i+1 : null, points: classified ? (pts[i]||0) : 0, session: s==='gp'?'race':'sprint' };
+ });
+}
+// The season with round T replaced by your result (later rounds dropped): standings "after round T".
+function whatIfRounds(){
+ const before=seasonRounds.filter(r=>r.round<=L);
+ const gp=sessionResults('gp');
+ return [...before, { round:T, raceName:raceName(T), raceResults:gp, sprintResults: sessions.includes('sprint') ? sessionResults('sprint') : null }];
+}
+function totals(rounds, kind){
+ const t={};
+ rounds.forEach(r=>[...r.raceResults, ...(r.sprintResults||[])].forEach(res=>{
+   const id = kind==='teams' ? res.teamId : res.driverId; t[id]=(t[id]||0)+res.points;
+ }));
+ return t;
+}
+
+// ---- Rendering ----
+const grip = label => `<button type="button" class="wiGrip" aria-label="${label}" title="Drag to reorder (or use the arrow keys)">
+  <svg width="12" height="14" viewBox="0 0 12 14" aria-hidden="true"><g fill="currentColor"><circle cx="3" cy="3" r="1.4"/><circle cx="9" cy="3" r="1.4"/><circle cx="3" cy="7" r="1.4"/><circle cx="9" cy="7" r="1.4"/><circle cx="3" cy="11" r="1.4"/><circle cx="9" cy="11" r="1.4"/></g></svg></button>`;
+function rowHTML(s, id, i, classified, pts){
+ if(id===null) return `<li class="wiDivider" data-id="">${grip('Move the not-classified line')}Not classified below</li>`;
+ const d=roster[id], num=F1Common.numberOf(id);
+ return `<li class="wiRow${classified?'':' nc'}" data-id="${id}">
+   ${grip('Move '+d.name)}
+   <span class="wiPos">${classified ? 'P'+(i+1) : 'NC'}</span>
+   <span class="pickerDot" style="background:${F1Theme.team(F1Common.teamColor(d.teamId))}"></span>
+   <span class="wiName">${F1Common.flagHTML(F1Common.nationalityOf('drivers', id))}<span class="pickerNum">${num!=null?num:''}</span>${d.name}<span class="pickerCodeTag">${d.code}</span></span>
+   <span class="wiPts">${pts ? '+'+pts : ''}</span>
+ </li>`;
+}
+function renderLists(){
+ document.getElementById('orders').innerHTML = sessions.map(s=>{
+   const pts = s==='gp' ? PTS_GP : sprintPoints(year), o=orders[s], cut=o.indexOf(null);
+   const rows=o.map((id,i)=>{ const cls=cut<0||i<cut; return rowHTML(s, id, i, cls, cls ? (pts[i]||0) : 0); }).join('');
+   return `<div><div class="orderTitle">${s==='gp'?'Grand Prix':'Sprint'}</div><ul class="wiList" data-session="${s}">${rows}</ul></div>`;
+ }).join('');
+}
+// Refresh positions and points in place (keeps the row being dragged, and keyboard focus, where they are).
+function refreshLists(){
+ document.querySelectorAll('.wiList').forEach(ul=>{
+   const s=ul.dataset.session, pts = s==='gp' ? PTS_GP : sprintPoints(year);
+   let i=0, classified=true;
+   [...ul.children].forEach(li=>{
+     if(li.classList.contains('wiDivider')){ classified=false; i++; return; }
+     li.classList.toggle('nc', !classified);
+     li.querySelector('.wiPos').textContent = classified ? 'P'+(i+1) : 'NC';
+     const p = classified ? (pts[i]||0) : 0;
+     li.querySelector('.wiPts').textContent = p ? '+'+p : '';
+     i++;
+   });
+ });
+}
+function readOrders(){
+ document.querySelectorAll('.wiList').forEach(ul=>{ orders[ul.dataset.session]=[...ul.children].map(li=>li.dataset.id||null); });
+}
+function renderTables(){
+ const rounds=whatIfRounds(), before=seasonRounds.filter(r=>r.round<=L);
+ [['drivers','driverTable'],['teams','teamTable']].forEach(([kind, el])=>{
+   const now=totals(before, kind), next=totals(rounds, kind);
+   const prevOrder=F1Common.standingsOrder(before, L, kind), order=F1Common.standingsOrder(rounds, T, kind);
+   const info={}; rounds.forEach(r=>[...r.raceResults, ...(r.sprintResults||[])].forEach(res=>{ info[kind==='teams'?res.teamId:res.driverId]=res; }));
+   const rows=order.map((id,i)=>{
+     const r=info[id], j=prevOrder.indexOf(id), move = j<0 ? 0 : j-i, gain=(next[id]||0)-(now[id]||0);
+     const color=F1Theme.team(F1Common.teamColor(r.teamId));
+     const name = kind==='teams'
+       ? `<span class="long">${F1Common.flagHTML(r.teamNationality)}${r.teamName}</span><span class="short">${F1Common.flagHTML(r.teamNationality)}${F1Common.shortTeamName(id, r.teamName)}</span>`
+       : `<span class="long">${F1Common.flagHTML(F1Common.nationalityOf('drivers', id))}${r.name}</span><span class="short">${F1Common.flagHTML(F1Common.nationalityOf('drivers', id))}${r.code}</span>`;
+     return `<tr data-id="${id}"><td class="pos">${i+1}</td><td>${F1Common.moveHTML(move)}</td>
+       <td class="nm"><span class="dot" style="background:${color}"></span>${name}</td>
+       <td>${Math.round(now[id]||0)}</td><td class="gain${gain?'':' zero'}">${gain?'+'+Math.round(gain):'–'}</td><td class="tot">${Math.round(next[id]||0)}</td></tr>`;
+   }).join('');
+   document.getElementById(el).innerHTML = `<tr><th>Pos</th><th></th><th>${kind==='teams'?'Team':'Driver'}</th><th>Before</th><th>+</th><th>After</th></tr>`+rows;
+ });
+}
+function render(){
+ const has=sessions.length>0;
+ document.getElementById('orders').style.display = has ? '' : 'none';
+ document.getElementById('resultCard').style.display = has ? '' : 'none';
+ document.getElementById('useStandings').hidden = !has;
+ const act=actualRound();
+ document.getElementById('useActual').hidden = !has || !act;
+ if(!has){ document.getElementById('orderNote').textContent=''; document.getElementById('orderHeading').textContent='Your result'; return; }
+ document.getElementById('orderHeading').textContent = `Your result for Round ${T}: ${raceName(T)}`;
+ document.getElementById('resultHeading').textContent = `Championships after Round ${T}`;
+ document.getElementById('pageSub').textContent = act
+   ? `Round ${T} has already happened: it starts from the actual result. Drag the drivers to replay it differently and see what it would have done to both championships.`
+   : `Drag the drivers into any finishing order for Round ${T} to see what it would do to both championships.`;
+ document.getElementById('orderNote').textContent =
+   `Starts from ${act ? 'the actual result' : 'the drivers’ standings after Round '+L}. Drag a driver by the handle, or focus the handle and use the arrow keys. `
+   + `Drag the “Not classified” line to set who doesn’t finish (no points). Points: ${PTS_GP.join('-')}`
+   + (sessions.includes('sprint') ? `, sprint ${sprintPoints(year).join('-')}` : '')
+   + (year<=2024 ? '. The fastest-lap point (until 2024) isn’t included.' : '.');
+ renderLists(); renderTables();
+}
+
+// ---- Drag to reorder (pointer events: mouse, touch and pen), plus arrow keys on a focused handle ----
+let drag=null;
+document.getElementById('orders').addEventListener('pointerdown', e=>{
+ const g=e.target.closest('.wiGrip'); if(!g || e.button>0) return;
+ const li=g.closest('li'); e.preventDefault();
+ g.setPointerCapture(e.pointerId);
+ drag={li, ul:li.parentElement, y0:e.clientY, top0:li.offsetTop, y:e.clientY, id:e.pointerId};
+ li.classList.add('dragging');
+ autoScroll();
+});
+document.getElementById('orders').addEventListener('pointermove', e=>{
+ if(!drag || e.pointerId!==drag.id) return;
+ drag.y=e.clientY; moveDragged();
+});
+function moveDragged(){
+ const {li, ul}=drag;
+ const dy=()=>drag.y-drag.y0-(li.offsetTop-drag.top0);
+ li.style.transform=`translateY(${dy()}px)`;
+ // swap with a neighbour once the dragged row's middle passes the neighbour's middle
+ let moved=false;
+ for(;;){
+   const r=li.getBoundingClientRect(), mid=r.top+r.height/2, prev=li.previousElementSibling, next=li.nextElementSibling;
+   if(prev && mid < prev.getBoundingClientRect().top+prev.offsetHeight/2){ ul.insertBefore(li, prev); moved=true; }
+   else if(next && mid > next.getBoundingClientRect().top+next.offsetHeight/2){ ul.insertBefore(next, li); moved=true; }
+   else break;
+   li.style.transform=`translateY(${dy()}px)`;
+ }
+ if(moved){ refreshLists(); readOrders(); renderTables(); }
+}
+function endDrag(e){
+ if(!drag || (e && e.pointerId!==drag.id)) return;
+ drag.li.classList.remove('dragging'); drag.li.style.transform='';
+ drag=null; readOrders(); refreshLists(); renderTables();
+}
+document.getElementById('orders').addEventListener('pointerup', endDrag);
+document.getElementById('orders').addEventListener('pointercancel', endDrag);
+// Keep dragging when the finger nears the top or bottom of the screen (long lists on a phone).
+function autoScroll(){
+ if(!drag) return;
+ const edge=60, h=window.innerHeight;
+ const v = drag.y<edge ? -Math.ceil((edge-drag.y)/6) : drag.y>h-edge ? Math.ceil((drag.y-(h-edge))/6) : 0;
+ if(v){ window.scrollBy(0, v); drag.y0-=v; moveDragged(); }
+ requestAnimationFrame(autoScroll);
+}
+document.getElementById('orders').addEventListener('keydown', e=>{
+ const g=e.target.closest('.wiGrip'); if(!g || (e.key!=='ArrowUp' && e.key!=='ArrowDown')) return;
+ e.preventDefault();
+ const li=g.closest('li'), ul=li.parentElement;
+ if(e.key==='ArrowUp' && li.previousElementSibling) ul.insertBefore(li, li.previousElementSibling);
+ else if(e.key==='ArrowDown' && li.nextElementSibling) ul.insertBefore(li.nextElementSibling, li);
+ else return;
+ g.focus(); readOrders(); refreshLists(); renderTables();
+});
+document.getElementById('useActual').addEventListener('click', ()=>resetOrders('actual'));
+document.getElementById('useStandings').addEventListener('click', ()=>resetOrders('standings'));
+
+window.addEventListener('f1selection', e=>buildFromSelection(e.detail));
+window.addEventListener('f1roundchange', e=>{ if(seasonRounds.length) setRound(e.detail.round); });
+window.addEventListener('themechange', ()=>{ if(sessions.length) render(); });
+F1Controls.mount('f1controls', {defaultYear:2026});
+</script>
+</body>
+</html>
