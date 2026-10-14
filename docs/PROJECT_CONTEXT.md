@@ -97,6 +97,13 @@ Move something into `common.js` only once it's genuinely identical on every page
   season data, optionally "all"), and on pushes that change the generator or `data.js`. It commits
   `issue #13: update season data (automated)` and, on `main`, starts the Pages deploy itself (commits made
   by a workflow don't trigger other workflows).
+- **Daily check (#60):** the check of f1api.dev for rounds newer than the season file runs at most once a
+  day per season, across the whole site. A clean check is kept as `f1cache:v2:{year}/checked` =
+  `{firstLive, rounds}` (the rounds it found from `firstLive` on; with no season file, the whole season) for
+  24 hours, with `t` = the newest data time for "updated … ago". Until it expires, every page load and season
+  switch reuses it and makes no f1api.dev requests; rounds a newer season file covers are dropped from it.
+  A failed check isn't kept. Refresh data clears it (`clearCache()`), so it checks right away. New results
+  still arrive during the day through the season file, which the scheduled job updates.
 - Caching: completed rounds are cached permanently in `localStorage` under `f1cache:v2:` (bumped from
   `v1:` for #18's new fields; old `v1:` entries are deleted on load); the most recent
   round has a short TTL because post-race penalties can still change it. Each entry is `{v, exp, t}`, where
@@ -299,7 +306,8 @@ since fonts render differently on different machines.
   simulator (#39 DNF modeling, #42 auto DNFs, #14 wins, #11 collisions, #17 results kept), NC/finish rule shared by the position page and simulator (#46), flags and markers
   (#18/#30; movement also covers #20's tie-breaks), simulator runs (#56: responsive 30,000 run, progress, Cancel), what-if (#48: drag, keys, NC line, sprint weekends,
   points and countback), homepage (#50: card order, pictures, vertical layout, theme colours), season files (#13: one-file
-  loads, live check only after the file, complete seasons with no API calls, fallback, Refresh). The harness
+  loads, live check only after the file, complete seasons with no API calls, fallback, Refresh), daily check (#60: one check reused across pages and
+  season switches, rechecked after a day or on Refresh, failed checks not kept). The harness
   never serves the real `site/data/*.json`: tests pass `snapshots` built from the fake season. The fixture's names mix country names and demonyms, with
   one unknown. Logic is checked against
   independent calculations written in the tests, not against the site's own helpers.

@@ -18,6 +18,7 @@ const F1Data = (() => {
   }catch(e){ /* storage unavailable */ }
   const FRESH_ROUND_TTL_MS = 60 * 60 * 1000; // 1 hour — only applied to the latest round seen in a load
   const MAX_ROUNDS = 26;
+  const CHECK_TTL_MS = 24 * 60 * 60 * 1000; // #60: how long a check for new rounds is reused, site-wide
 
   // Hand corrections for f1api.dev's calendar sprint flag, for rounds where it's missing or wrong
   // (seen in practice: an upcoming round on a live season whose schedule.sprintRace.date hadn't been
@@ -179,6 +180,17 @@ const F1Data = (() => {
       round = rounds.length ? rounds[rounds.length-1].round + 1 : 1; // only newer rounds come from f1api.dev
     }
     const firstLive = round;
+    // #60: f1api.dev is asked about rounds newer than the snapshot at most once a day per season, across the
+    // whole site; until then every page and season switch reuses what that check found. Refresh data clears it.
+    if(!opts.live){
+      const entry = cacheGetEntry(`${year}/checked`), recent = entry && entry.v;
+      if(recent && Array.isArray(recent.rounds) && recent.firstLive <= firstLive){
+        recent.rounds.filter(r=>r.round>=firstLive).forEach(r=>rounds.push(r));
+        noteFetch(entry.t);
+        if(onProgress && rounds.length) onProgress(rounds[rounds.length-1].round, rounds.length);
+        return { rounds, failed, fetchedAt, fromSnapshot: !!snap };
+      }
+    }
     // after a snapshot, usually nothing (or one race) is newer: check a round at a time, not five
     const batchSize = snap ? 1 : BATCH_SIZE;
 
@@ -246,6 +258,9 @@ const F1Data = (() => {
       }
     }
     rounds.forEach(r=>{ delete r._sprintFailed; delete r._raceT; delete r._sprintT; });
+    // #60: remember a clean check for a day (a failed one isn't kept, so the next load or Retry checks again)
+    if(!failed && !opts.live)
+      cacheSet(`${year}/checked`, { firstLive, rounds: rounds.filter(r=>r.round>=firstLive) }, CHECK_TTL_MS, fetchedAt);
     return { rounds, failed, fetchedAt, fromSnapshot: !!snap };
   }
 
