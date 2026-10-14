@@ -1,0 +1,59 @@
+# #13: refresh the season data files (site/data/{year}.json) from f1api.dev, commit them if anything
+# changed, and redeploy the site. Pages load a whole season from one of these files instead of ~2 f1api.dev
+# requests per round; they still ask f1api.dev live for any round newer than the file.
+name: Update season data
+
+on:
+  schedule:
+    - cron: "17 6 * * *"        # every day
+    - cron: "47 * * * 0,1"      # hourly on Sundays and Mondays (UTC), when race results arrive
+  workflow_dispatch:
+    inputs:
+      all:
+        description: "Regenerate every season, not just the current one"
+        type: boolean
+        default: false
+  # also when the generator or the data code changes, so a branch's preview gets fresh files
+  push:
+    paths:
+      - "tools/snapshot.mjs"
+      - "site/data.js"
+      - ".github/workflows/snapshot.yml"
+
+permissions:
+  contents: write   # commit the data files
+  actions: write    # start the Pages deploy (commits made by this workflow don't trigger it on their own)
+
+concurrency:
+  group: snapshot-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Build season files
+        run: node tools/snapshot.mjs ${{ github.event.inputs.all == 'true' && '--all' || '' }}
+      - name: Commit if changed
+        id: commit
+        run: |
+          if git diff --quiet -- site/data && [ -z "$(git ls-files --others --exclude-standard site/data)" ]; then
+            echo "No data changes."; echo "changed=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add site/data
+          git commit -m "issue #13: update season data (automated)"
+          git push
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+      - name: Redeploy the site
+        if: steps.commit.outputs.changed == 'true' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run static.yml --ref main

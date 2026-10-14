@@ -147,15 +147,44 @@ const F1Data = (() => {
   //   (ms timestamp), or null if unknown.
   const BATCH_SIZE = 5;
 
+  // #13: each season is also published as one file, site/data/{year}.json, written by a scheduled GitHub
+  // workflow (tools/snapshot.mjs): {v, year, generatedAt, complete, calendar, rounds}. One request loads a
+  // whole season; a complete season then needs nothing from f1api.dev, and an in-progress one only asks it
+  // about rounds after the snapshot. If the file is missing or broken, the season loads live as before.
+  const snapshots = {}; // year -> snapshot loaded this page view (its calendar is reused by getCalendar)
+  async function fetchSnapshot(year, fresh){
+    try{
+      const res = await fetch(`data/${year}.json`, fresh ? {cache:'reload'} : {});
+      if(!res.ok) return null;
+      const snap = await res.json();
+      if(!snap || snap.v!==1 || snap.year!==year || !Array.isArray(snap.rounds)) return null;
+      snapshots[year] = snap;
+      return snap;
+    }catch(e){ return null; }
+  }
+
+  // opts: onProgress(round, count); live: true skips the snapshot (the snapshot tool itself uses this);
+  // fresh: true asks the browser to re-download the snapshot (Refresh data).
   async function loadSeason(year, opts={}){
     const { onProgress } = opts;
     const rounds = [];
     let round = 1, failed = false, fetchedAt = null;
     const noteFetch = t => { if(t && (fetchedAt===null || t>fetchedAt)) fetchedAt = t; };
+    const snap = opts.live ? null : await fetchSnapshot(year, opts.fresh);
+    if(snap){
+      snap.rounds.forEach(r=>rounds.push(r));
+      noteFetch(snap.generatedAt);
+      if(onProgress && rounds.length) onProgress(rounds[rounds.length-1].round, rounds.length);
+      if(snap.complete) return { rounds, failed, fetchedAt, fromSnapshot:true };
+      round = rounds.length ? rounds[rounds.length-1].round + 1 : 1; // only newer rounds come from f1api.dev
+    }
+    const firstLive = round;
+    // after a snapshot, usually nothing (or one race) is newer: check a round at a time, not five
+    const batchSize = snap ? 1 : BATCH_SIZE;
 
     while(round <= MAX_ROUNDS){
       const batch = [];
-      for(let i=0; i<BATCH_SIZE && round+i<=MAX_ROUNDS; i++) batch.push(round+i);
+      for(let i=0; i<batchSize && round+i<=MAX_ROUNDS; i++) batch.push(round+i);
 
       let pairs;
       try{
@@ -201,14 +230,14 @@ const F1Data = (() => {
         if(onProgress) onProgress(r, rounds.length);
       }
       if(hitEnd || stoppedOnFailure) break;
-      round += BATCH_SIZE;
+      round += batchSize;
     }
 
     // Shorten the TTL on just the last round, so post-race penalty corrections get re-checked soon —
     // rewriting the SAME correct value, not a placeholder (that was an earlier bug). If that round's
     // sprint fetch had failed, leave its cache entry alone rather than re-stamping a failure as a
     // confirmed "no sprint" (that was a second instance of the same class of bug).
-    if(rounds.length){
+    if(rounds.length && rounds[rounds.length-1].round >= firstLive){
       const last = rounds[rounds.length-1];
       cacheSet(`${year}/${last.round}/race`, {ok:true, raceName:last.raceName, country:last.country, results:last.raceResults}, FRESH_ROUND_TTL_MS, last._raceT);
       if(!last._sprintFailed){
@@ -217,7 +246,7 @@ const F1Data = (() => {
       }
     }
     rounds.forEach(r=>{ delete r._sprintFailed; delete r._raceT; delete r._sprintT; });
-    return { rounds, failed, fetchedAt };
+    return { rounds, failed, fetchedAt, fromSnapshot: !!snap };
   }
 
   // Real season schedule from /api/[year] — every round for the year, including ones not yet run,
@@ -226,6 +255,9 @@ const F1Data = (() => {
   // are effectively static but can occasionally get revised (e.g. a postponed/relocated round).
   const CALENDAR_TTL_MS = 24*60*60*1000;
   async function getCalendar(year){
+    // #13: a snapshot loaded for this season carries the calendar — no request needed
+    const snap = snapshots[year];
+    if(snap && snap.calendar && snap.calendar.totalRounds) return snap.calendar;
     const key = `${year}/calendar2`; // bumped from /calendar — invalidates any pre-override cached copy
     const cached = cacheGet(key);
     if(cached !== undefined) return cached;

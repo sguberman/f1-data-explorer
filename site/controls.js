@@ -46,7 +46,7 @@ const F1Controls = (() => {
   // issue #16: each page's <title> is written without a year ("Drivers' Championship · F1 Data Explorer");
   // the selected season is prefixed here, so the browser tab always names the season being shown.
   const baseTitle = document.title;
-  async function loadYear(container, year, statusEl){
+  async function loadYear(container, year, statusEl, fresh=false){
     const token = ++loadToken;
     document.title = `${year} ${baseTitle}`;
     const root = document.documentElement, errorEl = container.querySelector('.f1c-error');
@@ -55,7 +55,7 @@ const F1Controls = (() => {
     errorEl.hidden = true; refreshBtn.disabled = true;
     fetchedAt = null; container.querySelector('.f1c-age').hidden = true;
     statusEl.textContent = `Loading ${year} season…`;
-    const { rounds, failed, fetchedAt: newest } = await F1Data.loadSeason(year, {
+    const { rounds, failed, fetchedAt: newest } = await F1Data.loadSeason(year, { fresh,
       onProgress:(round)=>{ if(token===loadToken) statusEl.textContent = `Loading ${year} season… round ${round}`; }
     });
     if(token!==loadToken) return; // superseded by a newer load
@@ -109,7 +109,7 @@ const F1Controls = (() => {
     // these controls make besides loading a season — and only on an explicit click.
     container.querySelector('.f1c-refresh').addEventListener('click', ()=>{
       F1Data.clearCache();
-      loadYear(container, currentYear(), statusEl);
+      loadYear(container, currentYear(), statusEl, true); // true: re-download the season file too (#13)
     });
     // issue #48: failures are never cached, so retrying is just loading the season again.
     container.querySelector('.f1c-retry').addEventListener('click', ()=>loadYear(container, currentYear(), statusEl));

@@ -30,7 +30,7 @@ Only `site/` is deployed to GitHub Pages (issue #51); everything else in the rep
 
 ```
 site/                 The website (deployed as the site root, so URLs are unchanged)
-  index.html          Landing page: cards linking to the four tools.
+  index.html          Landing page: a card per page, each with a picture of its main chart.
   drivers.html        Drivers' championship: cumulative points line chart, projections, knockout line.
   constructors.html   Constructors' championship: same chart pattern for teams.
   position.html       Race finishing-position ridgeline chart per driver, with sort/show options.
@@ -41,7 +41,11 @@ site/                 The website (deployed as the site root, so URLs are unchan
   controls.js         F1Controls: shared season dropdown + "as of round" slider; emits events.
   theme.js            Light/dark/system theme (dropdown in .theme-bar) + canvas color palette (F1Theme).
   theme.css           Shared CSS variables (both themes), controls, pills, dropdowns, legends, pickers.
+  flags/              Flag SVGs (#18).
+  data/               {year}.json: one file per season, written by the snapshot workflow (#13). Don't edit by hand.
 .github/workflows/    static.yml deploys site/ on pushes to main that touch site/ (or the workflow).
+                      tests.yml runs tests/ on PRs. snapshot.yml refreshes site/data/ (#13).
+tools/                snapshot.mjs: builds site/data/{year}.json from f1api.dev (run by snapshot.yml).
 tests/                Browser tests, run on every PR (see "Tests" below). Not deployed.
 docs/                 Project docs (not deployed): PROJECT_CONTEXT.md (this file), DONE.md (archive of
                       legacy issues #1–#55), TODO.md (legacy → GitHub issue numbers).
@@ -79,6 +83,20 @@ Move something into `common.js` only once it's genuinely identical on every page
   finishing position, or `null` when not classified (f1api.dev sends null, "-" or "NC").
   `failed` is true if any fetch failed (the load stops at the first failed round; a failed sprint reads as
   "no sprint"), issue #48. `fetchedAt` is the newest fetch time of the data used, issue #49.
+- **Season files (#13):** `site/data/{year}.json` = `{v:1, year, generatedAt, complete, calendar, rounds}`,
+  `rounds` in exactly the shape `loadSeason()` returns. `loadSeason()` fetches the file first: one request
+  for the whole season, and `getCalendar()` reuses its calendar. A `complete` season (every calendar round
+  present) makes no f1api.dev requests at all; an in-progress one then checks f1api.dev one round at a time
+  from the round after the file's last, so new results still appear straight after a race. A missing or
+  broken file falls back to the old live walk. Refresh data re-downloads the file (`fresh`). "updated … ago"
+  is the newer of the file's `generatedAt` and any live check.
+  **Generator:** `tools/snapshot.mjs` runs `site/data.js` itself in Node (`loadSeason(year, {live:true})`),
+  so the files match what pages build from the live API. It skips complete past seasons (`--all` rebuilds
+  everything), never overwrites a file after a failed fetch, and only rewrites a file whose data changed.
+  **Workflow:** `snapshot.yml` runs daily, hourly on Sundays and Mondays (UTC), by hand (Actions → Update
+  season data, optionally "all"), and on pushes that change the generator or `data.js`. It commits
+  `issue #13: update season data (automated)` and, on `main`, starts the Pages deploy itself (commits made
+  by a workflow don't trigger other workflows).
 - Caching: completed rounds are cached permanently in `localStorage` under `f1cache:v2:` (bumped from
   `v1:` for #18's new fields; old `v1:` entries are deleted on load); the most recent
   round has a short TTL because post-race penalties can still change it. Each entry is `{v, exp, t}`, where
@@ -280,7 +298,9 @@ since fonts render differently on different machines.
   status (#23/#48/#49), movement (#47), position (#9), projection (#10),
   simulator (#39 DNF modeling, #42 auto DNFs, #14 wins, #11 collisions, #17 results kept), NC/finish rule shared by the position page and simulator (#46), flags and markers
   (#18/#30; movement also covers #20's tie-breaks), simulator runs (#56: responsive 30,000 run, progress, Cancel), what-if (#48: drag, keys, NC line, sprint weekends,
-  points and countback), homepage (#50: card order, pictures, vertical layout, theme colours). The fixture's names mix country names and demonyms, with
+  points and countback), homepage (#50: card order, pictures, vertical layout, theme colours), season files (#13: one-file
+  loads, live check only after the file, complete seasons with no API calls, fallback, Refresh). The harness
+  never serves the real `site/data/*.json`: tests pass `snapshots` built from the fake season. The fixture's names mix country names and demonyms, with
   one unknown. Logic is checked against
   independent calculations written in the tests, not against the site's own helpers.
 - Add tests for each new feature in the same PR. Before trusting a new check, make sure it fails when the

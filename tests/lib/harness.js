@@ -16,11 +16,14 @@ async function close(){ if(browser) await browser.close(); }
 // Opens a page in a fresh context. Options:
 //   theme 'light'|'dark', width (px), fail(url) -> true to answer that f1api.dev request with HTTP 500,
 //   delay (ms) before each f1api.dev response.
+//   snapshots: {year: object} served as site/data/{year}.json (#13). The real season files in site/data/ are
+//   never served, so tests always use the fake season; without this option every season file is a 404 and
+//   pages load live from the (fake) f1api.dev, as before.
 // The returned page has .errors (uncaught page errors), .apiHits (f1api.dev requests made) and .done().
-async function openPage(name, {theme='light', width=1000, fail=()=>false, delay=0}={}){
+async function openPage(name, {theme='light', width=1000, fail=()=>false, delay=0, snapshots={}}={}){
   const ctx = await browser.newContext({ viewport:{width, height:1400} });
   await ctx.addInitScript(t => { try{ localStorage.setItem('f1-theme', t); }catch(e){} }, theme);
-  const apiHits = [];
+  const apiHits = [], snapshotHits = [];
   await ctx.route('**/*', async route => {
     const url = route.request().url();
     if(url.startsWith('https://f1api.dev/')){
@@ -34,6 +37,12 @@ async function openPage(name, {theme='light', width=1000, fail=()=>false, delay=
     if(url.startsWith('https://cdnjs.cloudflare.com/') && url.includes('Chart.js'))
       return route.fulfill({status:200, contentType:'application/javascript', body:CHART_JS});
     if(url.startsWith('http://site.test/')){
+      const snap = new URL(url).pathname.match(/^\/data\/(\d{4})\.json$/);
+      if(snap){
+        snapshotHits.push(url);
+        return snapshots[snap[1]] ? route.fulfill({status:200, contentType:'application/json', body:JSON.stringify(snapshots[snap[1]])})
+                                  : route.fulfill({status:404, body:''});
+      }
       const file = path.join(SITE, new URL(url).pathname.slice(1) || 'index.html');
       if(!file.startsWith(SITE) || !fs.existsSync(file)) return route.fulfill({status:404, body:''});
       return route.fulfill({status:200, contentType:TYPES[path.extname(file)] || 'application/octet-stream', body:fs.readFileSync(file)});
@@ -41,7 +50,7 @@ async function openPage(name, {theme='light', width=1000, fail=()=>false, delay=
     return route.abort();
   });
   const page = await ctx.newPage();
-  page.errors = []; page.apiHits = apiHits;
+  page.errors = []; page.apiHits = apiHits; page.snapshotHits = snapshotHits;
   page.on('pageerror', e => page.errors.push(e.message));
   page.done = () => ctx.close();
   await page.goto(`http://site.test/${name}.html`);
