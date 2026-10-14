@@ -16,6 +16,7 @@ requirements, decisions, known issues, tests, and the owner's standing rules. Th
 - Previews: Cloudflare Pages builds `site/` for every PR branch (not `main`) and posts the link on the PR.
   Previews need a login (owner only).
 - `tests/`: browser tests (headless Chromium + fake f1api.dev data). `cd tests && npm ci && npm test`.
+  Locally run only the affected files (`node run.js <name>`); GitHub runs the full suite on every PR push (#54).
   CI runs them on every pull request (`.github/workflows/tests.yml`).
 - `docs/`: project docs (context, issue lists, brainstorm). Not deployed.
 - `README.md`: overview for people visiting the repo. This file (`CLAUDE.md`) stays at the root, where

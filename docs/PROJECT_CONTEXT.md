@@ -253,6 +253,13 @@ navy lightened in dark). The page loads no data.
 
 ## Tests (`tests/`, issue #53)
 
+**Who runs what (#54):** GitHub runs the **full suite** on every push to a PR (and to `main`); that's the
+"test" check on each PR, and it's the gate. Locally, before pushing, run only the test files for what
+changed (`node run.js <name>`, e.g. `node run.js whatif home`), not the whole suite. If GitHub's run goes
+red, fix it and push again. Two checks stay manual because they need judgement: render visual changes
+(light/dark, desktop/~390px) and look at them, and break the code once to see each new test fail.
+GitHub keeps every run's screenshots as the run's "screenshots" artifact on the Actions page.
+
 Browser tests live in `tests/` (not deployed) and run on every pull request via
 `.github/workflows/tests.yml`. To run them locally: `cd tests && npm ci && npm test` (or `node run.js
 position projection` to run only matching files). Screenshots of every page go to `tests/artifacts/`
@@ -322,6 +329,7 @@ since fonts render differently on different machines.
 11. Work each issue on its own branch (`claude/issue-NN`) and open a PR when it's ready for review, so it
     gets a preview (legacy #52). Merge only when the owner asks. Rebase-merge, so each `issue #xx:` commit
     lands on `main` as written.
-12. Add or update tests in `tests/` with every feature or fix (issue #53), and run them before pushing.
+12. Add or update tests in `tests/` with every feature or fix (issue #53). Before pushing, run the tests for what
+    changed; GitHub runs the full suite on the PR (#54).
 13. **When done with a piece of work, always give the owner a link to the homepage on the dev site**: the
     PR's Cloudflare branch preview, `https://claude-issue-NN.f1-data-explorer.pages.dev/`.
