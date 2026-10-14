@@ -189,7 +189,8 @@ Live and lap-by-lap running orders were considered and left out (see #48 for the
 **index.html** — Static landing page (#50): five cards, one per row, in the order Drivers' Championship,
 Constructors' Championship, Race Finishing Positions, Title Simulator, What-If Results. Each card has a
 picture of that page's main chart on the left (on top on phones): an inline SVG with illustrative shapes, not
-real data, coloured through CSS variables so it follows the theme (team colours as on the charts, Red Bull's
+real data (the drivers' picture ends each line with a driver number and code, the constructors' with a
+team-coloured name badge; no team logos, which are trademarks), coloured through CSS variables so it follows the theme (team colours as on the charts, Red Bull's
 navy lightened in dark). The page loads no data.
 
 ## Design requirements (owner-approved — keep these)
