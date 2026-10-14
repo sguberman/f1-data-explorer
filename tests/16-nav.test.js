@@ -31,6 +31,7 @@ module.exports = async (t, h) => {
   const p = await h.openPage('drivers', { snapshots }); await h.loaded(p);
   await p.click('#siteNav .nav-trigger');
   t.check('clicking Pages opens the menu', !(await p.$eval('#siteNav .nav-menu', m => m.hidden)));
+  t.check('desktop: home link shows "F1 Data Explorer"', await p.$eval('#siteNav .nav-home span', e => e.offsetWidth > 0 && e.offsetWidth >= e.scrollWidth && e.textContent === 'F1 Data Explorer'));
   t.check('every page name fits inside the open menu', await p.$$eval('#siteNav .nav-menu a', as => as.every(a => a.scrollWidth <= a.clientWidth + 1)));
   t.check('…and focuses the current page', await p.evaluate(() => document.activeElement?.getAttribute('aria-current') === 'page'));
   await p.keyboard.press('ArrowDown');
@@ -68,11 +69,13 @@ module.exports = async (t, h) => {
       const box = s => document.querySelector(s).getBoundingClientRect();
       const home = box('#siteNav .nav-home'), pages = box('#siteNav .nav-trigger'), th = box('#themeToggle .theme-trigger');
       return { oneRow: Math.abs(home.top - th.top) < 12 && Math.abs(pages.top - th.top) < 4, right: th.right, scroll: document.documentElement.scrollWidth,
-        label: getComputedStyle(document.querySelector('#siteNav .nav-short')).display !== 'none' && getComputedStyle(document.querySelector('#siteNav .nav-current')).display === 'none' };
+        label: getComputedStyle(document.querySelector('#siteNav .nav-short')).display !== 'none' && getComputedStyle(document.querySelector('#siteNav .nav-current')).display === 'none',
+        iconOnly: getComputedStyle(document.querySelector('#siteNav .nav-home span')).display === 'none' && document.querySelector('#siteNav .nav-home svg').getBoundingClientRect().width > 0 };
     });
     t.check(`phone ${theme}: home, Pages and theme on one row`, r.oneRow, JSON.stringify(r));
     t.check(`phone ${theme}: no horizontal scroll`, r.scroll <= 390 && r.right <= 390, JSON.stringify(r));
     t.check(`phone ${theme}: menu button reads "Pages"`, r.label);
+    t.check(`phone ${theme}: home is just the house icon`, r.iconOnly);
     await m.click('#siteNav .nav-trigger');
     const menu = await m.$eval('#siteNav .nav-menu', e => { const b = e.getBoundingClientRect(); return { left: b.left, right: b.right }; });
     t.check(`phone ${theme}: open menu fits on screen`, menu.left >= 0 && menu.right <= 390, JSON.stringify(menu));

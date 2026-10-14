@@ -36,8 +36,8 @@ html,body{background:var(--bg);color:var(--ink);}
 .theme-menu a:hover{background:var(--inset);}
 .theme-menu a[aria-current="page"]{background:var(--inset);font-weight:600;}
 .theme-menu a:focus-visible{outline:2px solid var(--line-strong);outline-offset:1px;}
-@media (max-width:560px){ .nav-trigger .nav-current{display:none;} .nav-trigger .nav-short{display:inline;} }
-@media (max-width:370px){ .nav-home span{display:none;} } /* very narrow phones: just the house icon */
+/* phones: just the house icon for home, and "Pages" for the menu */
+@media (max-width:560px){ .nav-home span{display:none;} .nav-trigger .nav-current{display:none;} .nav-trigger .nav-short{display:inline;} }
 /* issue #27: the theme setting is now a single dropdown trigger (icon + current theme + chevron)
    instead of an always-visible three-button row. */
 .theme-dd{position:relative;display:inline-block;}
