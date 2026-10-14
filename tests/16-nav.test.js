@@ -79,6 +79,16 @@ module.exports = async (t, h) => {
     await h.screenshot(m, `nav-phone-${theme}.png`);
     await m.done();
   }
+  // Every page, narrow phones too: the menu buttons stay on one line and nothing overflows (the simulator's
+  // theme button wrapped onto two lines at 390px). "System Theme" is the longest theme label.
+  for(const width of [360, 390]) for(const name of Object.keys(PAGES)){
+    const m = await h.openPage(name, { snapshots, width, theme: 'system' }); await h.loaded(m);
+    const r = await m.evaluate(() => { const box = s => document.querySelector(s).getBoundingClientRect();
+      const th = box('#themeToggle .theme-trigger'), pg = box('#siteNav .nav-trigger');
+      return { th: Math.round(th.height), pg: Math.round(pg.height), right: Math.round(th.right), scroll: document.documentElement.scrollWidth }; });
+    t.check(`${width}px ${name}: theme and Pages buttons on one line, inside the screen`, r.th === r.pg && r.th < 36 && r.right <= width && r.scroll <= width, JSON.stringify(r));
+    await m.done();
+  }
   const idx = await h.openPage('index');
   t.check('homepage: no Pages menu (its cards are the menu)', !(await idx.$('#siteNav')));
   t.check('homepage: theme menu still on the right', await idx.evaluate(() => document.querySelector('#themeToggle .theme-trigger').getBoundingClientRect().right > 900));

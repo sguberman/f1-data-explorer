@@ -21,7 +21,7 @@
     const here = base + '.html';
     const current = PAGES.find(([href]) => href === here);
     slot.innerHTML =
-      `<a class="nav-home" href="index.html">${HOME_ICON}<span>F1 Data Explorer</span></a>` +
+      `<a class="nav-home" href="index.html" title="F1 Data Explorer home" aria-label="F1 Data Explorer home">${HOME_ICON}<span>F1 Data Explorer</span></a>` +
       '<div class="theme-dd nav-dd">' +
         '<button type="button" class="theme-trigger nav-trigger" aria-haspopup="true" aria-expanded="false" aria-label="Pages">' +
           `<span class="nav-current">${esc(current ? current[1] : 'Pages')}</span><span class="nav-short">Pages</span>${CHEVRON}</button>` +
