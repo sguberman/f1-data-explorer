@@ -284,7 +284,10 @@ since fonts render differently on different machines.
 3. GitHub runs the tests (`tests.yml`). Cloudflare Pages (connected to the repo, output folder `site`)
    builds a preview of the PR's branch and posts its link on the PR. Previews use live f1api.dev data and
    their own web address, so their browser storage (cache, theme) is separate from the live site.
-   Cloudflare also hosts a copy of `main` on `pages.dev`; the real site is still GitHub Pages.
+   Previews **require a login** (Cloudflare Access, set by the owner), so only the owner can open them;
+   nothing in this environment can reach them anyway. **`main` isn't built on Cloudflare** (production
+   builds are off): the real site is GitHub Pages, so only PR branches get previews (#52). Previews stay up
+   indefinitely and never need cleaning up; the free plan's limit is 500 builds a month, far above our use.
 4. The owner tries the preview (phone included). Requested changes are pushed to the same PR, and the
    preview updates.
 5. When the owner merges (or says to merge), the change goes live on GitHub Pages and GitHub closes the

@@ -13,7 +13,8 @@ requirements, decisions, known issues, tests, and the owner's standing rules. Th
 
 - `site/`: the website. It's the only folder deployed (`.github/workflows/static.yml`, on pushes to
   `main` that touch `site/`). Vanilla HTML/CSS/JS, no build step; Chart.js from cdnjs.
-- Previews: Cloudflare Pages builds `site/` for every PR branch and posts the link on the PR.
+- Previews: Cloudflare Pages builds `site/` for every PR branch (not `main`) and posts the link on the PR.
+  Previews need a login (owner only).
 - `tests/`: browser tests (headless Chromium + fake f1api.dev data). `cd tests && npm ci && npm test`.
   CI runs them on every pull request (`.github/workflows/tests.yml`).
 - `docs/`: project docs (context, issue lists, brainstorm). Not deployed.
