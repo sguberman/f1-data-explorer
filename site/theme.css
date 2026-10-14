@@ -20,7 +20,20 @@
 html{-webkit-text-size-adjust:100%;text-size-adjust:100%;}
 html,body{background:var(--bg);color:var(--ink);}
 
-.theme-bar{display:flex;justify-content:flex-end;margin:0 0 14px;min-height:30px;}
+.theme-bar{display:flex;justify-content:flex-end;align-items:center;gap:8px;margin:0 0 14px;min-height:30px;}
+/* #62: site navigation at the left of the top bar — a link home and a Pages menu styled like the theme menu */
+.site-nav{display:flex;align-items:center;gap:10px;margin-right:auto;min-width:0;}
+.nav-home{display:inline-flex;align-items:center;gap:6px;color:var(--ink);font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap;}
+.nav-home:hover{text-decoration:underline;text-underline-offset:3px;}
+.nav-home:focus-visible{outline:2px solid var(--line-strong);outline-offset:2px;border-radius:4px;}
+.nav-home svg{width:15px;height:15px;flex:none;color:var(--ink2);}
+.nav-trigger .nav-short{display:none;}
+.nav-dd .nav-menu{left:0;right:auto;width:max-content;} /* beats .theme-menu (defined below): open from the left, as wide as the longest name */
+.theme-menu a{display:block;color:var(--ink);text-decoration:none;font-size:12.5px;padding:7px 10px;border-radius:6px;white-space:nowrap;}
+.theme-menu a:hover{background:var(--inset);}
+.theme-menu a[aria-current="page"]{background:var(--inset);font-weight:600;}
+.theme-menu a:focus-visible{outline:2px solid var(--line-strong);outline-offset:1px;}
+@media (max-width:560px){ .nav-trigger .nav-current{display:none;} .nav-trigger .nav-short{display:inline;} }
 /* issue #27: the theme setting is now a single dropdown trigger (icon + current theme + chevron)
    instead of an always-visible three-button row. */
 .theme-dd{position:relative;display:inline-block;}

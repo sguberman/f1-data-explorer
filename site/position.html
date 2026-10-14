@@ -6,6 +6,7 @@
 <title>Race Finishing Positions · F1 Data Explorer</title>
 <link rel="stylesheet" href="theme.css">
 <script src="theme.js"></script>
+<script src="nav.js"></script>
 <script src="common.js"></script>
 <script src="data.js"></script>
 <script src="controls.js"></script>
@@ -21,7 +22,7 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
 </head>
 <body>
 <div class="wrap">
-<div class="theme-bar" id="themeToggle"></div>
+<div class="theme-bar"><nav id="siteNav" class="site-nav" aria-label="Site"></nav><div id="themeToggle"></div></div>
 <h1>Race Finishing Positions</h1>
 <p class="sub" id="pageSub">How often each selected driver has finished in each position.</p>
 <div id="f1controls" class="f1c"></div>
@@ -344,7 +345,7 @@ window.addEventListener('f1roundchange', e=>{ if(currentSeasonRounds.length) rec
 window.addEventListener('themechange', draw);
 let lastNarrow=F1Common.isNarrow();
 window.addEventListener('resize', ()=>{ const now=F1Common.isNarrow(); if(now!==lastNarrow){ lastNarrow=now; draw(); } });
-F1Controls.mount('f1controls', {defaultYear:2026});
+F1Controls.mount('f1controls');
 </script>
 </body>
 </html>

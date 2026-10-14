@@ -40,6 +40,7 @@ site/                 The website (deployed as the site root, so URLs are unchan
   data.js             F1Data: fetch, cache (localStorage), normalize f1api.dev data; SPRINT_OVERRIDES.
   controls.js         F1Controls: shared season dropdown + "as of round" slider; emits events.
   theme.js            Light/dark/system theme (dropdown in .theme-bar) + canvas color palette (F1Theme).
+  nav.js              Site navigation (#62): home link + Pages menu at the left of .theme-bar (data pages).
   theme.css           Shared CSS variables (both themes), controls, pills, dropdowns, legends, pickers.
   flags/              Flag SVGs (#18).
   data/               {year}.json: one file per season, written by the snapshot workflow (#13). Don't edit by hand.
@@ -123,7 +124,9 @@ Move something into `common.js` only once it's genuinely identical on every page
 
 `F1Controls.mount(containerId, {defaultYear})` renders the season dropdown (the years in
 `F1Common.SEASON_META`, newest first — add a row there to add a season) and round slider,
-persists the season in `localStorage`, and dispatches on `window`:
+persists the season in `localStorage` (`f1cache:selectedSeason`), and dispatches on `window`. The saved
+season wins over `defaultYear`, so moving between pages keeps it (#62; pages pass no `defaultYear`, which
+falls back to the newest season):
 - `f1selection` `{year, round, maxRound, seasonRounds}` — on load and season change. Pages rebuild their
   default selection here.
 - `f1roundchange` `{round}` — on every slider step. Pages only recompute from already-loaded data:
@@ -307,7 +310,8 @@ since fonts render differently on different machines.
   (#18/#30; movement also covers #20's tie-breaks), simulator runs (#56: responsive 30,000 run, progress, Cancel), what-if (#48: drag, keys, NC line, sprint weekends,
   points and countback), homepage (#50: card order, pictures, vertical layout, theme colours), season files (#13: one-file
   loads, live check only after the file, complete seasons with no API calls, fallback, Refresh), daily check (#60: one check reused across pages and
-  season switches, rechecked after a day or on Refresh, failed checks not kept), layout (#64: every data page has the same page frame —
+  season switches, rechecked after a day or on Refresh, failed checks not kept), navigation (#62: home link and Pages menu on every
+  data page, keyboard, season kept between pages, phone layout), layout (#64: every data page has the same page frame —
   margins, width, title, intro text, card style). The harness
   never serves the real `site/data/*.json`: tests pass `snapshots` built from the fake season. The fixture's names mix country names and demonyms, with
   one unknown. Logic is checked against

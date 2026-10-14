@@ -6,6 +6,7 @@
 <title>Constructors' Championship · F1 Data Explorer</title>
 <link rel="stylesheet" href="theme.css">
 <script src="theme.js"></script>
+<script src="nav.js"></script>
 <script src="common.js"></script>
 <script src="data.js"></script>
 <script src="controls.js"></script>
@@ -19,7 +20,7 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
 </head>
 <body>
 <div class="wrap">
-<div class="theme-bar" id="themeToggle"></div>
+<div class="theme-bar"><nav id="siteNav" class="site-nav" aria-label="Site"></nav><div id="themeToggle"></div></div>
 <h1>Constructors' Championship</h1>
 <p class="sub">Points for the teams you pick below (top 5 by default), projected to the end of the season from each team's last 5 races. Move the slider, or drag the handle on the chart, to see the standings as of any round.</p>
 <div id="f1controls" class="f1c"></div>
@@ -326,7 +327,7 @@ window.addEventListener('resize', ()=>{
  if(chart) positionHandle();
  const now=F1Common.isNarrow(); if(now!==lastNarrow){ lastNarrow=now; draw(); drawPositions(); drawProjPoints(true); }
 });
-F1Controls.mount('f1controls', {defaultYear:2026});
+F1Controls.mount('f1controls');
 </script>
 </div>
 </body>

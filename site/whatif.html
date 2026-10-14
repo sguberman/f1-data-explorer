@@ -6,6 +6,7 @@
 <title>What-If Results · F1 Data Explorer</title>
 <link rel="stylesheet" href="theme.css">
 <script src="theme.js"></script>
+<script src="nav.js"></script>
 <script src="common.js"></script>
 <script src="data.js"></script>
 <script src="controls.js"></script>
@@ -65,7 +66,7 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
 </head>
 <body>
 <div class="wrap">
-<div class="theme-bar" id="themeToggle"></div>
+<div class="theme-bar"><nav id="siteNav" class="site-nav" aria-label="Site"></nav><div id="themeToggle"></div></div>
 <h1>What-If Results</h1>
 <p class="sub" id="pageSub">Drag the drivers into any finishing order to see what it would do to both championships.</p>
 <div id="f1controls" class="f1c"></div>
@@ -315,7 +316,7 @@ document.getElementById('useStandings').addEventListener('click', ()=>resetOrder
 window.addEventListener('f1selection', e=>buildFromSelection(e.detail));
 window.addEventListener('f1roundchange', e=>{ if(seasonRounds.length) setRound(e.detail.round); });
 window.addEventListener('themechange', ()=>{ if(sessions.length) render(); });
-F1Controls.mount('f1controls', {defaultYear:2026});
+F1Controls.mount('f1controls');
 </script>
 </body>
 </html>

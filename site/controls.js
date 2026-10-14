@@ -83,8 +83,9 @@ const F1Controls = (() => {
 
   function mount(containerId, opts={}){
     const container = document.getElementById(containerId);
-    const savedYear = (()=>{ try{ return +localStorage.getItem(SEASON_KEY) || null; }catch(e){ return null; } })();
-    const defaultYear = opts.defaultYear || savedYear || YEARS[0];
+    // #62: the season chosen on any page wins, so moving between pages keeps it; otherwise the newest season.
+    const savedYear = (()=>{ try{ const y = +localStorage.getItem(SEASON_KEY); return YEARS.includes(y) ? y : null; }catch(e){ return null; } })();
+    const defaultYear = savedYear || opts.defaultYear || YEARS[0];
 
     container.innerHTML = `
       <div class="f1c-row">
