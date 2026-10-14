@@ -338,6 +338,12 @@ since fonts render differently on different machines.
    preview updates.
 5. When the owner merges (or says to merge), the change goes live on GitHub Pages and GitHub closes the
    issue in the same step. If a PR is closed without merging, its issue stays open.
+6. **`main` is protected (#66):** force pushes and deletion are blocked (GitHub branch protection, set by
+   the owner). Never force-push `main`; rewriting history on a `claude/issue-NN` branch is still allowed.
+   Deliberately **not** turned on: *require a pull request* and *require status checks* (both would block
+   `snapshot.yml`, which commits season files straight to `main`), and *require approvals* (Claude works
+   under the owner's GitHub account, so its PRs count as the owner's, and GitHub doesn't let an author
+   approve their own PR).
 
 ## Instructions to preserve (owner's standing workflow)
 
