@@ -68,23 +68,24 @@ module.exports = async (t, h) => {
     const out = { E:ctx.E, nGP:ctx.gpIdx.length, aDnf:[], aWins:[], bDnf:[], bWins:0, cWins:[], cOutInWin:0,
                   colSame:0, colAll:0, autoOut:0, autoRate:fullRoster[idx(autoId)].dnfRate, autoFree:0, gpNoWinner:0, aWinGps:0 };
     const T = 3000;
+    const cnt = row => row.reduce((a, b) => a + b, 0); // plan.out[i][e] = 1 when driver i doesn't finish event e (#56)
     for(let k = 0; k < T; k++){
       const { plan, orders } = simulateSeason(ctx, true);
       const ia = idx(a), ib = idx(b), ic = idx(c), iu = idx(autoId);
-      out.aDnf.push(plan.out[ia].size);
-      out.bDnf.push(plan.out[ib].size);
+      out.aDnf.push(cnt(plan.out[ia]));
+      out.bDnf.push(cnt(plan.out[ib]));
       let aw = 0, cw = 0;
       ctx.events.forEach((e, ei) => {
         if(e.type !== 'gp') return;
         const w = orders[ei][0];
         if(w === ia) aw++; if(w === ic) cw++; if(w === ib) out.bWins++;
-        if(plan.winnerOf[ei] === ic && plan.out[ic].has(ei)) out.cOutInWin++;
+        if(plan.winnerOf[ei] === ic && plan.out[ic][ei]) out.cOutInWin++;
       });
       out.aWins.push(aw); out.cWins.push(cw);
       // the collision GP: both b and the auto driver are out of it
-      const both = ctx.gpIdx.filter(ei => plan.out[ib].has(ei) && plan.out[iu].has(ei));
+      const both = ctx.gpIdx.filter(ei => plan.out[ib][ei] && plan.out[iu][ei]);
       if(both.length >= 1) out.colSame++;
-      out.autoOut += plan.out[iu].size - 1; // minus the collision
+      out.autoOut += cnt(plan.out[iu]) - 1; // minus the collision
       out.autoFree += ctx.E - 1;
     }
     out.aDnf = [...new Set(out.aDnf)]; out.aWins = [...new Set(out.aWins)]; out.cWins = [...new Set(out.cWins)];

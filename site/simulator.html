@@ -25,6 +25,7 @@ label{font-size:13px;color:var(--sub);}
 select,button{font:inherit;}
 select{background:var(--inset);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:6px 10px;}
 button{background:var(--ink);color:var(--on-ink);border:none;border-radius:7px;padding:10px 18px;font-weight:600;cursor:pointer;}
+#run.cancel{background:transparent;color:var(--ink);box-shadow:inset 0 0 0 1px var(--line-strong);} /* #56: Run turns into Cancel while simulating */
 button:active{transform:translateY(1px);}
 button:disabled{opacity:.5;cursor:default;}
 .status{font-size:12.5px;color:var(--sub);margin-top:10px;}
@@ -157,6 +158,7 @@ let outcomes={}, collisions=[];
 let lastRun=null;
 
 async function buildFromSelection(detail){
+ cancelRun(); // a run for the previous season is no use any more (#56)
  currentYear = detail.year;
  currentSeasonRounds = detail.seasonRounds;
  if(!currentSeasonRounds.length){
@@ -243,33 +245,55 @@ function buildSimContext(){
  const dnfs=roster.map(d=>tracked.has(d.driverId) && outcomes[d.driverId] ? outcomes[d.driverId].dnf : null);
  const cols=validCollisions().map(c=>({a:index[c.a], b:index[c.b], n:c.n})).filter(c=>c.a!=null && c.b!=null);
  const gpIdx=remainingEvents.map((e,i)=>e.type==='gp'?i:-1).filter(i=>i>=0);
- return { roster, n, E, events:remainingEvents, gpIdx, wins, dnfs, cols,
-          posHist:roster.map(d=>d.posHist), nowPts:roster.map(d=>d.now), forcedWinner:wins.map(w=>w!=null) };
+ // #56: finish-position weights per driver and slot, worked out once per run instead of per draw
+ const W=new Float64Array(n*10);
+ roster.forEach((d,i)=>{ for(let slot=0;slot<10;slot++) W[i*10+slot]=(d.posHist[slot]||0)+HIST_SMOOTH; });
+ return { roster, n, E, events:remainingEvents, isGp:remainingEvents.map(e=>e.type==='gp'), gpIdx, wins, dnfs, cols, W,
+          dnfRate:roster.map(d=>d.dnfRate), winDrivers:wins.map((w,i)=>w?i:-1).filter(i=>i>=0),
+          nowPts:roster.map(d=>d.now), forcedWinner:wins.map(w=>w!=null),
+          scratch:new Int16Array(Math.max(E,n)), alive:new Int16Array(n), wts:new Float64Array(n) };
 }
-const pickRandom=(arr,k)=>{ const a=arr.slice(); for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a.slice(0,Math.max(0,k)); };
+// Chooses k of the first len entries of buf at random (partial Fisher-Yates); they end up in buf[0..k-1].
+function pickInPlace(buf, len, k){
+ k=Math.max(0,Math.min(k,len));
+ for(let i=0;i<k;i++){ const j=i+Math.floor(Math.random()*(len-i)); const t=buf[i]; buf[i]=buf[j]; buf[j]=t; }
+ return k;
+}
 
 // One simulated season's fixed outcomes: winnerOf[e] (roster index or null) and out[i] = events driver i
 // doesn't finish. Order matters: forced wins first, then collisions (both drivers out of the same GP,
 // never one either of them wins), then exact DNFs, then everyone on auto retires at their own rate in
 // the events still open to them (never in a race they're set to win).
+// #56: typed arrays and no per-call closures or copies — this runs once per simulated season.
+// winnerOf[e] = roster index or -1; out[i][e] = 1 if driver i doesn't finish event e.
 function planSeason(ctx){
- const {n,E,gpIdx}=ctx;
- const winnerOf=new Array(E).fill(null), out=Array.from({length:n},()=>new Set());
- const busy=i=>e=>winnerOf[e]===i || out[i].has(e);
- pickRandom(Array.from({length:n},(_,i)=>i), n).forEach(i=>{
-   if(!ctx.wins[i]) return;
-   pickRandom(gpIdx.filter(e=>winnerOf[e]===null), ctx.wins[i]).forEach(e=>{ winnerOf[e]=i; });
- });
- ctx.cols.forEach(c=>{
-   pickRandom(gpIdx.filter(e=>!busy(c.a)(e) && !busy(c.b)(e)), c.n).forEach(e=>{ out[c.a].add(e); out[c.b].add(e); });
- });
+ const {n,E,gpIdx,scratch}=ctx;
+ const winnerOf=new Int16Array(E).fill(-1), out=new Array(n);
+ for(let i=0;i<n;i++) out[i]=new Uint8Array(E);
+ if(ctx.winDrivers.length){
+   const order=ctx.winDrivers.slice();
+   for(let i=order.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); const t=order[i]; order[i]=order[j]; order[j]=t; }
+   for(const i of order){
+     let len=0; for(const e of gpIdx) if(winnerOf[e]<0) scratch[len++]=e;
+     const k=pickInPlace(scratch, len, ctx.wins[i]);
+     for(let x=0;x<k;x++) winnerOf[scratch[x]]=i;
+   }
+ }
+ for(const c of ctx.cols){
+   const A=out[c.a], B=out[c.b];
+   let len=0; for(const e of gpIdx) if(winnerOf[e]!==c.a && winnerOf[e]!==c.b && !A[e] && !B[e]) scratch[len++]=e;
+   const k=pickInPlace(scratch, len, c.n);
+   for(let x=0;x<k;x++){ A[scratch[x]]=1; B[scratch[x]]=1; }
+ }
  for(let i=0;i<n;i++){
-   const all=Array.from({length:E},(_,e)=>e);
+   const O=out[i];
    if(ctx.dnfs[i]!=null){
-     pickRandom(all.filter(e=>!busy(i)(e)), ctx.dnfs[i]).forEach(e=>out[i].add(e));
+     let len=0; for(let e=0;e<E;e++) if(winnerOf[e]!==i && !O[e]) scratch[len++]=e;
+     const k=pickInPlace(scratch, len, ctx.dnfs[i]);
+     for(let x=0;x<k;x++) O[scratch[x]]=1;
    }else{
-     const p=ctx.roster[i].dnfRate;
-     all.forEach(e=>{ if(!busy(i)(e) && Math.random()<p) out[i].add(e); });
+     const p=ctx.dnfRate[i];
+     if(p>0) for(let e=0;e<E;e++) if(winnerOf[e]!==i && !O[e] && Math.random()<p) O[e]=1;
    }
  }
  return {winnerOf, out};
@@ -277,15 +301,14 @@ function planSeason(ctx){
 
 // One whole simulated season: points totals per roster index (and, for tests, each event's order).
 function simulateSeason(ctx, keepOrders){
- const plan=planSeason(ctx), totals=ctx.nowPts.slice(), orders=keepOrders?[]:null;
+ const plan=planSeason(ctx), totals=ctx.nowPts.slice(), orders=keepOrders?[]:null, alive=ctx.alive;
  for(let e=0;e<ctx.E;e++){
-   const alive=[]; for(let i=0;i<ctx.n;i++) if(!plan.out[i].has(e)) alive.push(i);
-   const gp=ctx.events[e].type==='gp', w=plan.winnerOf[e];
+   const gp=ctx.isGp[e], w=plan.winnerOf[e], pts = gp ? PTS_GP : PTS_SPRINT;
+   let len=0; for(let i=0;i<ctx.n;i++) if(!plan.out[i][e] && i!==w) alive[len++]=i;
    // A driver with a set number of wins wins exactly those GPs: they're never drawn for P1 elsewhere.
-   const order = gp && w!=null ? [w, ...sampleOrder(alive.filter(i=>i!==w), ctx.posHist, 1)]
-               : sampleOrder(alive, ctx.posHist, 0, gp ? ctx.forcedWinner : null);
-   const pts = gp ? PTS_GP : PTS_SPRINT;
-   order.forEach((idx,rank)=>{ if(rank<pts.length) totals[idx]+=pts[rank]; });
+   let order;
+   if(gp && w>=0){ totals[w]+=pts[0]; order=sampleOrder(ctx, alive, len, 1, null, totals, pts); if(orders) order.unshift(w); }
+   else order=sampleOrder(ctx, alive, len, 0, gp ? ctx.forcedWinner : null, totals, pts);
    if(orders) orders.push(order);
  }
  return {totals, plan, orders};
@@ -335,6 +358,7 @@ function updateLede(){
 }
 
 function updateReadiness(){
+ if(activeRun) return; // a run in progress owns the button and the status line (#56)
  const btn=document.getElementById('run'), status=document.getElementById('status');
  if(!currentSeasonRounds.length){ btn.disabled=true; status.textContent='No data loaded for this season.'; return; }
  if(!currentCalendar || !currentCalendar.totalRounds){ btn.disabled=true; status.textContent="Couldn't determine the remaining calendar for this season — try reloading."; return; }
@@ -357,23 +381,28 @@ function hideResults(){
 // happened yet in a small sample, and guarantees the weights never all go to zero.
 // startSlot: the first position being filled (1 when P1 is already decided, #14). noWin[i] true: driver i
 // can't be drawn for P1 (they have a set number of wins and this isn't one of those races).
+// #56: draws from the first len entries of alive (reordered in place), adds each placed driver's points
+// straight into totals, and returns the drawn order (top 10 only; everyone else scores 0 anyway).
 const HIST_SMOOTH = 0.5;
-function sampleOrder(alive, posHist, startSlot=0, noWin=null){
- const remaining = alive.slice();
- const order = [];
- const nSlots = Math.min(10-startSlot, remaining.length); // only the top 10 need an exact order — the rest all score 0
+function sampleOrder(ctx, alive, len, startSlot, noWin, totals, pts){
+ const W=ctx.W, wts=ctx.wts, order=[];
+ const nSlots=Math.min(10-startSlot, len);
  for(let s=0; s<nSlots; s++){
-   const slot = s+startSlot;
-   const allowed = i => !(slot===0 && noWin && noWin[i]);
-   const anyAllowed = remaining.some(allowed); // if nobody may win (everyone has a set count), let anyone
-   const weights = remaining.map(i => anyAllowed && !allowed(i) ? 0 : (posHist[i][slot]||0) + HIST_SMOOTH);
-   const total = weights.reduce((a,b)=>a+b,0);
-   let r = Math.random()*total, pick=weights.length-1;
-   for(let w=0; w<weights.length; w++){ if((r-=weights[w])<=0){ pick=w; break; } }
-   order.push(remaining[pick]);
-   remaining.splice(pick,1);
+   const slot=s+startSlot, m=len-s;
+   let anyAllowed=true;
+   if(slot===0 && noWin){ anyAllowed=false; for(let x=s;x<len;x++) if(!noWin[alive[x]]){ anyAllowed=true; break; } }
+   let total=0;
+   for(let x=s;x<len;x++){
+     const i=alive[x];
+     const wt = slot===0 && noWin && anyAllowed && noWin[i] ? 0 : W[i*10+slot];
+     wts[x]=wt; total+=wt;
+   }
+   let r=Math.random()*total, pick=len-1;
+   for(let x=s;x<len;x++){ if((r-=wts[x])<=0){ pick=x; break; } }
+   const i=alive[pick]; alive[pick]=alive[s]; alive[s]=i; // move the pick to the front of what's left
+   if(totals && slot<pts.length) totals[i]+=pts[slot];
+   order.push(i);
  }
- order.push(...remaining); // anyone left over is unordered among themselves — all score 0 regardless
  return order;
 }
 
@@ -568,17 +597,24 @@ document.getElementById('presetRow').addEventListener('click', e=>{
 
 // #17: a run simulates every driver and keeps each season's final points and championship rank for the
 // whole grid, so the results can be redrawn for any tracked set (refreshResults) without re-running.
-function runSimulation(N){
- const ctx=buildSimContext(), n=ctx.n;
- const totals=new Float32Array(N*n), ranks=new Uint16Array(N*n);
- for(let s=0;s<N;s++){
-   const t=simulateSeason(ctx).totals;
-   const standing=Array.from({length:n},(_,i)=>i).sort((a,b)=>t[b]-t[a]);
-   standing.forEach((idx,r)=>{ ranks[s*n+idx]=r+1; });
-   for(let i=0;i<n;i++) totals[s*n+i]=t[i];
- }
- return { key:settingsKey(), N, n, ids:ctx.roster.map(d=>d.driverId), totals, ranks };
+// The settings key is taken when the run starts (#56: a run now spans many frames, and settings can change
+// while it's going).
+function newRun(ctx, N){
+ const n=ctx.n;
+ return { key:settingsKey(), N, n, ids:ctx.roster.map(d=>d.driverId), totals:new Float32Array(N*n), ranks:new Uint16Array(N*n), done:0 };
 }
+// Simulates seasons run.done … upto-1 into the run.
+function simulateInto(ctx, run, upto){
+ const n=run.n, standing=new Array(n);
+ for(let s=run.done; s<upto; s++){
+   const t=simulateSeason(ctx).totals;
+   for(let i=0;i<n;i++){ standing[i]=i; run.totals[s*n+i]=t[i]; }
+   standing.sort((a,b)=>t[b]-t[a]);
+   for(let r=0;r<n;r++) run.ranks[s*n+standing[r]]=r+1;
+ }
+ run.done=upto;
+}
+function runSimulation(N){ const ctx=buildSimContext(), run=newRun(ctx, N); simulateInto(ctx, run, N); return run; }
 // Draws the last run for the drivers tracked now; marks it out of date if the settings changed since.
 function refreshResults(){
  const tracked=lastRun ? trackedRoster().filter(d=>lastRun.ids.includes(d.driverId)) : [];
@@ -610,21 +646,43 @@ function refreshResults(){
  document.getElementById('ridgePointsCard').style.display='block';
  document.getElementById('staleNote').hidden = lastRun.key===settingsKey();
 }
-function startRun(){
- const btn=document.getElementById('run'); btn.disabled=true;
+// #56: a run is done in slices of about 40 ms, yielding to the browser in between, so the page keeps
+// responding (and a phone never sees it as hung). The status shows progress and the Run button turns into
+// Cancel; cancelling keeps the previous results.
+let activeRun=null;
+const SLICE_MS=40;
+async function startRun(){
+ if(activeRun) return;
+ const N=+document.getElementById('n').value, ctx=buildSimContext(), run=newRun(ctx, N), token={cancelled:false};
+ activeRun=token;
+ const btn=document.getElementById('run'), status=document.getElementById('status');
+ btn.textContent='Cancel'; btn.classList.add('cancel'); btn.disabled=false;
  document.getElementById('rerun').disabled=true;
- document.getElementById('status').textContent='Simulating…';
- setTimeout(()=>{
-   const N=+document.getElementById('n').value;
-   lastRun=runSimulation(N);
-   refreshResults();
+ while(run.done<N){
+   status.textContent=`Simulating… ${run.done.toLocaleString()} of ${N.toLocaleString()} seasons`;
+   await new Promise(r=>setTimeout(r,0));
+   if(token.cancelled) break;
+   const t0=performance.now();
+   while(run.done<N && performance.now()-t0<SLICE_MS) simulateInto(ctx, run, Math.min(N, run.done+100));
+ }
+ activeRun=null;
+ btn.textContent='Run simulation'; btn.classList.remove('cancel');
+ document.getElementById('rerun').disabled=false;
+ if(token.cancelled){
    updateReadiness();
-   document.getElementById('rerun').disabled=false;
-   document.getElementById('status').textContent=`${N.toLocaleString()} seasons simulated.`;
- },30);
+   status.textContent = lastRun ? 'Cancelled — the results below are from the last completed run.' : 'Cancelled.';
+   return;
+ }
+ lastRun=run;
+ try{ refreshResults(); }
+ finally{ // even if drawing fails, never leave the page looking busy (#56)
+   updateReadiness();
+   status.textContent=`${N.toLocaleString()} seasons simulated.`;
+ }
 }
-document.getElementById('run').addEventListener('click', startRun);
-document.getElementById('rerun').addEventListener('click', ()=>{ if(!document.getElementById('run').disabled) startRun(); });
+function cancelRun(){ if(activeRun) activeRun.cancelled=true; }
+document.getElementById('run').addEventListener('click', ()=>{ if(activeRun) cancelRun(); else startRun(); });
+document.getElementById('rerun').addEventListener('click', ()=>{ if(!activeRun && !document.getElementById('run').disabled) startRun(); });
 
 // issue #32: ridgeline (joyplot) rendering shared by the points and position cards — each driver gets
 // its own baseline row (a flat, invisible reference dataset) and a filled curve/step dataset drawn
@@ -690,9 +748,12 @@ function renderRidgeline(chartKey, canvasId, wrapId, order, categories, opts){
  });
 }
 function renderRidgePoints(roster, finals){
- const all=finals.flat();
- if(!all.length) return;
- const min=Math.floor(Math.min(...all)/10)*10, max=Math.ceil(Math.max(...all)/10)*10;
+ if(!finals.some(f=>f.length)) return;
+ // #56: a plain loop, not Math.min(...all): spreading every simulated total (30,000 seasons × each tracked
+ // driver) into one call overflows the browser's argument limit and crashed the run.
+ let lo=Infinity, hi=-Infinity;
+ finals.forEach(f=>{ for(const v of f){ if(v<lo) lo=v; if(v>hi) hi=v; } });
+ const min=Math.floor(lo/10)*10, max=Math.ceil(hi/10)*10;
  const binSize=10;
  const bins=[]; for(let b=min;b<=max;b+=binSize) bins.push(b);
  const order=roster.map((d,i)=>{

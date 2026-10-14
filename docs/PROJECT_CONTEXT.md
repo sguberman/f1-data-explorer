@@ -167,7 +167,13 @@ GP; wins + collisions ≤ GPs left; DNFs + wins + collisions ≤ events left). S
 drivers and are dropped when a driver is untracked. Results (#17): a run stores every driver's final points
 and rank for each simulated season (`lastRun`), so changing the tracked set redraws the same run without
 re-running; changing a setting or the round keeps the results with a "Settings changed since this run" note
-and a Run again button; loading another season clears them. Results: win probability plus ridgeline charts
+and a Run again button; loading another season clears them. A run (#56) is computed in ~40 ms slices with
+"Simulating… X of N seasons" progress, the Run button becomes Cancel (cancelling keeps the previous
+results), and the settings key is taken when the run starts. The engine works on typed arrays
+(`planSeason` returns `winnerOf[e]` = index or -1 and `out[i][e]` = 1 for a DNF) with precomputed
+finish weights, about 4× faster than before. Never spread a whole run's results into one call
+(`Math.min(...all)`): 30,000 seasons overflowed the browser's argument limit and crashed the run, which
+was the reported "hang". Results: win probability plus ridgeline charts
 of final-points distribution and final championship position, ranked against the full grid, each ridge
 marking its most common value (#30): the position chart uses exact ranks (one outside the top k is marked on
 the last column, labelled "P14"); the points chart marks the most common 10-point range, labelled with the
@@ -273,7 +279,7 @@ since fonts render differently on different machines.
   smoke (every page, both themes, desktop + phone, no errors), common (#44), knockout (#45/#46),
   status (#23/#48/#49), movement (#47), position (#9), projection (#10),
   simulator (#39 DNF modeling, #42 auto DNFs, #14 wins, #11 collisions, #17 results kept), NC/finish rule shared by the position page and simulator (#46), flags and markers
-  (#18/#30; movement also covers #20's tie-breaks), what-if (#48: drag, keys, NC line, sprint weekends,
+  (#18/#30; movement also covers #20's tie-breaks), simulator runs (#56: responsive 30,000 run, progress, Cancel), what-if (#48: drag, keys, NC line, sprint weekends,
   points and countback), homepage (#50: card order, pictures, vertical layout, theme colours). The fixture's names mix country names and demonyms, with
   one unknown. Logic is checked against
   independent calculations written in the tests, not against the site's own helpers.
