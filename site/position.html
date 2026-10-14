@@ -12,6 +12,8 @@
 <script src="nav.js"></script>
 <script src="common.js"></script>
 <script src="data.js"></script>
+<script src="share.js"></script>
+<script src="export.js"></script>
 <script src="controls.js"></script>
 <style>
 body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;padding:24px 16px 40px;}
@@ -113,9 +115,30 @@ async function buildFromSelection(detail){
  if(!currentSeasonRounds.length){ D=[]; draw(); renderDriverPicker(); return; }
  selectedDriverIds = null; // reset default whenever the season changes; round changes never touch this
  L = detail.round;
- selectedDriverIds = F1Common.standingsOrder(currentSeasonRounds, L, 'drivers').slice(0,8); // top 8 — roughly "top four teams" from the old static page
+ defaultIds = selectedDriverIds = F1Common.standingsOrder(currentSeasonRounds, L, 'drivers').slice(0,8); // top 8 — roughly "top four teams" from the old static page
+ const link = F1Share.take(); // #31: a shared link's setup, first season only
+ if(link){
+   const linked = F1Share.ids(link.get('d'), Object.keys(F1Data.cumulative(currentSeasonRounds, currentSeasonRounds.length).drivers));
+   if(linked) selectedDriverIds = linked;
+   const sel = document.getElementById('chartSortSelect');
+   if([...sel.options].some(o=>o.value===link.get('chart'))) sel.value = chartSort = link.get('chart');
+   if(['team','rank'].includes(link.get('sort'))) document.getElementById('sortSeg').value = pickerSort = link.get('sort');
+   const opt = (name, on)=>{ const cb=document.querySelector(`#chartOptRow input[data-opt="${name}"]`); cb.checked=on; return on; };
+   if(link.get('below10')!=null) showBelowP10 = opt('below10', link.get('below10')==='1');
+   if(link.get('sprint')!=null) includeSprints = opt('sprint', link.get('sprint')==='1');
+ }
  recompute(detail.round);
+ if(link) F1Share.sync(); // #31: the URL reflects the link once it's applied
 }
+// #31: what goes in the URL (anything at its default is left out)
+let defaultIds=[];
+F1Share.register(()=>({
+ d: F1Share.sameSet(selectedDriverIds, defaultIds) ? null : (selectedDriverIds||[]).join(','),
+ chart: chartSort==='mode' ? null : chartSort,
+ sort: pickerSort==='team' ? null : pickerSort,
+ below10: showBelowP10 ? '1' : null,
+ sprint: includeSprints ? null : '0',
+}));
 
 // Sessions (race, plus sprint if included) contributing to the histogram for a round, respecting the
 // current includeSprints toggle.
@@ -343,6 +366,15 @@ document.getElementById('presetRow').addEventListener('click', e=>{
  recompute(L);
 });
 
+// #33: PNG / CSV of the finishing-position chart
+F1Export.attach(document.getElementById('ridgeCanvas').closest('.card'), {
+ name:'finishing-positions',
+ title:()=>'Race finishing positions',
+ subtitle:()=>`${F1Export.roundText()} · ${includeSprints ? 'Grands Prix and sprints' : 'Grands Prix only'}`,
+ canvas:()=>document.getElementById('ridgeCanvas'),
+ csv:()=>{ if(!ridgeChart) return null; const ds=ridgeChart.data.datasets.filter(d=>!d._baseline);
+   return [['Driver', ...ridgeChart.data.labels, 'Starts'], ...ds.map(d=>[d._code, ...d._counts, d._starts])]; },
+});
 window.addEventListener('f1selection', e=>buildFromSelection(e.detail));
 window.addEventListener('f1roundchange', e=>{ if(currentSeasonRounds.length) recompute(e.detail.round); });
 window.addEventListener('themechange', draw);

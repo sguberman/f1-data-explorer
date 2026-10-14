@@ -30,6 +30,8 @@ const F1Controls = (() => {
     const d = Math.round(h/24); return `${d} day${d===1?'':'s'} ago`;
   }
   let fetchedAt = null, loadedMsg = '';
+  let linkRound = null; // #31: the round from a shared link, applied once
+  const SHARE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7"/><path d="M12 3v12"/><path d="M8 7l4-4 4 4"/></svg>';
   function renderStatus(container){
     container.querySelector('.f1c-status').textContent = loadedMsg;
     const age = container.querySelector('.f1c-age');
@@ -73,6 +75,7 @@ const F1Controls = (() => {
     state.seasonRounds = rounds;
     state.maxRound = rounds.length;
     state.round = rounds.length; // default to "as of the latest round loaded"
+    if(linkRound){ if(linkRound>=1 && linkRound<rounds.length) state.round = linkRound; linkRound = null; } // #31: a shared link's round, first load only
     const slider = container.querySelector('.f1c-round');
     slider.max = state.maxRound || 1;
     slider.value = state.round || 1;
@@ -86,7 +89,10 @@ const F1Controls = (() => {
     const container = document.getElementById(containerId);
     // #62: the season chosen on any page wins, so moving between pages keeps it; otherwise the newest season.
     const savedYear = (()=>{ try{ const y = +localStorage.getItem(SEASON_KEY); return YEARS.includes(y) ? y : null; }catch(e){ return null; } })();
-    const defaultYear = savedYear || opts.defaultYear || YEARS[0];
+    // #31: a shared link's season comes first, and its round is used for that first load
+    const linkYear = YEARS.includes(+F1Share.param('season')) ? +F1Share.param('season') : null;
+    linkRound = linkYear || !F1Share.param('season') ? +F1Share.param('round') || null : null;
+    const defaultYear = linkYear || savedYear || opts.defaultYear || YEARS[0];
 
     container.innerHTML = `
       <div class="f1c-row">
@@ -95,6 +101,7 @@ const F1Controls = (() => {
         </label>
         <span class="f1c-statusline"><span class="f1c-status"></span><span class="f1c-age" hidden></span>
           · <button type="button" class="f1c-link f1c-refresh" title="Clear cached race data (all seasons) and reload from f1api.dev">Refresh data</button></span>
+        <button type="button" class="f1c-share" title="Copy a link to exactly this view">${SHARE_ICON}<span>Share</span></button>
       </div>
       <div class="f1c-error" role="alert" hidden><span class="f1c-errortext"></span>
         <button type="button" class="f1c-link f1c-retry">Retry</button></div>
@@ -113,6 +120,7 @@ const F1Controls = (() => {
       F1Data.clearCache();
       loadYear(container, currentYear(), statusEl, true); // true: re-download the season file too (#13)
     });
+    container.querySelector('.f1c-share').addEventListener('click', e=>F1Share.share(e.currentTarget)); // #31
     // issue #48: failures are never cached, so retrying is just loading the season again.
     container.querySelector('.f1c-retry').addEventListener('click', ()=>loadYear(container, currentYear(), statusEl));
     // Keep the "updated … ago" text current without any network requests.

@@ -12,6 +12,8 @@
 <script src="nav.js"></script>
 <script src="common.js"></script>
 <script src="data.js"></script>
+<script src="share.js"></script>
+<script src="export.js"></script>
 <script src="controls.js"></script>
 <style>
 body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;padding:24px 16px 40px;}
@@ -113,7 +115,28 @@ async function buildFromSelection(detail){
  year=detail.year; seasonRounds=detail.seasonRounds;
  calendar = seasonRounds.length ? await F1Data.getCalendar(year) : null;
  setRound(detail.round);
+ // #31: a shared link's orders, first season only — used when it lists exactly this round's drivers
+ const link = F1Share.take();
+ if(link && sessions.length){
+   let changed=false;
+   sessions.forEach(s=>{
+     const v=link.get(s); if(v==null) return;
+     const o=v.split(',').map(x=>x==='-' ? null : x), cur=orders[s]||[];
+     const same = o.length===cur.length && o.filter(x=>x===null).length===1 && cur.every(id=>o.includes(id));
+     if(same){ orders[s]=o; changed=true; }
+   });
+   if(changed) render();
+   F1Share.sync(); // #31: the URL reflects the link once it's applied
+ }
 }
+// #31: what goes in the URL — each session's order ("-" is the not-classified line), unless it's the starting order
+let defaultOrders={};
+const orderKey = o => (o||[]).map(id=>id===null ? '-' : id).join(',');
+F1Share.register(()=>{
+ const out={};
+ sessions.forEach(s=>{ out[s] = orderKey(orders[s])===orderKey(defaultOrders[s]) ? null : orderKey(orders[s]); });
+ return out;
+});
 function setRound(round){
  L=round; T=L+1;
  const actual=seasonRounds.find(r=>r.round===T);
@@ -135,6 +158,7 @@ function setRound(round){
  const sprint = actual ? !!actual.sprintResults : !!(calendar && calendar.sprintRounds && calendar.sprintRounds.includes(T));
  sessions = sprint ? ['sprint','gp'] : ['gp'];
  resetOrders(actual ? 'actual' : 'standings');
+ defaultOrders = JSON.parse(JSON.stringify(orders)); // #31: the round's starting order isn't put in the URL
 }
 const raceName = r => (calendar && calendar.raceNames && calendar.raceNames[r]) || ('Round '+r);
 function actualRound(){ return seasonRounds.find(r=>r.round===T); }
@@ -316,6 +340,14 @@ document.getElementById('orders').addEventListener('keydown', e=>{
 document.getElementById('useActual').addEventListener('click', ()=>resetOrders('actual'));
 document.getElementById('useStandings').addEventListener('click', ()=>resetOrders('standings'));
 
+// #33: CSV of the two tables (they're tables, not charts, so no PNG)
+const wiRows = id=>{ const rows=F1Export.tableRows(document.getElementById(id)); if(rows.length) rows[0]=['Position','Places gained', rows[0][2], 'Points before', 'Points gained', 'Points after']; return rows; };
+F1Export.attach(document.getElementById('resultCard'), {
+ name:'whatif', csvSuffix:'-drivers', csvLabel:'Drivers CSV', noPng:true,
+ csv:()=>wiRows('driverTable'),
+ csv2Label:'Constructors CSV', csv2Suffix:'-constructors',
+ csv2:()=>wiRows('teamTable'),
+});
 window.addEventListener('f1selection', e=>buildFromSelection(e.detail));
 window.addEventListener('f1roundchange', e=>{ if(seasonRounds.length) setRound(e.detail.round); });
 window.addEventListener('themechange', ()=>{ if(sessions.length) render(); });

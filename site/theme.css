@@ -63,6 +63,18 @@ html,body{background:var(--bg);color:var(--ink);}
 .f1c-label{font-size:12.5px;color:var(--sub);display:flex;align-items:center;gap:6px;}
 .f1c-year{font:inherit;background:var(--inset);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:5px 8px;}
 .f1c-status,.f1c-statusline{font-size:11.5px;color:var(--sub);}
+/* #33: "⤓ PNG · CSV" under each chart */
+.exportRow{display:flex;justify-content:flex-end;align-items:center;gap:4px;margin:8px 2px 0;font-size:11.5px;color:var(--sub);}
+.exportRow svg{width:12px;height:12px;flex:none;}
+.exportRow .f1c-link{color:var(--sub);}
+.exportRow .f1c-link:hover{color:var(--ink);}
+/* #31: Share button, at the end of the season row */
+.f1c-share{margin-left:auto;display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border:1px solid var(--line);border-radius:8px;
+  background:var(--panel);color:var(--ink2);font:inherit;font-size:12px;font-weight:500;line-height:1.4;cursor:pointer;white-space:nowrap;}
+.f1c-share:hover{border-color:var(--line-strong);color:var(--ink);}
+.f1c-share:focus-visible{outline:2px solid var(--line-strong);outline-offset:1px;}
+.f1c-share svg{width:13px;height:13px;flex:none;}
+@media (max-width:560px){ .f1c-share{order:1;} .f1c-statusline{order:2;flex-basis:100%;} } /* phones: Share beside the season picker */
 /* issue #23/#48: small text buttons in the status line and error message (Refresh data, Retry) */
 .f1c-link{font:inherit;font-size:11.5px;font-weight:400;background:none;border:none;border-radius:0;padding:0;color:var(--ink2);
   text-decoration:underline;text-underline-offset:2px;cursor:pointer;transform:none;opacity:1;}

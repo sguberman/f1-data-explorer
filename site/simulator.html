@@ -12,6 +12,8 @@
 <script src="nav.js"></script>
 <script src="common.js"></script>
 <script src="data.js"></script>
+<script src="share.js"></script>
+<script src="export.js"></script>
 <script src="controls.js"></script>
 <style>
 :root{
@@ -161,6 +163,13 @@ let selectedDriverIds=null, pickerSort='team';
 let outcomes={}, collisions=[];
 // #17: the last run, kept so results can be redrawn for any tracked set without re-running.
 let lastRun=null;
+// #31: every random draw in a run comes from a generator seeded per run (mulberry32), so a shared link with
+// the run's seed reproduces exactly the same results.
+let rand=Math.random;
+function seededRandom(seed){
+ let a=seed>>>0;
+ return ()=>{ a=(a+0x6D2B79F5)|0; let t=Math.imul(a^(a>>>15), 1|a); t=(t+Math.imul(t^(t>>>7), 61|t))^t; return ((t^(t>>>14))>>>0)/4294967296; };
+}
 
 async function buildFromSelection(detail){
  cancelRun(); // a run for the previous season is no use any more (#56)
@@ -178,9 +187,49 @@ async function buildFromSelection(detail){
  currentCalendar = await F1Data.getCalendar(currentYear);
  outcomes={}; collisions=[]; lastRun=null; hideResults(); // a new season starts from scratch
  recomputeRoster();
- selectedDriverIds = [...fullRoster].sort(byStanding).slice(0,8).map(d=>d.driverId);
+ defaultIds = selectedDriverIds = [...fullRoster].sort(byStanding).slice(0,8).map(d=>d.driverId);
+ // #31: a shared link's setup (first season only); with a seed it re-runs to the same results
+ const link = F1Share.take();
+ let linkSeed = null;
+ if(link){
+   const valid = fullRoster.map(d=>d.driverId);
+   const linked = F1Share.ids(link.get('d'), valid);
+   if(linked) selectedDriverIds = linked;
+   if(['team','rank'].includes(link.get('sort'))) document.getElementById('sortSeg').value = pickerSort = link.get('sort');
+   const num = v => v==null || v==='a' || v==='' ? null : Math.max(0, parseInt(v,10)||0);
+   (link.get('o')||'').split(',').filter(Boolean).forEach(x=>{
+     const [id, dnf, win] = x.split(':');
+     if(valid.includes(id)) outcomes[id] = {dnf:num(dnf), win:num(win)};
+   });
+   collisions = (link.get('c')||'').split(',').filter(Boolean).map(x=>{ const [a,b,n]=x.split(':'); return {a, b, n:Math.max(1, parseInt(n,10)||1)}; })
+     .filter(c=>valid.includes(c.a) && valid.includes(c.b) && c.a!==c.b);
+   const nSel = document.getElementById('n');
+   if([...nSel.options].some(o=>o.value===link.get('n'))) nSel.value = link.get('n');
+   if(/^\d{1,10}$/.test(link.get('seed')||'')) linkSeed = +link.get('seed');
+ }
  recompute(detail.round);
+ if(link) F1Share.sync(); // #31: the URL reflects the link once it's applied
+ if(linkSeed!=null && !document.getElementById('run').disabled) startRun(linkSeed);
 }
+// #31: what goes in the URL. The seed (with the run's size and round) only while the results shown match the
+// settings, so the link re-runs to what's on screen.
+let defaultIds=[];
+F1Share.register(()=>{
+ const tracked = new Set(selectedDriverIds||[]);
+ const o = Object.keys(outcomes).filter(id=>tracked.has(id)).map(id=>{ const x=outcomes[id];
+   return x.dnf==null && x.win==null ? null : `${id}:${x.dnf==null?'a':x.dnf}:${x.win==null?'a':x.win}`; }).filter(Boolean).join(',');
+ const c = validCollisions().map(c=>`${c.a}:${c.b}:${c.n}`).join(',');
+ const fresh = lastRun && lastRun.seed!=null && lastRun.key===settingsKey();
+ const n = fresh ? String(lastRun.N) : document.getElementById('n').value;
+ return {
+   d: F1Share.sameSet(selectedDriverIds, defaultIds) ? null : (selectedDriverIds||[]).join(','),
+   sort: pickerSort==='team' ? null : pickerSort,
+   o: o || null, c: c || null,
+   n: n==='10000' ? null : n,
+   seed: fresh ? String(lastRun.seed) : null,
+   _round: !!fresh,
+ };
+});
 
 // #46: a result counts as a finish when it has a classified position — even if the driver retired late
 // and was still classified — the same rule as the finishing-position chart. A result with no classified
@@ -261,7 +310,7 @@ function buildSimContext(){
 // Chooses k of the first len entries of buf at random (partial Fisher-Yates); they end up in buf[0..k-1].
 function pickInPlace(buf, len, k){
  k=Math.max(0,Math.min(k,len));
- for(let i=0;i<k;i++){ const j=i+Math.floor(Math.random()*(len-i)); const t=buf[i]; buf[i]=buf[j]; buf[j]=t; }
+ for(let i=0;i<k;i++){ const j=i+Math.floor(rand()*(len-i)); const t=buf[i]; buf[i]=buf[j]; buf[j]=t; }
  return k;
 }
 
@@ -277,7 +326,7 @@ function planSeason(ctx){
  for(let i=0;i<n;i++) out[i]=new Uint8Array(E);
  if(ctx.winDrivers.length){
    const order=ctx.winDrivers.slice();
-   for(let i=order.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); const t=order[i]; order[i]=order[j]; order[j]=t; }
+   for(let i=order.length-1;i>0;i--){ const j=Math.floor(rand()*(i+1)); const t=order[i]; order[i]=order[j]; order[j]=t; }
    for(const i of order){
      let len=0; for(const e of gpIdx) if(winnerOf[e]<0) scratch[len++]=e;
      const k=pickInPlace(scratch, len, ctx.wins[i]);
@@ -298,7 +347,7 @@ function planSeason(ctx){
      for(let x=0;x<k;x++) O[scratch[x]]=1;
    }else{
      const p=ctx.dnfRate[i];
-     if(p>0) for(let e=0;e<E;e++) if(winnerOf[e]!==i && !O[e] && Math.random()<p) O[e]=1;
+     if(p>0) for(let e=0;e<E;e++) if(winnerOf[e]!==i && !O[e] && rand()<p) O[e]=1;
    }
  }
  return {winnerOf, out};
@@ -402,7 +451,7 @@ function sampleOrder(ctx, alive, len, startSlot, noWin, totals, pts){
      const wt = slot===0 && noWin && anyAllowed && noWin[i] ? 0 : W[i*10+slot];
      wts[x]=wt; total+=wt;
    }
-   let r=Math.random()*total, pick=len-1;
+   let r=rand()*total, pick=len-1;
    for(let x=s;x<len;x++){ if((r-=wts[x])<=0){ pick=x; break; } }
    const i=alive[pick]; alive[pick]=alive[s]; alive[s]=i; // move the pick to the front of what's left
    if(totals && slot<pts.length) totals[i]+=pts[slot];
@@ -656,9 +705,11 @@ function refreshResults(){
 // Cancel; cancelling keeps the previous results.
 let activeRun=null;
 const SLICE_MS=40;
-async function startRun(){
+async function startRun(seed){
  if(activeRun) return;
  const N=+document.getElementById('n').value, ctx=buildSimContext(), run=newRun(ctx, N), token={cancelled:false};
+ run.seed = seed!=null ? seed>>>0 : Math.floor(Math.random()*4294967296); // #31
+ rand = seededRandom(run.seed);
  activeRun=token;
  const btn=document.getElementById('run'), status=document.getElementById('status');
  btn.textContent='Cancel'; btn.classList.add('cancel'); btn.disabled=false;
@@ -679,6 +730,7 @@ async function startRun(){
    return;
  }
  lastRun=run;
+ F1Share.sync(); // #31: the URL now carries this run's seed
  try{ refreshResults(); }
  finally{ // even if drawing fails, never leave the page looking busy (#56)
    updateReadiness();
@@ -793,8 +845,9 @@ function renderRidgePosition(roster, posCounts, k, rankCounts){
  renderRidgeline('pos','ridgePosCanvas','ridgePosWrap', order, labels, {stepped:'middle', xTitle:'final championship position'});
 }
 
+let oddsRows=[]; // #33: kept for the PNG / CSV export
 function renderOdds(roster, odds){
- const rows=roster.map((d,i)=>({d,c:F1Theme.team(F1Common.teamColor(d.teamId)),pct:odds[i]})).sort((a,b)=>b.pct-a.pct);
+ const rows=oddsRows=roster.map((d,i)=>({d,c:F1Theme.team(F1Common.teamColor(d.teamId)),pct:odds[i]})).sort((a,b)=>b.pct-a.pct);
  document.getElementById('odds').innerHTML=rows.map(({d,c,pct})=>`
    <div class="driver-row">
      <div class="tag" style="color:${c}">${F1Common.flagHTML(F1Common.nationalityOf('drivers', d.driverId))}${d.code}</div>
@@ -807,6 +860,37 @@ function renderOdds(roster, odds){
    : `Tracked drivers won effectively every simulated season.`;
 }
 
+// #33: PNG / CSV of the result charts. The subtitle says what was simulated.
+const simSubtitle = ()=>`${F1Export.roundText(currentCalendar && currentCalendar.totalRounds)} · ${lastRun ? lastRun.N.toLocaleString() : 0} simulated seasons`;
+F1Export.attach(document.getElementById('oddsCard'), {
+ name:'sim-win-probability', title:()=>'Championship win probability', subtitle:simSubtitle,
+ // drawn here (the bars are HTML): one row per tracked driver — code, bar, percentage
+ draw:(ctx, x, y, w, measure)=>{
+   const h=oddsRows.length*26; if(measure) return h;
+   const ff=getComputedStyle(document.body).fontFamily, track=getComputedStyle(document.documentElement).getPropertyValue('--inset').trim()||'#eee';
+   ctx.textBaseline='middle';
+   oddsRows.forEach(({d,c,pct},i)=>{
+     const cy=y+i*26+13;
+     ctx.font='700 13px '+ff; ctx.fillStyle=c; ctx.textAlign='left'; ctx.fillText(d.code, x, cy);
+     ctx.fillStyle=track; ctx.fillRect(x+56, cy-6, w-56-64, 12);
+     ctx.fillStyle=c; ctx.fillRect(x+56, cy-6, Math.max(2,(w-56-64)*pct/100), 12);
+     ctx.font='13px '+ff; ctx.fillStyle=getComputedStyle(document.documentElement).getPropertyValue('--ink').trim(); ctx.textAlign='right';
+     ctx.fillText((pct<0.1 && pct>0 ? '<0.1' : pct.toFixed(1))+'%', x+w, cy);
+   });
+   ctx.textAlign='left'; return h;
+ },
+ csv:()=>oddsRows.length ? [['Driver','Win probability (%)'], ...oddsRows.map(r=>[r.d.code, r.pct])] : null,
+});
+const ridgeCSV = (key, head)=>()=>{ const ch=ridgeCharts[key]; if(!ch) return null; const ds=ch.data.datasets.filter(d=>!d._baseline);
+ return [['Driver', ...ch.data.labels.map(head)], ...ds.map(d=>[d._code, ...d._pct])]; };
+F1Export.attach(document.getElementById('ridgePosCard'), {
+ name:'sim-final-position', title:()=>'Projected final championship position', subtitle:simSubtitle,
+ canvas:()=>document.getElementById('ridgePosCanvas'), csv:ridgeCSV('pos', l=>l+' (% of seasons)'),
+});
+F1Export.attach(document.getElementById('ridgePointsCard'), {
+ name:'sim-final-points', title:()=>'Projected final points', subtitle:simSubtitle,
+ canvas:()=>document.getElementById('ridgePointsCanvas'), csv:ridgeCSV('points', l=>`${l}–${+l+9} pts (% of seasons)`),
+});
 window.addEventListener('f1selection', e=>buildFromSelection(e.detail));
 window.addEventListener('f1roundchange', e=>{ if(currentSeasonRounds.length) recompute(e.detail.round); });
 window.addEventListener('themechange', ()=>{

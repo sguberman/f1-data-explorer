@@ -330,7 +330,7 @@ const F1Common = (() => {
      pos[id].forEach((p,i)=>{ const r=i+1; if(p==null) data.push({x:r,y:null}); else data.push({x:r-HALF,y:p},{x:r+HALF,y:p}); });
      const c=F1Theme.team(teamColor(info[id].teamId));
      return {data, borderColor:c, borderDash:dash[id], borderWidth:2, tension:0, pointRadius:0, spanGaps:false,
-       label:label(id), nat:nationalityOf(kind, id), fin:pos[id][N-1]};
+       label:label(id), nat:nationalityOf(kind, id), fin:pos[id][N-1], _vals:pos[id]}; // _vals: for CSV export (#33)
    });
    canvas.parentElement.style.height = (n*(isNarrow()?20:22)+50)+'px';
    const font='600 11px '+ff;

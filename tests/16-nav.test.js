@@ -46,7 +46,7 @@ module.exports = async (t, h) => {
   await p.selectOption('.f1c-year', '2025'); await h.loaded(p);
   await p.click('#siteNav .nav-trigger'); await p.click('#siteNav .nav-menu a[href="constructors.html"]');
   await h.loaded(p);
-  t.check('Pages menu goes to that page', /constructors\.html$/.test(p.url()), p.url());
+  t.check('Pages menu goes to that page', /constructors\.html(\?|$)/.test(p.url()), p.url()); // (#31: the page then adds ?season=…)
   t.check('…keeping the chosen season (2025)', await p.evaluate(() => F1Controls.state.year) === 2025 && await p.$eval('.f1c-year', s => s.value) === '2025');
   await p.click('#siteNav .nav-home');
   await p.waitForURL(/index\.html$/);

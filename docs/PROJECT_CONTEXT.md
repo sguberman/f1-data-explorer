@@ -41,6 +41,8 @@ site/                 The website (deployed as the site root, so URLs are unchan
   controls.js         F1Controls: shared season dropdown + "as of round" slider; emits events.
   theme.js            Light/dark/system theme (dropdown in .theme-bar) + canvas color palette (F1Theme).
   nav.js              Site navigation (#62): home link + Pages menu at the left of .theme-bar (data pages).
+  share.js            F1Share (#31): each page's setup in its URL (read once, kept current), Share button.
+  export.js           F1Export (#33): "⤓ PNG · CSV" under each chart (composed PNG, CSV of the chart's data).
   theme.css           Shared CSS variables (both themes), controls, pills, dropdowns, legends, pickers.
   flags/              Flag SVGs (#18).
   favicon.svg         Favicon (#68): red rising line on a checkered flag. favicon.ico (16/32/48px) and
@@ -121,6 +123,36 @@ Move something into `common.js` only once it's genuinely identical on every page
   position page and a **DNF** in the simulator — the same rule on both.
   Drivers with a real classified position who aren't listed are correctly left as normal finishers.
   This table needs manual upkeep after every new round.
+
+## Links and exports (#31, #33)
+
+- **Links (`share.js`, `F1Share`).** The URL always carries `season`. It carries `round` only when the slider
+  isn't on the latest round, plus each page's own keys, leaving out anything at its default:
+  - drivers: `d` (ids), `sort`, `pos`
+  - constructors: `t`, `pos`
+  - position: `d`, `sort`, `chart`, `below10`, `sprint`
+  - what-if: `gp` and `sprint` orders (`-` marks the not-classified line)
+  - simulator: `d`, `sort`, `o` (`id:dnf:win`, `a` = auto), `c` (`a:b:n`), `n` (runs) and `seed`
+  
+  How it works:
+  - `F1Controls` reads the season and round on the first load.
+  - Each page reads its keys once in its first `buildFromSelection` (`F1Share.take()`), drops unknown ids, then
+    calls `F1Share.sync()`.
+  - Each page registers a getter (`F1Share.register`), and the URL is rewritten in place
+    (`history.replaceState`) after every click, change or key press. No reload, no fetch.
+  - Opening a link loads the season as usual.
+  - The **Share** button (in the season row) copies the link, or opens the share sheet on touch devices.
+  - **Simulator:** every random draw comes from a generator seeded per run (`seededRandom`, mulberry32). The URL
+    has the run's `seed`, `n` and round while the results shown still match the settings. Opening such a link
+    re-runs automatically to exactly the same results.
+- **Exports (`export.js`, `F1Export.attach`).** Each chart card ends with "⤓ PNG · CSV".
+  - The PNG has the title, season and round, the legend, the chart (copied from its canvas) and
+    "f1.gubes.net", on the current theme's panel colour, at the screen's pixel density. The simulator's win
+    probability (HTML bars) is drawn for the picture.
+  - The CSV is the data behind the chart: points and projection per round with the knockout line, projected
+    totals, positions per round, finishing-position counts, simulated shares, and the what-if tables (CSV only).
+  - Files are named `f1-{season}-{chart}-r{round}`.
+  - `F1Export.championshipPage()` wires the three charts shared by the drivers and constructors pages.
 
 ## Shared controls (`controls.js`, global `F1Controls`)
 
@@ -320,7 +352,9 @@ since fonts render differently on different machines.
   loads, live check only after the file, complete seasons with no API calls, fallback, Refresh), daily check (#60: one check reused across pages and
   season switches, rechecked after a day or on Refresh, failed checks not kept), navigation (#62: home link and Pages menu on every
   data page, keyboard, season kept between pages, phone layout), layout (#64: every data page has the same page frame —
-  margins, width, title, intro text, card style), favicon (#68: every page links it; the files are valid), team seasons (#72: Sauber/Alfa Romeo/AlphaTauri names and season colours). The harness
+  margins, width, title, intro text, card style), favicon (#68: every page links it; the files are valid), team seasons (#72: Sauber/Alfa Romeo/AlphaTauri names and season colours),
+  links (#31: every page's setup round-trips through the URL, defaults left out, bad values ignored, Share copies it, a
+  simulator link reproduces the same results) and exports (#33: PNG and CSV contents per chart, never fetches). The harness
   never serves the real `site/data/*.json`: tests pass `snapshots` built from the fake season. The fixture's names mix country names and demonyms, with
   one unknown. Logic is checked against
   independent calculations written in the tests, not against the site's own helpers.

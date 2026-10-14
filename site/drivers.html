@@ -12,6 +12,8 @@
 <script src="nav.js"></script>
 <script src="common.js"></script>
 <script src="data.js"></script>
+<script src="share.js"></script>
+<script src="export.js"></script>
 <script src="controls.js"></script>
 <style>
 body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;padding:24px 16px 40px;}
@@ -128,14 +130,27 @@ async function buildFromSelection(detail){
  currentSeasonRounds = detail.seasonRounds;
  if(!currentSeasonRounds.length){ D=[]; if(chart) chart.destroy(); projData=null; drawPositions(); drawProjPoints(true); return; }
  currentCalendar = await F1Data.getCalendar(currentYear);
+ const link = F1Share.take(); // #31: a shared link's setup, first season only
+ if(link && link.get('pos')==='proj') document.getElementById('posView').value='proj';
+ if(link && ['team','rank'].includes(link.get('sort'))) document.getElementById('sortSeg').value = pickerSort = link.get('sort');
  // issue #9/#10: whole-season charts, independent of the round slider (need the calendar for the season length)
  projData = F1Common.projectionsByRound(currentSeasonRounds, 'drivers', totalRounds()); projKey=null;
  drawPositions();
  selectedDriverIds = null; // reset default whenever the season changes; round changes never touch this
  L = detail.round; // so the default (top 5 "as of now") and the first picker render use the right round
- selectedDriverIds = F1Common.standingsOrder(currentSeasonRounds, L, 'drivers').slice(0,5);
+ defaultIds = selectedDriverIds = F1Common.standingsOrder(currentSeasonRounds, L, 'drivers').slice(0,5);
+ const linked = link && F1Share.ids(link.get('d'), Object.keys(F1Data.cumulative(currentSeasonRounds, currentSeasonRounds.length).drivers));
+ if(linked) selectedDriverIds = linked;
  recompute(detail.round);
+ if(link) F1Share.sync(); // #31: the URL reflects the link once it's applied
 }
+// #31: what goes in the URL (anything at its default is left out)
+let defaultIds=[];
+F1Share.register(()=>({
+ d: F1Share.sameSet(selectedDriverIds, defaultIds) ? null : (selectedDriverIds||[]).join(','),
+ sort: pickerSort==='team' ? null : pickerSort,
+ pos: document.getElementById('posView').value==='proj' ? 'proj' : null,
+}));
 
 function pickerRowHTML(d, rank, moves){
  return F1Common.driverPickerRowHTML(d, {rank, checked:selectedDriverIds.includes(d.driverId), points:d.total, move:moves[d.driverId]});
@@ -348,6 +363,7 @@ function positionHandle(){
  handle.addEventListener('pointerup', e=>{ dragging=false; try{handle.releasePointerCapture(e.pointerId);}catch(err){} });
 })();
 
+F1Export.championshipPage('drivers', ()=>({D, N, L, R, thr, projChart, posChart})); // #33
 window.addEventListener('f1selection', e=>buildFromSelection(e.detail));
 window.addEventListener('f1roundchange', e=>{ if(currentSeasonRounds.length) recompute(e.detail.round); });
 window.addEventListener('themechange',()=>{ draw(); drawPositions(); drawProjPoints(true); });
