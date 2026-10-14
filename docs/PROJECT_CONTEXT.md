@@ -148,7 +148,10 @@ Move something into `common.js` only once it's genuinely identical on every page
 - **Exports (`export.js`, `F1Export.attach`).** Each chart card ends with "⤓ PNG · CSV".
   - The PNG has the title, season and round, the legend, the chart (copied from its canvas) and
     "f1.gubes.net", on the current theme's panel colour, at the screen's pixel density. The simulator's win
-    probability (HTML bars) is drawn for the picture.
+    probability (HTML bars) is drawn for the picture. The site icon (`favicon.svg`) sits beside the address in the
+    bottom-right corner (#76).
+  - On a touch device that can share files (`navigator.canShare`), PNG and CSV open the share sheet (#75); anywhere
+    else, or if sharing is refused, they download.
   - The CSV is the data behind the chart: points and projection per round with the knockout line, projected
     totals, positions per round, finishing-position counts, simulated shares, and the what-if tables (CSV only).
   - Files are named `f1-{season}-{chart}-r{round}`.
@@ -354,7 +357,8 @@ since fonts render differently on different machines.
   data page, keyboard, season kept between pages, phone layout), layout (#64: every data page has the same page frame —
   margins, width, title, intro text, card style), favicon (#68: every page links it; the files are valid), team seasons (#72: Sauber/Alfa Romeo/AlphaTauri names and season colours),
   links (#31: every page's setup round-trips through the URL, defaults left out, bad values ignored, Share copies it, a
-  simulator link reproduces the same results) and exports (#33: PNG and CSV contents per chart, never fetches). The harness
+  simulator link reproduces the same results) and exports (#33: PNG and CSV contents per chart, never fetches; #75/#76: share sheet on phones with download fallbacks,
+  icon in the picture's corner). The harness
   never serves the real `site/data/*.json`: tests pass `snapshots` built from the fake season. The fixture's names mix country names and demonyms, with
   one unknown. Logic is checked against
   independent calculations written in the tests, not against the site's own helpers.

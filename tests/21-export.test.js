@@ -66,6 +66,47 @@ module.exports = async (t, h) => {
   t.check('what-if: constructors CSV', f.name === 'f1-2026-whatif-r12-constructors.csv' && csvRows(f.data).length === 12, f.name);
   await p.done();
 
+  // #76: the site icon sits in the bottom-right corner of the picture, beside the address.
+  p = await h.openPage('drivers', { theme: 'dark' }); await h.loaded(p);
+  f = await grab(p, '.exp-png');
+  const corner = await p.evaluate(async b64 => {
+    const img = new Image(); img.src = 'data:image/png;base64,' + b64; await img.decode();
+    const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+    const x = c.getContext('2d'); x.drawImage(img, 0, 0);
+    const S = img.width / (document.getElementById('c').clientWidth + 44); // picture scale
+    const d = x.getImageData(img.width - 46 * S, img.height - 48 * S, 26 * S, 26 * S).data;
+    let red = 0, white = 0, black = 0;
+    for(let i = 0; i < d.length; i += 4){ const [r, g, bl] = [d[i], d[i+1], d[i+2]];
+      if(r > 190 && g < 70 && bl < 70) red++; else if(r > 235 && g > 235 && bl > 235) white++; else if(r < 30 && g < 30 && bl < 30) black++; }
+    return { red, white, black };
+  }, f.data.toString('base64'));
+  t.check('PNG has the site icon in the corner (red line, checkered flag)', corner.red > 5 && corner.white > 5 && corner.black > 5, JSON.stringify(corner));
+  await p.done();
+
+  // #75: on a phone that can share files, PNG and CSV open the share sheet; otherwise (or if it's refused) they download.
+  const fakePhone = (p, mode) => p.evaluate(mode => {
+    window.__shared = []; const mm = window.matchMedia.bind(window);
+    window.matchMedia = q => /coarse/.test(q) ? { matches: mode !== 'desktop', media: q, addEventListener(){} } : mm(q);
+    navigator.canShare = () => mode !== 'cannot';
+    navigator.share = async d => { if(mode === 'refuse') throw new DOMException('no gesture', 'NotAllowedError');
+      window.__shared.push(d.files.map(f => [f.name, f.type, f.size > 0])); };
+  }, mode);
+  const downloads = p => { const n = { count: 0 }; p.on('download', () => n.count++); return n; };
+  p = await h.openPage('drivers'); await h.loaded(p);
+  let dl = downloads(p); await fakePhone(p, 'phone');
+  await p.click('.exp-png'); await p.click('.exp-csv'); await p.waitForTimeout(400);
+  let shared = await p.evaluate(() => window.__shared);
+  t.check('phone: PNG and CSV go to the share sheet as files', JSON.stringify(shared) === JSON.stringify([[['f1-2026-drivers-points-r12.png', 'image/png', true]], [['f1-2026-drivers-points-r12.csv', 'text/csv', true]]]), JSON.stringify(shared));
+  t.check('phone: …and nothing downloads', dl.count === 0, String(dl.count));
+  await p.done();
+  for(const [mode, label] of [['cannot', "a phone that can't share files"], ['refuse', 'a phone that refuses the share'], ['desktop', 'a desktop with a share sheet']]){
+    p = await h.openPage('drivers'); await h.loaded(p);
+    dl = downloads(p); await fakePhone(p, mode);
+    const [d] = await Promise.all([p.waitForEvent('download'), p.click('.exp-csv')]);
+    t.check(`${label}: CSV downloads instead`, d.suggestedFilename() === 'f1-2026-drivers-points-r12.csv' && (await p.evaluate(() => window.__shared.length)) === 0);
+    await p.done();
+  }
+
   // Phone: the export row fits.
   p = await h.openPage('constructors', { width: 390, theme: 'dark' }); await h.loaded(p);
   t.check('phone: export links fit without horizontal scroll', await p.evaluate(() => document.documentElement.scrollWidth <= 390 && [...document.querySelectorAll('.exportRow')].every(r => r.getBoundingClientRect().right <= 390)));

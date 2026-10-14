@@ -20,6 +20,24 @@ const F1Export = (() => {
     const st = typeof F1Controls !== 'undefined' ? F1Controls.state : {};
     return ['f1', st.year, opts.name, st.round ? 'r' + st.round : ''].filter(Boolean).join('-');
   }
+  // #76: the site icon, drawn in the corner of every picture. Loaded with the page, so it's ready by the time
+  // anyone exports (if not, the picture is made without it rather than waiting).
+  const SITE_ICON = new Image();
+  SITE_ICON.src = 'favicon.svg';
+
+  // #75: on a phone (touch screen) that can share files, a file goes to the share sheet (Save Image / Save to
+  // Files / Messages…); anywhere else, or if the browser refuses, it downloads.
+  async function deliver(blob, filename){
+    const file = new File([blob], filename, { type: blob.type.split(';')[0] });
+    if(navigator.canShare && navigator.share && matchMedia('(pointer:coarse)').matches){
+      let ok = false; try{ ok = navigator.canShare({ files: [file] }); }catch(e){}
+      if(ok){
+        try{ await navigator.share({ files: [file], title: filename }); return 'shared'; }
+        catch(e){ if(e && e.name === 'AbortError') return 'cancelled'; } // anything else: download instead
+      }
+    }
+    download(blob, filename); return 'downloaded';
+  }
   function download(blob, filename){
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob); a.download = filename;
@@ -74,8 +92,10 @@ const F1Export = (() => {
     if(chart) ctx.drawImage(chart, pad, y, innerW, bodyH);
     else if(opts.draw) opts.draw(ctx, pad, y, innerW, false);
     y += bodyH + 12;
-    ctx.fillStyle = css('--sub') || '#777'; ctx.font = font(500, 11); ctx.textAlign = 'right';
-    ctx.fillText('f1.gubes.net', W - pad, y);
+    ctx.fillStyle = css('--sub') || '#777'; ctx.font = font(500, 12); ctx.textAlign = 'right';
+    const iconReady = SITE_ICON.complete && SITE_ICON.naturalWidth > 0, ICON = 20;
+    if(iconReady) ctx.drawImage(SITE_ICON, W - pad - ICON, y - 4, ICON, ICON); // #76: icon in the corner, address beside it
+    ctx.fillText('f1.gubes.net', W - pad - (iconReady ? ICON + 6 : 0), y);
     return cv;
   }
 
@@ -91,11 +111,11 @@ const F1Export = (() => {
     const png = row.querySelector('.exp-png');
     if(png) png.addEventListener('click', () => {
       const cv = picture(opts);
-      cv.toBlob(b => b && download(b, fileBase(opts) + '.png'), 'image/png');
+      cv.toBlob(b => b && deliver(b, fileBase(opts) + '.png'), 'image/png');
     });
     const csvLink = (btn, fn, suffix) => btn && btn.addEventListener('click', () => {
       const rows = fn(); if(!rows || rows.length < 2) return;
-      download(new Blob(['﻿' + toCSV(rows)], { type: 'text/csv;charset=utf-8' }), fileBase(opts) + (suffix || '') + '.csv');
+      deliver(new Blob(['﻿' + toCSV(rows)], { type: 'text/csv;charset=utf-8' }), fileBase(opts) + (suffix || '') + '.csv');
     });
     csvLink(row.querySelector('.exp-csv'), opts.csv, opts.csvSuffix);
     csvLink(row.querySelector('.exp-csv2'), opts.csv2, opts.csv2Suffix);
