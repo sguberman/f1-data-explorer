@@ -186,7 +186,11 @@ before, gained and after, ranked with countback (`F1Common.standingsOrder` on th
 replaced by your result; later rounds left out). Full names on desktop, codes / short team names on phones.
 Live and lap-by-lap running orders were considered and left out (see #48 for the API research).
 
-**index.html** — Static landing page with five cards.
+**index.html** — Static landing page (#50): five cards, one per row, in the order Drivers' Championship,
+Constructors' Championship, Race Finishing Positions, Title Simulator, What-If Results. Each card has a
+picture of that page's main chart on the left (on top on phones): an inline SVG with illustrative shapes, not
+real data, coloured through CSS variables so it follows the theme (team colours as on the charts, Red Bull's
+navy lightened in dark). The page loads no data.
 
 ## Design requirements (owner-approved — keep these)
 
@@ -262,7 +266,7 @@ since fonts render differently on different machines.
   status (#23/#48/#49), movement (#47), position (#9), projection (#10),
   simulator (#39 DNF modeling, #42 auto DNFs, #14 wins, #11 collisions, #17 results kept), NC/finish rule shared by the position page and simulator (#46), flags and markers
   (#18/#30; movement also covers #20's tie-breaks), what-if (#48: drag, keys, NC line, sprint weekends,
-  points and countback). The fixture's names mix country names and demonyms, with
+  points and countback), homepage (#50: card order, pictures, vertical layout, theme colours). The fixture's names mix country names and demonyms, with
   one unknown. Logic is checked against
   independent calculations written in the tests, not against the site's own helpers.
 - Add tests for each new feature in the same PR. Before trusting a new check, make sure it fails when the
