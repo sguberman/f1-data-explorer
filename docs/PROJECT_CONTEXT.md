@@ -171,7 +171,7 @@ Move something into `common.js` only once it's genuinely identical on every page
   - The CSV is the data behind the chart: points and projection per round with the knockout line (in the gap view, #83:
     the gaps, the leader at each round and the points still available; the files are then named `…-gap-…`), projected
     totals, positions per round, driver contributions per team (#84), finishing-position counts, finishes per round
-    (#87), simulated shares, and the what-if tables (CSV only).
+    (#87), simulated shares, when the title is decided per round (#86), and the what-if tables (CSV only).
   - Files are named `f1-{season}-{chart}-r{round}`.
   - `F1Export.championshipPage()` wires the three charts shared by the drivers and constructors pages.
 
@@ -316,6 +316,20 @@ the last column, labelled "P14"); the points chart marks the most common 10-poin
 most common exact total in it. Both are ordered by that most common value. Default
 tracked set is the top 8.
 
+**When the title is decided (#86, simulator):** a card right after the win probability. Each simulated season records
+the first round after which its champion's lead over every other driver is **more than** the points still available
+(25 per Grand Prix + 8 per sprint left, the knockout line's arithmetic; `decidedContext()` / `titleSettled()`). A lead
+exactly equal to them isn't enough (a tie would go to countback), and a season not settled earlier counts as the final
+round. It's checked inside `simulateSeason` at the end of each round from the points already drawn, with **no extra
+random draws**, so a seeded run gives exactly the same results as before (the test pins a fingerprint taken from
+`main`); the run keeps them as `lastRun.decided` (one round per season). The chart (Chart.js, `F1Theme` colours) has a
+column per round from the slider's round (shaded "Run", already run: above 0 only if the title was already out of reach)
+to the last: bars = share of seasons decided at that round, line = decided by it (cumulative, 100% at the final round).
+A summary line reads e.g. "Most likely decided: Round 21 (Qatar), 25% · Half of seasons decided by Round 20 (Las Vegas) ·
+20% go to the final round" (short race names: no "Formula 1", sponsor, year or "Grand Prix"). It covers the whole grid, so
+it ignores the tracked set; nothing new goes in the URL. PNG/CSV export (`sim-title-decided`). Measured on 30,000 seasons in headless
+Chromium: compute median 657 ms before, 730 ms after (minimum 624 → 639 ms; noisy machine); the run stays sliced (#56).
+
 **whatif.html** — What-if results (#48). The round after the slider's round gets a draggable finishing
 order: a Grand Prix list, plus a sprint list on a sprint weekend (from the actual round, or the calendar's
 sprint rounds). It starts from the actual result when that round has happened, else from the drivers'
@@ -430,7 +444,10 @@ since fonts render differently on different machines.
 - Test files (`NN-name.test.js`) export `async (t, h) => { t.check(name, ok, detail) ... }`. Current files:
   smoke (every page, both themes, desktop + phone, no errors), common (#44), knockout (#45/#46),
   status (#23/#48/#49), movement (#47), position (#9), projection (#10),
-  simulator (#39 DNF modeling, #42 auto DNFs, #14 wins, #11 collisions, #17 results kept), NC/finish rule shared by the position page and simulator (#46), flags and markers
+  simulator (#39 DNF modeling, #42 auto DNFs, #14 wins, #11 collisions, #17 results kept), when the title is decided
+  (#86: the decided round on constructed seasons against an independent calculation — early, final round, countback tie,
+  sprints; the engine against an independent replay of simulated seasons; cumulative chart matching `lastRun.decided`;
+  same-seed results unchanged from `main`; seeded link; CSV/PNG; never fetches; both themes and phone fit), NC/finish rule shared by the position page and simulator (#46), flags and markers
   (#18/#30; movement also covers #20's tie-breaks), simulator runs (#56: responsive 30,000 run, progress, Cancel), what-if (#48: drag, keys, NC line, sprint weekends,
   points and countback), homepage (#50: card order, pictures, vertical layout, theme colours; #78: checkered banner), next race (#89: fixed clock — next round, countdown wording, local time zone, sprint tag, short names, season complete, season file vs f1api.dev, old files without dates, failure hidden, both themes, phone fit), season files (#13: one-file
   loads, live check only after the file, complete seasons with no API calls, fallback, Refresh), daily check (#60: one check reused across pages and
