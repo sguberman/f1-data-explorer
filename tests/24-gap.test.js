@@ -7,6 +7,8 @@ module.exports = async (t, h) => {
   const TOTAL = 23; // the fixture's season length
   const near = (a, b) => a == null ? b == null : b != null && Math.abs(a - b) < 1e-6;
   const q = p => new URL(p.url()).searchParams;
+  // The URL is rewritten just after a change (F1Share.sync); wait for it rather than a fixed pause (a slow runner can miss one).
+  const urlHas = (p, key, want) => p.waitForFunction(([k, w]) => new URL(location.href).searchParams.has(k) === w, [key, want], { timeout: 3000 }).catch(() => {});
   const csvRows = buf => buf.toString('utf8').replace(/^﻿/, '').trim().split(/\r\n/).map(r => r.split(','));
   const grab = async (p, cls) => {
     const [d] = await Promise.all([p.waitForEvent('download'), p.click('#c >> xpath=ancestor::div[contains(@class,"card")]//button[contains(@class,"' + cls + '")]')]);
@@ -114,13 +116,13 @@ module.exports = async (t, h) => {
     t.check(`${page}: PNG in the gap view`, f.name === `f1-2026-${page}-gap-r8.png` && f.data.readUInt32BE(0) === 0x89504e47, f.name);
 
     // URL: pts=gap, round-trips, left out at the default.
-    await p.waitForTimeout(60);
+    await urlHas(p, 'pts', true);
     t.check(`${page}: the gap view goes into the URL`, q(p).get('pts') === 'gap', p.url());
     t.check(`${page}: switching, sliding, tapping and exporting never fetch`, p.apiHits.length === hits, p.apiHits.slice(hits).join(' '));
     const link = p.url().split('/').pop();
     await p.goto('http://site.test/' + link); await h.loaded(p); await p.waitForTimeout(80);
     t.check(`${page}: the link opens the gap view`, await p.$eval('#ptsView', x => x.value) === 'gap' && (await shown(p)).reverse && p.url().endsWith(link), p.url());
-    await p.selectOption('#ptsView', 'points'); await p.waitForTimeout(80);
+    await p.selectOption('#ptsView', 'points'); await urlHas(p, 'pts', false);
     t.check(`${page}: Points (the default) is left out of the URL`, !q(p).has('pts') && q(p).get('round') === '8', p.url());
     await p.goto(`http://site.test/${page}.html?season=2026&pts=zzz`); await h.loaded(p);
     t.check(`${page}: a bad value falls back to Points`, await p.$eval('#ptsView', x => x.value) === 'points' && !(await shown(p)).reverse);
