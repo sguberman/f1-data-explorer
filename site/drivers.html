@@ -15,6 +15,7 @@
 <script src="share.js"></script>
 <script src="export.js"></script>
 <script src="roundresult.js"></script>
+<script src="talkingpoints.js"></script>
 <script src="controls.js"></script>
 <style>
 body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;padding:24px 16px 40px;}
@@ -22,6 +23,18 @@ body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Hel
 h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
 .sub{font-size:12.5px;color:var(--sub);margin:0 0 16px;}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 14px 10px;}
+/* #88: talking points — small tiles of facts, three across on wide screens, one per row on phones */
+.tpGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px;}
+.tp{background:var(--inset);border:1px solid var(--line);border-radius:8px;padding:8px 10px;min-width:0;}
+.tpLabel{font-size:11.5px;color:var(--sub);margin-bottom:3px;}
+.tpValue{font-size:13px;font-weight:600;color:var(--ink);line-height:1.45;}
+.tpName{white-space:nowrap;}
+.tpSep{color:var(--sub);font-weight:400;}
+.tpMore{color:var(--sub);font-weight:500;cursor:help;}
+.tpMove.up{color:var(--up);} .tpMove.down{color:var(--down);}
+.tpDetail{font-size:11.5px;color:var(--sub);margin-top:2px;}
+html.f1-loading #talkingPoints{min-height:120px;}
+@media (max-width:600px){ .tpGrid{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;} .tp{padding:7px 8px;} .tpValue{font-size:12.5px;} }
 </style>
 </head>
 <body>
@@ -38,6 +51,14 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
 </div>
 <div id="endLegend" class="endLegend"></div>
 <div id="sm" style="font-size:12px;color:var(--muted);line-height:1.6;margin:10px 2px 2px;"></div>
+</div>
+<div class="card" id="tpCard" style="margin-bottom:16px;">
+<div style="display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px;margin:0 0 10px;">
+ <span style="font-size:13px;font-weight:600;color:var(--ink);">Talking points</span>
+ <span id="tpSub" style="font-size:12px;color:var(--sub);"></span>
+</div>
+<div id="talkingPoints" class="tpGrid f1-skel"></div>
+<div style="font-size:12px;color:var(--muted);line-height:1.6;margin:8px 2px 2px;">Every driver, as of the slider's round. Wins and not classified: Grands Prix only. Points streak: rounds in a row, up to this one, with points from the Grand Prix or the sprint. Moves: the standings now against 5 rounds earlier (ties on points broken by countback).</div>
 </div>
 <div class="card" style="margin-bottom:16px;">
 <div style="display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px;margin:0 0 10px;">
@@ -129,13 +150,13 @@ function drawProjPoints(force){
 async function buildFromSelection(detail){
  currentYear = detail.year;
  currentSeasonRounds = detail.seasonRounds;
- if(!currentSeasonRounds.length){ D=[]; if(chart) chart.destroy(); projData=null; drawPositions(); drawProjPoints(true); return; }
+ if(!currentSeasonRounds.length){ D=[]; if(chart) chart.destroy(); projData=null; drawPositions(); drawProjPoints(true); drawTalkingPoints(0); return; }
  currentCalendar = await F1Data.getCalendar(currentYear);
  const link = F1Share.take(); // #31: a shared link's setup, first season only
  if(link && link.get('pos')==='proj') document.getElementById('posView').value='proj';
  if(link && ['team','rank'].includes(link.get('sort'))) document.getElementById('sortSeg').value = pickerSort = link.get('sort');
  // issue #9/#10: whole-season charts, independent of the round slider (need the calendar for the season length)
- projData = F1Common.projectionsByRound(currentSeasonRounds, 'drivers', totalRounds()); projKey=null;
+ projData = F1Common.projectionsByRound(currentSeasonRounds, 'drivers', totalRounds()); projKey=null; tpKey=null;
  drawPositions();
  selectedDriverIds = null; // reset default whenever the season changes; round changes never touch this
  L = detail.round; // so the default (top 5 "as of now") and the first picker render use the right round
@@ -266,6 +287,18 @@ function recompute(round){
  draw();
  renderDriverPicker();
  drawProjPoints(); // issue #10: follows the selection; no-op when only the round changed
+ drawTalkingPoints(round); // #88: whole field; no-op when only the selection changed
+}
+
+// #88: talking points for the whole field as of the round. Rebuilt only when the season or round changes;
+// colours come from CSS variables, so a theme change needs nothing.
+let tpKey=null;
+function drawTalkingPoints(round){
+ const key=currentYear+':'+round+':'+currentSeasonRounds.length;
+ if(key===tpKey) return;
+ tpKey=key;
+ F1TalkingPoints.render(document.getElementById('talkingPoints'), currentSeasonRounds, round);
+ document.getElementById('tpSub').textContent = round ? `whole field · after round ${round}` : '';
 }
 
 function draw(){

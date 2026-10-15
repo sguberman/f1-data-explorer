@@ -44,6 +44,7 @@ site/                 The website (deployed as the site root, so URLs are unchan
   share.js            F1Share (#31): each page's setup in its URL (read once, kept current), Share button.
   export.js           F1Export (#33): "⤓ PNG · CSV" under each chart (composed PNG, CSV of the chart's data).
   roundresult.js      F1RoundResult (#29): tap a round on a championship points chart for its result.
+  talkingpoints.js    F1TalkingPoints (#88): the drivers' page "Talking points" facts (leader, wins, streak, movers, NC).
   theme.css           Shared CSS variables (both themes), controls, pills, dropdowns, legends, pickers.
   flags/              Flag SVGs (#18).
   favicon.svg         Favicon (#68): red rising line on a checkered flag. favicon.ico (16/32/48px) and
@@ -201,6 +202,17 @@ legend grouped by short team name, end-of-line labels (replaced by a ranked list
 ≤600px). Picker below the chart: "Sort by" Team/Ranking dropdown, presets All/None/Top 5/Top 10, default
 Top 5.
 
+**Talking points (#88, `talkingpoints.js`, drivers' page only):** a card right after the points chart with up to six
+facts about the **whole field** (not the picked drivers) as of the slider's round, each naming its driver(s) by code
+with a flag: the **leader** and the gap to second ("level with …, ahead on countback" when equal on points), **most
+wins** (Grands Prix only) with the number of different winners, the **longest active points streak** (rounds in a row,
+back from the slider's round, with points from the Grand Prix or the sprint; a round the driver missed ends it; shown
+from 2 rounds), the **biggest climber** and **biggest faller** in the standings over the last 5 rounds (from round 6),
+and **most not classified** Grands Prix (shown when anyone has one). Ties list every driver in standings order ("VER
+and NOR · 3 wins each"; more than three read "VER, NOR, LEC +2 more", all names on hover). Standings and tie-breaks
+come from `standingsOrder()`. Tiles three across on desktop, two on phones; a note under them says what each fact
+counts. Rebuilt only when the season or round changes (theme colours are CSS variables); never fetches; no export.
+
 **Round results (#29, `roundresult.js`, both championship pages):** clicking or tapping a round on the points
 chart (up to the slider's round; projected rounds don't open) opens that round's result in a panel under the
 chart, with the round shaded on the chart. Drivers' page: finishing order (pos, team dot, flag, name — code on
@@ -209,9 +221,9 @@ constructors' page, the same list with the picked teams' drivers in bold). Sprin
 rounds, × or Escape closes it, and moving the slider before the open round closes it. The tooltip title names
 the race, with "Click for the full result" on actual rounds (not on touch screens). Never fetches.
 
-Both championship pages are laid out (issue #10, "Layout A"): points chart → **Projected final points**
-card → picker → **Championship position by round** card. Cards above the picker follow the picker
-selection; the card below it shows every driver/team.
+Both championship pages are laid out (issue #10, "Layout A"): points chart → (drivers: **Talking points**, #88) →
+**Projected final points** card → picker → **Championship position by round** card. Cards above the picker follow the picker
+selection (except Talking points, which covers the whole field); the card below it shows every driver/team.
 - **Projected final points** (issue #10): for the picker selection, what the points chart's projection
   (points so far + last-5-participated-rounds average × rounds left) said after each round. Its last value
   equals the end of the points chart's projection line. End labels on wide screens, ranked list (`.endLegend`)
@@ -403,7 +415,9 @@ since fonts render differently on different machines.
   stop the patch), round results (#29: tap a round for its result, sprint switch, arrows, close, NC last, projected
   rounds closed, never fetches, URL round-trip, phone fit), driver contributions (#84: per-driver and per-team points
   checked against an independent sum and the picker, picker/slider/theme/season, a driver with two teams on constructed
-  data, labels never cut off, tooltip, PNG/CSV, never fetches, phone fit). The harness
+  data, labels never cut off, tooltip, PNG/CSV, never fetches, phone fit), talking points (#88: each fact against an
+  independent calculation at several rounds, ties, early rounds, follows the slider and season, whole field, never
+  fetches, theme switch, both themes and phone fit). The harness
   never serves the real `site/data/*.json`: tests pass `snapshots` built from the fake season. The fixture's names mix country names and demonyms, with
   one unknown. Logic is checked against
   independent calculations written in the tests, not against the site's own helpers.
