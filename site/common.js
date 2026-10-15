@@ -490,10 +490,10 @@ const F1Common = (() => {
    let res=null; seasonRounds.forEach(r=>[...r.raceResults, ...(r.sprintResults||[])].forEach(x=>{ if((kind==='teams'?x.teamId:x.driverId)===id) res=x; }));
    return !res ? id : kind==='teams' ? shortTeamName(id, res.teamName) : (res.code || id);
   }
-  // "round 21 (Las Vegas)", or just "round 21" when the calendar has no proper name for it.
+  // "round 21 (Las Vegas GP)", or just "round 21" when the calendar has no proper name for it.
   function roundRef(calendar, round, year){
    const n=shortRaceName(calendar, round, year);
-   return /^Round \d+$/i.test(n) ? `round ${round}` : `round ${round} (${n})`;
+   return /^Round \d+$/i.test(n) ? `round ${round}` : `round ${round} (${n} GP)`; // "Austrian GP", not just "Austrian"
   }
   // The championship pages' one-line pointer under the points chart: who can clinch at the round after the slider
   // (with a link to try it in What-If), when the title can be decided at the earliest, or who has won it. '' when
@@ -506,7 +506,7 @@ const F1Common = (() => {
    if(o.state==='decided') return `🏆 ${escAttr(name(o.champion))} clinched the title in ${race(o.round)}${o.countback?', on countback':''}.`;
    if(o.state==='later') return `The title can't be decided before ${race(o.round)}.`;
    const href=`whatif.html?season=${year}${round<maxRound?'&round='+round:''}`;
-   return `${escAttr(name(o.leader))} can clinch the title in ${escAttr(shortRaceName(calendar, o.round, year))}. <a class="clinchLink" href="${href}">Try results in What-If →</a>`;
+   return `${escAttr(name(o.leader))} can clinch the title in ${escAttr(roundRef(calendar, o.round, year))}. <a class="clinchLink" href="${href}">Try results in What-If →</a>`;
   }
 
   return { TEAM_COLORS, SEASON_TEAM_COLORS,

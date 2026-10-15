@@ -255,7 +255,7 @@ selection (except Talking points, which covers the whole field); the card below 
 under the points chart, about the whole field (not the picked entries) and the round after the slider ("next race"):
 "VER can clinch the title in Las Vegas. Try results in What-If →" (link to `whatif.html?season=…`, plus `&round=…` when
 the slider isn't on the latest round, so What-If opens on that race), "The title can't be decided before round 21
-(Mexico City)." (no link), or "🏆 VER clinched the title in round 20 (Las Vegas)." once decided. It follows the slider
+(Mexico City GP)." (no link), or "🏆 VER clinched the title in round 20 (Las Vegas GP)." once decided. It follows the slider
 and shows in both Show views and with nothing picked; nothing without a real calendar. Never fetches
 (`F1Common.clinchPointerHTML`; maths under What-If below).
 
@@ -347,7 +347,7 @@ championship's leader needs at the round being edited, from the standings before
   the others do ("a win guarantees it", "P3 or better in both races guarantees it"), else a win with each rival at
   their highest place that still works ("… P5 or lower", "out of the points"; "in both" on sprint weekends).
   Constructors: points only ("Mercedes clinches the constructors’ title here by outscoring McLaren by 20 or more.").
-- not possible here: "The drivers’ title can’t be decided before round 21 (Mexico City) at the earliest" (the first
+- not possible here: "The drivers’ title can’t be decided before round 21 (Mexico City GP) at the earliest" (the first
   round where the leader could be clear scoring the maximum from this round on while nobody else scores).
 - decided: "🏆 VER has already won the drivers’ title (clinched in round 20 (Las Vegas))."
 Above each result table, a live line follows every drag, key move and preset button (no fetch): "🏆 With this result,

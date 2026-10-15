@@ -252,7 +252,7 @@ module.exports = async (t, h) => {
   for(const [page, kind, leaderName] of [['drivers', 'drivers', 'DA0'], ['constructors', 'teams', 'Mercedes']]){
     const c = await h.openPage(page, { snapshots: { 2026: snap(S) } }); await h.loaded(c);
     const note = () => text(c, '#clinchNote');
-    t.check(`${page}: pointer says who can clinch at the next race, with a What-If link`, await note() === `${leaderName} can clinch the title in Round 20. Try results in What-If →`, await note());
+    t.check(`${page}: pointer says who can clinch at the next race, with a What-If link`, await note() === `${leaderName} can clinch the title in round 20. Try results in What-If →`, await note());
     t.check(`${page}: pointer sits in the knockout note`, await c.$eval('#clinchNote', el => el.closest('#sm') !== null));
     t.check(`${page}: link to whatif.html keeps the season (latest round: no round)`, await c.$eval('#clinchNote a', a => a.getAttribute('href')) === 'whatif.html?season=2026');
     await h.setRound(c, 12);
