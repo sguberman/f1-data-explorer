@@ -98,6 +98,12 @@ Move something into `common.js` only once it's genuinely identical on every page
   **Generator:** `tools/snapshot.mjs` runs `site/data.js` itself in Node (`loadSeason(year, {live:true})`),
   so the files match what pages build from the live API. It skips complete past seasons (`--all` rebuilds
   everything), never overwrites a file after a failed fetch, and only rewrites a file whose data changed.
+  **Jolpica patch (#59):** f1api.dev's 2021–2023 data has no sprint results and numbers every driver (no
+  "not classified"). For those years the generator patches the file from Jolpica (`api.jolpi.ca/ergast/f1`,
+  Ergast's successor): race positions from `positionText` (a number = classified, R/D/W/N… = `null`), Jolpica's
+  points, and sprint results (`session:'sprint'`). It only patches when both sources agree on the rounds and
+  drivers and the sprint rounds match the calendar; otherwise it warns and keeps the file as it was. A patched
+  file carries `patched:{source:'jolpica', version}`; bumping `PATCH_VERSION` re-patches those seasons once.
   **Workflow:** `snapshot.yml` runs daily, hourly on Sundays and Mondays (UTC), by hand (Actions → Update
   season data, optionally "all"), and on pushes that change the generator or `data.js`. It commits
   `issue #13: update season data (automated)` and, on `main`, starts the Pages deploy itself (commits made
@@ -359,7 +365,8 @@ since fonts render differently on different machines.
   margins, width, title, intro text, card style), favicon (#68: every page links it; the files are valid), team seasons (#72: Sauber/Alfa Romeo/AlphaTauri names and season colours),
   links (#31: every page's setup round-trips through the URL, defaults left out, bad values ignored, Share copies it, a
   simulator link reproduces the same results) and exports (#33: PNG and CSV contents per chart, never fetches; #75/#76: share sheet on phones with download fallbacks,
-  icon in the picture's corner). The harness
+  icon in the picture's corner), Jolpica patch (#59: a stripped season patched from a fake Jolpica comes back exactly; mismatches
+  stop the patch). The harness
   never serves the real `site/data/*.json`: tests pass `snapshots` built from the fake season. The fixture's names mix country names and demonyms, with
   one unknown. Logic is checked against
   independent calculations written in the tests, not against the site's own helpers.
