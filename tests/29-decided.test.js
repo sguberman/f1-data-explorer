@@ -100,9 +100,14 @@ module.exports = async (t, h) => {
   // ---- After a run: the chart's numbers ----
   await p.selectOption('#n', '2000'); await p.click('#run'); await simulated(p); await p.waitForTimeout(80);
   const r = await p.evaluate(() => {
-    const ds = decidedChart.data.datasets, by = ds.find(d => d.type === 'line').data, at = ds.find(d => d.type === 'bar').data;
-    const counts = {}; lastRun.decided.forEach(x => { counts[x] = (counts[x] || 0) + 1; });
-    return { labels: decidedChart.data.labels, by, at, counts, N: lastRun.N, L, total: currentCalendar.totalRounds, rows: decidedRows,
+    const ds = decidedChart.data.datasets, bars = ds.filter(d => d.type === 'bar'), by = ds.find(d => d.type === 'line').data;
+    const at = decidedChart.data.labels.map((_, j) => bars.reduce((s, d) => s + d.data[j], 0)); // the stacked bar's height
+    return { labels: decidedChart.data.labels, by, at, N: lastRun.N, n: lastRun.n, L, total: currentCalendar.totalRounds, rows: decidedRows,
+             decided: [...lastRun.decided], champion: [...lastRun.champion], ids: lastRun.ids, ranks: [...lastRun.ranks],
+             bars: bars.map(d => ({ id: d._id, label: d.label, data: d.data, bg: d.backgroundColor, edge: d.borderColor, bw: d.borderWidth, stack: d.stack })),
+             teams: Object.fromEntries(fullRoster.map(d => [d.driverId, d.teamId])), codes: Object.fromEntries(fullRoster.map(d => [d.driverId, d.code])),
+             teamColor: Object.fromEntries(fullRoster.map(d => [d.driverId, F1Theme.team(F1Common.teamColor(d.teamId))])),
+             key: [...document.querySelectorAll('#decidedKey .ridgeKeyItem[data-id]')].map(e => ({ id: e.dataset.id, text: e.textContent.trim(), flag: !!e.querySelector('.flag') })),
              shown: document.getElementById('decidedCard').style.display, summary: document.getElementById('decidedSummary').textContent,
              afterOdds: document.getElementById('oddsCard').nextElementSibling.id };
   });
@@ -111,12 +116,73 @@ module.exports = async (t, h) => {
   t.check('one column per round from the current round (already run) to the last', r.labels.join() === rounds.join() && r.rows[0].run && r.rows.slice(1).every(x => !x.run), r.labels.join());
   let cum = 0, cumOk = true, mono = true;
   r.at.forEach((v, j) => { cum += v; if(Math.abs(cum - r.by[j]) > 1e-6) cumOk = false; if(j && r.by[j] < r.by[j - 1]) mono = false; });
-  t.check('the line is the running total of the bars', cumOk, JSON.stringify({ at: r.at, by: r.by }));
+  t.check('the line is the running total of the (stacked) bars', cumOk, JSON.stringify({ at: r.at, by: r.by }));
   t.check('…rising and ending at 100% at the final round', mono && r.by[r.by.length - 1] === 100, r.by.join());
-  t.check('the bars match the per-season results the page keeps (lastRun.decided)', rounds.every((x, j) => Math.abs(r.at[j] - 100 * (r.counts[x] || 0) / r.N) < 1e-9)
-    && Object.keys(r.counts).every(x => rounds.includes(+x)), JSON.stringify(r.counts));
+
+  // Independent count from the per-season results the page keeps: lastRun.decided (round) and lastRun.champion (index in ids).
+  const N = r.N, perRound = {}, wins = {}, at = {};
+  r.decided.forEach((x, s) => { const id = r.ids[r.champion[s]]; perRound[x] = (perRound[x] || 0) + 1; wins[id] = (wins[id] || 0) + 1; at[x + '|' + id] = (at[x + '|' + id] || 0) + 1; });
+  t.check('each season\'s champion is the driver ranked 1st in it (as for the win probability)', r.champion.every((c, s) => r.ranks[s * r.n + c] === 1));
+  t.check('the bars match the per-season results the page keeps (lastRun.decided)', rounds.every((x, j) => Math.abs(r.at[j] - 100 * (perRound[x] || 0) / N) < 1e-9)
+    && Object.keys(perRound).every(x => rounds.includes(+x)), JSON.stringify(perRound));
+  const big = Object.keys(wins).filter(id => 100 * wins[id] / N >= 1).sort((a, b) => wins[b] - wins[a]), small = Object.keys(wins).filter(id => !big.includes(id));
+  const drv = r.bars.filter(b => b.id !== 'others'), oth = r.bars.find(b => b.id === 'others');
+  t.check('one stacked segment per champion with at least 1% of seasons, by title chance', drv.map(b => b.id).join() === big.join() && drv.every(b => b.label === r.codes[b.id])
+    && r.bars.every(b => b.stack === 'decided'), JSON.stringify({ bars: drv.map(b => b.id), big, wins }));
+  t.check('each driver\'s segment = their share of all seasons decided at that round with them as champion',
+    drv.every(b => rounds.every((x, j) => Math.abs(b.data[j] - 100 * (at[x + '|' + b.id] || 0) / N) < 1e-9)), JSON.stringify(at));
+  t.check('champions under 1% fold into one Others segment (on top)', small.length ? !!oth && r.bars[r.bars.length - 1].id === 'others'
+    && rounds.every((x, j) => Math.abs(oth.data[j] - 100 * small.reduce((s, id) => s + (at[x + '|' + id] || 0), 0) / N) < 1e-9) : !oth, JSON.stringify({ small, oth }));
+  t.check('each round\'s segments add up to the bar total (decided at that round)', r.rows.every((row, j) => Math.abs(row.seg.reduce((s, v) => s + v, 0) - row.at) < 1e-9
+    && Math.abs(row.at - r.at[j]) < 1e-9), JSON.stringify(r.rows.map(x => [x.at, x.seg])));
+  t.check('…and over all rounds each champion\'s segments add up to their title chance', drv.every(b => Math.abs(b.data.reduce((s, v) => s + v, 0) - 100 * wins[b.id] / N) < 1e-9));
+  // Colours: the team colour (theme-aware); a teammate a lighter shade with a team-colour edge.
+  const seen = {}; let pairs = 0, colOk = true;
+  drv.forEach(b => { const tm = r.teams[b.id];
+    if(seen[tm]){ pairs++; if(b.bg === seen[tm].bg || b.edge !== seen[tm].bg || !(b.bw > 0)) colOk = false; }
+    else { seen[tm] = b; if(b.bg !== r.teamColor[b.id] || b.bw) colOk = false; } });
+  t.check('segments in the team colour, a teammate in a different (lighter, edged) shade of it', colOk && pairs >= 1, JSON.stringify(drv.map(b => [b.label, r.teams[b.id], b.bg, b.edge, b.bw])));
+  t.check('legend: a flag and code per champion in the same order, then Others', r.key.map(k => k.id).join() === r.bars.map(b => b.id).join()
+    && r.key.filter(k => k.id !== 'others').every(k => k.flag && k.text === r.codes[k.id]), JSON.stringify(r.key));
   const mode = r.rows.slice(1).reduce((m, x) => x.at > m.at ? x : m, r.rows[1]);
   t.check('the summary names the most likely round', r.summary.includes(`Round ${mode.round}, ${Math.round(mode.at)}%`) && (mode.round === r.total || r.summary.includes(`${Math.round(r.at[r.at.length - 1])}% go to the final round`)), r.summary);
+  const early = {}; r.decided.forEach((x, s) => { if(x < r.total){ const id = r.ids[r.champion[s]]; early[id] = (early[id] || 0) + 1; } });
+  const topEarly = Object.keys(early).filter(id => big.includes(id)).sort((a, b) => early[b] - early[a])[0];
+  t.check('the summary names who most often clinches before the final round', !!topEarly && r.summary.includes(`Most often clinched early by ${r.codes[topEarly]} (${Math.round(100 * early[topEarly] / N)}% of seasons)`), r.summary);
+
+  // Tooltip: round, the total decided there, each champion's share, and the cumulative share.
+  const nz = j => r.bars.filter(b => b.data[j] > 0).length;
+  const tj = rounds.reduce((m, _, j) => nz(j) > nz(m) ? j : m, 0), tipRound = rounds[tj]; // the round with the most champions
+  await p.$eval('#decidedCanvas', c => c.scrollIntoView({ block: 'center' }));
+  const box = await p.evaluate(j => { const c = decidedChart, rc = c.canvas.getBoundingClientRect(); return { x: rc.left + c.scales.x.getPixelForValue(j), y: rc.top + c.chartArea.bottom - 6 }; }, tj);
+  await p.mouse.move(box.x, box.y); await p.waitForTimeout(80);
+  const tip = await p.evaluate(() => { const tt = decidedChart.tooltip; return { title: tt.title, before: tt.beforeBody, body: tt.body.map(b => b.lines.join('')) }; });
+  const pc = v => (v > 0 && v < 0.1 ? '<0.1' : v.toFixed(1)) + '%';
+  const wantBody = [...r.bars.filter(b => b.data[tj] > 0).map(b => ` ${b.label} ${pc(b.data[tj])}`), `Decided by this round: ${pc(r.by[tj])}`];
+  t.check('tooltip: round, decided at it, each champion\'s share, then decided by it', tip.title[0].startsWith(`Round ${tipRound}`) && tip.before.join() === `Decided at this round: ${pc(r.at[tj])}`
+    && tip.body.join('|') === wantBody.join('|') && wantBody.length >= 3, JSON.stringify({ tip, wantBody }));
+  // a round with nothing decided at it (the round already run) lists no champions
+  const box0 = await p.evaluate(() => { const c = decidedChart, rc = c.canvas.getBoundingClientRect(); return { x: rc.left + c.scales.x.getPixelForValue(0), y: rc.top + c.chartArea.bottom - 6 }; });
+  await p.mouse.move(box0.x, box0.y); await p.waitForTimeout(80);
+  const tip0 = await p.evaluate(() => decidedChart.tooltip.body.map(b => b.lines.join('')));
+  t.check('tooltip: champions with no share at that round are left out', r.at[0] === 0 && tip0.join('|') === `Decided by this round: ${pc(r.by[0])}`, JSON.stringify(tip0));
+  await p.mouse.move(1, 1);
+
+  // Others folding and teammates on constructed results: 1,000 seasons, rounds 19 (already run) to 21.
+  const fold = await p.evaluate(() => {
+    const info = [['AAA', 'mercedes', 1], ['BBB', 'mercedes', 2], ['CCC', 'ferrari', 3], ['DDD', 'mclaren', 4], ['EEE', 'ferrari', 5]].map(([code, teamId, rank]) => ({ code, teamId, rank }));
+    const plan = [[0, 20, 400], [0, 21, 300], [1, 21, 200], [2, 19, 85], [3, 21, 10], [4, 20, 5]]; // [driver, round, seasons]
+    const N = 1000, decided = new Uint16Array(N), champion = new Uint8Array(N); let s = 0;
+    plan.forEach(([i, rd, k]) => { for(let q = 0; q < k; q++, s++){ decided[s] = rd; champion[s] = i; } });
+    const st = decidedStats({ N, n: 5, ids: ['a', 'b', 'c', 'd', 'e'], decided, champion, startRound: 19, lastRound: 21, info });
+    return { codes: st.champs.map(c => c.code), mates: st.champs.map(c => c.mate), others: st.others, segs: st.rows.map(x => x.seg), ats: st.rows.map(x => x.at),
+             fills: st.champs.map(champFill), mercedes: F1Theme.team(F1Common.teamColor('mercedes')) };
+  });
+  t.check('constructed: under 1% folds into Others, exactly 1% is shown', fold.codes.join() === 'AAA,BBB,CCC,DDD' && Math.abs(fold.others - 0.5) < 1e-9, JSON.stringify(fold));
+  t.check('constructed: per-round segments (AAA, BBB, CCC, DDD, Others) adding up to each bar', JSON.stringify(fold.segs) === JSON.stringify([[0, 0, 8.5, 0, 0], [40, 0, 0, 0, 0.5], [30, 20, 0, 1, 0]])
+    && JSON.stringify(fold.ats) === JSON.stringify([8.5, 40.5, 51]), JSON.stringify(fold.segs));
+  t.check('constructed: the second Mercedes driver is a lighter shade with a Mercedes edge', fold.mates.join() === '0,1,0,0' && fold.fills[0].bg === fold.mercedes
+    && fold.fills[1].bg !== fold.mercedes && fold.fills[1].edge === fold.mercedes && !fold.fills[2].edge, JSON.stringify(fold.fills));
 
   // Short race names in the summary (the fake calendar names rounds "Round N Grand Prix", so give it real ones).
   const named = await p.evaluate(() => {
@@ -136,17 +202,25 @@ module.exports = async (t, h) => {
     const ctx = buildSimContext(); rand = seededRandom(3);
     const run = newRun(ctx, 50); simulateInto(ctx, run, 50);
     fullRoster.forEach((d, i) => { d.now = keep[i]; });
-    const rows = decidedStats(run);
-    return { all: [...run.decided].every(x => x === L), first: rows[0].by, summary: decidedSummaryHTML(rows) };
+    const st = decidedStats(run), rows = st.rows;
+    return { all: [...run.decided].every(x => x === L), first: rows[0].by, summary: decidedSummaryHTML(rows, st.champs), code: fullRoster[0].code,
+             champs: st.champs.map(c => c.code), seg: rows[0].seg };
   });
-  t.check('a title already out of reach counts as decided at the current round', already.all && already.first === 100 && /Already decided/.test(already.summary), JSON.stringify(already));
+  t.check('a title already out of reach counts as decided at the current round', already.all && already.first === 100 && /Already decided/.test(already.summary)
+    && already.summary.includes(already.code) && already.champs.join() === already.code && already.seg[0] === 100, JSON.stringify(already));
 
   // ---- Export ----
   let f = await grab(p, '#decidedCard .exp-csv'); let rows = csvRows(f.data);
   t.check('CSV: a row per round with the shares decided at and by it', f.name === 'f1-2026-sim-title-decided-r12.csv'
-    && rows[0].join() === 'Round,Race,Already run,Decided at this round (% of seasons),Decided by this round (% of seasons)'
+    && rows[0].slice(0, 5).join() === 'Round,Race,Already run,Decided at this round (% of seasons),Decided by this round (% of seasons)'
     && rows.length === 1 + rounds.length && rows.slice(1).every((x, j) => +x[0] === rounds[j] && Math.abs(+x[3] - r.at[j]) < 1e-6 && Math.abs(+x[4] - r.by[j]) < 1e-6)
     && rows[1][2] === 'yes' && rows[2][2] === 'no', f.name + ' ' + rows.slice(0, 3).join('|'));
+  // …then a column per champion shown (by title chance) and one for the others, each the share of all seasons, adding up to "decided at".
+  const wantHead = [...drv.map(b => `Decided at this round: ${b.label} champion (% of seasons)`), 'Decided at this round: other champion (% of seasons)'];
+  const othData = oth ? oth.data : rounds.map(() => 0);
+  t.check('CSV: per-champion columns plus others, matching the segments and adding up to the bar', rows[0].slice(5).join('|') === wantHead.join('|')
+    && rows.slice(1).every((x, j) => x.length === 5 + wantHead.length && drv.every((b, k) => Math.abs(+x[5 + k] - b.data[j]) < 1e-6) && Math.abs(+x[x.length - 1] - othData[j]) < 1e-6
+      && Math.abs(x.slice(5).reduce((s, v) => s + +v, 0) - +x[3]) < 1e-6), rows[0].join('|'));
   f = await grab(p, '#decidedCard .exp-png');
   t.check('PNG of the chart', f.data.readUInt32BE(0) === 0x89504e47 && f.name === 'f1-2026-sim-title-decided-r12.png' && f.data.readUInt32BE(20) > await p.$eval('#decidedCanvas', c => c.clientHeight), f.name);
 
@@ -165,22 +239,29 @@ module.exports = async (t, h) => {
   await p.done();
 
   // ---- Both themes, a live theme switch, and the phone fit ----
+  const GREY = { light: '#aaa9a1', dark: '#6b7280' };
   for(const theme of ['light', 'dark']){
     p = await h.openPage('simulator', { theme, width: 390 }); await h.loaded(p);
+    await p.evaluate(GREY => { window.barColoursOk = () => { const seen = {};
+      return decidedChart.data.datasets.filter(d => d.type === 'bar').every(d => {
+        if(d._id === 'others') return d.backgroundColor === GREY[F1Theme.current()];
+        const tm = fullRoster.find(x => x.driverId === d._id).teamId, c = F1Theme.team(F1Common.teamColor(tm)), first = !seen[tm]; seen[tm] = 1;
+        return first ? d.backgroundColor === c : d.borderColor === c && d.backgroundColor !== c; }); }; }, GREY);
     await p.selectOption('#n', '2000'); await p.click('#run'); await simulated(p); await p.waitForTimeout(100);
     const fit = await p.evaluate(() => {
       const card = document.getElementById('decidedCard').getBoundingClientRect(), cv = document.getElementById('decidedCanvas').getBoundingClientRect();
       return { scroll: document.documentElement.scrollWidth, cardR: card.right, cvR: cv.right, cvW: cv.width, h: cv.height,
-               line: decidedChart.data.datasets[0].borderColor, knock: F1Theme.chart().knock, summaryR: document.getElementById('decidedSummary').getBoundingClientRect().right };
+               line: decidedChart.data.datasets[0].borderColor, knock: F1Theme.chart().knock, summaryR: document.getElementById('decidedSummary').getBoundingClientRect().right,
+               keyR: Math.max(...[...document.querySelectorAll('#decidedKey .ridgeKeyItem')].map(e => e.getBoundingClientRect().right)), barsOk: barColoursOk() };
     });
-    t.check(`phone ${theme}: the card fits a 390px screen`, fit.scroll <= 390 && fit.cardR <= 390 && fit.cvR <= fit.cardR && fit.summaryR <= fit.cardR && fit.cvW > 250 && fit.h >= 180, JSON.stringify(fit));
-    t.check(`phone ${theme}: drawn in the theme's chart colours`, fit.line === fit.knock, JSON.stringify(fit));
+    t.check(`phone ${theme}: the card fits a 390px screen`, fit.scroll <= 390 && fit.cardR <= 390 && fit.cvR <= fit.cardR && fit.summaryR <= fit.cardR && fit.keyR <= fit.cardR && fit.cvW > 250 && fit.h >= 180, JSON.stringify(fit));
+    t.check(`phone ${theme}: drawn in the theme's chart colours (line, team colours, Others grey)`, fit.line === fit.knock && fit.barsOk, JSON.stringify(fit));
     await h.screenshot(p, `simulator-decided-${theme}-390.png`);
     if(theme === 'dark'){
       const hits = p.apiHits.length;
       await p.click('#themeToggle .theme-trigger'); await p.click('#themeToggle .theme-menu button[data-pref="light"]'); await p.waitForTimeout(100);
-      const after = await p.evaluate(() => [decidedChart.data.datasets[0].borderColor, F1Theme.chart().knock]);
-      t.check('a theme switch redraws it in the new colours, without fetching', after[0] === after[1] && after[0] !== fit.line && p.apiHits.length === hits, JSON.stringify(after));
+      const after = await p.evaluate(() => [decidedChart.data.datasets[0].borderColor, F1Theme.chart().knock, barColoursOk()]);
+      t.check('a theme switch redraws it in the new colours, without fetching', after[0] === after[1] && after[0] !== fit.line && after[2] && p.apiHits.length === hits, JSON.stringify(after));
     }
     t.check(`phone ${theme}: no page errors`, p.errors.length === 0, p.errors.join('; '));
     await p.done();

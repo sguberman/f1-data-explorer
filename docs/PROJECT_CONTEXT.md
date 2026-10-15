@@ -322,12 +322,24 @@ the first round after which its champion's lead over every other driver is **mor
 exactly equal to them isn't enough (a tie would go to countback), and a season not settled earlier counts as the final
 round. It's checked inside `simulateSeason` at the end of each round from the points already drawn, with **no extra
 random draws**, so a seeded run gives exactly the same results as before (the test pins a fingerprint taken from
-`main`); the run keeps them as `lastRun.decided` (one round per season). The chart (Chart.js, `F1Theme` colours) has a
-column per round from the slider's round (shaded "Run", already run: above 0 only if the title was already out of reach)
-to the last: bars = share of seasons decided at that round, line = decided by it (cumulative, 100% at the final round).
+`main`); the run keeps them as `lastRun.decided` (one round per season), and `simulateInto` records each season's
+champion (the driver ranked 1st, as for the win probability; no random draws) as `lastRun.champion` (index into
+`lastRun.ids`). The chart (Chart.js, `F1Theme` colours) has a column per round from the slider's round (shaded "Run",
+already run: above 0 only if the title was already out of reach) to the last: a **stacked bar** = share of seasons
+decided at that round, split by who became champion (each segment is that driver's share of *all* seasons, so the
+segments add up to the bar and, over all rounds, to the driver's title chance), and a line = decided by it (cumulative,
+100% at the final round). Champions are ordered by title chance (bottom up, and in the legend, which shows flag + code,
+no team names); drivers with under 1% of titles fold into a grey **Others** segment on top (`DECIDED_MIN_SHARE`).
+Colours (`champFill`): the team colour via `F1Theme.team()`; a teammate is a **lighter shade** (the colour mixed with
+white, opaque, so it reads lighter on the dark theme too and shows in the PNG legend) with a team-colour edge, following
+the constructors' driver contributions (#84) rather than the line charts' dashes, which don't suit bars. The tooltip lists
+the round, "Decided at this round", each champion's share there (zero shares left out) and "Decided by this round".
 A summary line reads e.g. "Most likely decided: Round 21 (Qatar), 25% · Half of seasons decided by Round 20 (Las Vegas) ·
-20% go to the final round" (short race names: no "Formula 1", sponsor, year or "Grand Prix"). It covers the whole grid, so
-it ignores the tracked set; nothing new goes in the URL. PNG/CSV export (`sim-title-decided`). Measured on 30,000 seasons in headless
+20% go to the final round · Most often clinched early by VER (18% of seasons)" (short race names: no "Formula 1",
+sponsor, year or "Grand Prix"; "early" = before the final round). It covers the whole grid, so it ignores the tracked set;
+nothing new goes in the URL. PNG/CSV export (`sim-title-decided`): the PNG has the stacked colours and a legend entry per
+champion, Others and the line; the CSV adds a "Decided at this round: CODE champion (% of seasons)" column per champion
+shown plus one for the other champions. Measured on 30,000 seasons in headless
 Chromium: compute median 657 ms before, 730 ms after (minimum 624 → 639 ms; noisy machine); the run stays sliced (#56).
 
 **whatif.html** — What-if results (#48). The round after the slider's round gets a draggable finishing
@@ -447,6 +459,8 @@ since fonts render differently on different machines.
   simulator (#39 DNF modeling, #42 auto DNFs, #14 wins, #11 collisions, #17 results kept), when the title is decided
   (#86: the decided round on constructed seasons against an independent calculation — early, final round, countback tie,
   sprints; the engine against an independent replay of simulated seasons; cumulative chart matching `lastRun.decided`;
+  stacked per-champion segments against an independent count from `lastRun.decided` + `lastRun.champion`, segments adding up
+  to each bar, Others folding and teammate shades on constructed results, legend, tooltip;
   same-seed results unchanged from `main`; seeded link; CSV/PNG; never fetches; both themes and phone fit), NC/finish rule shared by the position page and simulator (#46), flags and markers
   (#18/#30; movement also covers #20's tie-breaks), simulator runs (#56: responsive 30,000 run, progress, Cancel), what-if (#48: drag, keys, NC line, sprint weekends,
   points and countback), homepage (#50: card order, pictures, vertical layout, theme colours; #78: checkered banner), next race (#89: fixed clock — next round, countdown wording, local time zone, sprint tag, short names, season complete, season file vs f1api.dev, old files without dates, failure hidden, both themes, phone fit), season files (#13: one-file

@@ -147,7 +147,7 @@ canvas{max-width:100%;}
   <div class="card" id="decidedCard" style="display:none;">
     <h2>When the title is decided</h2>
     <div class="decidedSummary" id="decidedSummary"></div>
-    <div class="decidedWrap"><canvas id="decidedCanvas" role="img" aria-label="Chart of the share of simulated seasons in which the drivers' title is decided at each remaining round, with a line for the share decided by then."></canvas></div>
+    <div class="decidedWrap"><canvas id="decidedCanvas" role="img" aria-label="Chart of the share of simulated seasons in which the drivers' title is decided at each remaining round, split by who became champion, with a line for the share decided by then."></canvas></div>
     <div class="ridgeKey" id="decidedKey"></div>
     <div class="note" id="decidedNote"></div>
   </div>
@@ -715,8 +715,9 @@ document.getElementById('presetRow').addEventListener('click', e=>{
 function newRun(ctx, N){
  const n=ctx.n;
  return { key:settingsKey(), N, n, ids:ctx.roster.map(d=>d.driverId), totals:new Float32Array(N*n), ranks:new Uint16Array(N*n),
-          decided:new Uint16Array(N), startRound:L, lastRound:ctx.dec.lastRound, done:0 }; // #86: decided[s] = round the title was settled
-
+          decided:new Uint16Array(N), champion:new Uint8Array(N),
+          info:ctx.roster.map(d=>({code:d.code, teamId:d.teamId, rank:d.rank})), startRound:L, lastRound:ctx.dec.lastRound, done:0 };
+ // #86: decided[s] = round the title was settled, champion[s] = the champion's index in ids (rank 1, as for the win probability)
 }
 // Simulates seasons run.done … upto-1 into the run.
 function simulateInto(ctx, run, upto){
@@ -727,6 +728,7 @@ function simulateInto(ctx, run, upto){
    for(let i=0;i<n;i++){ standing[i]=i; run.totals[s*n+i]=t[i]; }
    standing.sort((a,b)=>t[b]-t[a]);
    for(let r=0;r<n;r++) run.ranks[s*n+standing[r]]=r+1;
+   run.champion[s]=standing[0];
  }
  run.done=upto;
 }
@@ -937,19 +939,47 @@ function shortRaceName(name){ // "Formula 1 Qatar Airways Qatar Grand Prix 2026"
 const raceLabel = r=>{ const n=currentCalendar && currentCalendar.raceNames && currentCalendar.raceNames[r]; const s=n ? shortRaceName(n) : '';
  return s && !/^Round \d+$/i.test(s) ? s : ''; };
 const roundText = r=>`Round ${r}`+(raceLabel(r) ? ` (${raceLabel(r)})` : '');
-let decidedRows=[], decidedChart=null;
-// Rows per round from startRound to lastRound: {round, race, run, at, by} (at/by = % of seasons decided at/by it).
+let decidedRows=[], decidedChamps=[], decidedChart=null;
+const DECIDED_MIN_SHARE=1; // champions with under 1% of all simulated seasons fold into "Others"
+// Rows per round from startRound to lastRound: {round, race, run, at, by, seg} (at/by = % of seasons decided at/by it;
+// seg[k] = % of seasons decided at it with champs[k] as champion, the last entry = Others, so seg sums to at).
+// champs = the champions shown, by title chance (= the win probability, rank 1): {i, id, code, teamId, pct, mate}, where
+// mate = 0 for a team's first shown driver, 1 for the next (drawn in a lighter shade).
 function decidedStats(run){
- const {N, decided, startRound, lastRound}=run, counts=new Array(lastRound-startRound+1).fill(0);
- for(let s=0;s<N;s++) counts[decided[s]-startRound]++;
+ const {N, n, decided, champion, startRound, lastRound, info}=run, R=lastRound-startRound+1;
+ const counts=new Array(R).fill(0), byChamp=Array.from({length:R}, ()=>new Array(n).fill(0)), wins=new Array(n).fill(0);
+ for(let s=0;s<N;s++){ const j=decided[s]-startRound, c=champion[s]; counts[j]++; byChamp[j][c]++; wins[c]++; }
+ const shown=wins.map((w,i)=>i).filter(i=>wins[i] && 100*wins[i]/N>=DECIDED_MIN_SHARE).sort((a,b)=>wins[b]-wins[a] || info[a].rank-info[b].rank);
+ const mates={};
+ const champs=shown.map(i=>{ const t=info[i].teamId, mate=mates[t]||0; mates[t]=mate+1;
+   return {i, id:run.ids[i], code:info[i].code, teamId:t, pct:100*wins[i]/N, mate}; });
  let cum=0;
- return counts.map((c,j)=>{ cum+=c; const round=startRound+j;
-   return {round, race:raceLabel(round), run:j===0, at:100*c/N, by:j===counts.length-1 ? 100 : 100*cum/N}; });
+ const rows=counts.map((c,j)=>{ cum+=c; const round=startRound+j, seg=champs.map(ch=>100*byChamp[j][ch.i]/N);
+   const inShown=champs.reduce((sum,ch)=>sum+byChamp[j][ch.i],0);
+   seg.push(100*(c-inShown)/N);
+   return {round, race:raceLabel(round), run:j===0, at:100*c/N, by:j===counts.length-1 ? 100 : 100*cum/N, seg}; });
+ return {rows, champs, others:100*(N-champs.reduce((sum,ch)=>sum+wins[ch.i],0))/N};
 }
+// Fill and edge of a champion's segments: the team colour (theme-aware); a teammate a lighter shade with a team-colour
+// edge, as on the constructors' driver contributions (#84). The shade is the colour mixed with white, opaque, so it
+// reads as lighter on the dark theme too (a see-through colour would look darker there) and the PNG legend shows it.
+// Others are a neutral grey.
+function lighten(c, w){ // w = share of white; hsl() (unknown team ids) falls back to transparency
+ if(!/^#[0-9a-f]{6}$/i.test(c)) return F1Common.withAlpha(c, 1-w);
+ const n=parseInt(c.slice(1),16), m=v=>Math.round(v+(255-v)*w).toString(16).padStart(2,'0');
+ return '#'+m(n>>16&255)+m(n>>8&255)+m(n&255);
+}
+function champFill(ch){
+ const c=F1Theme.team(F1Common.teamColor(ch.teamId));
+ return ch.mate ? {bg:lighten(c, ch.mate>1 ? 0.8 : 0.55), edge:c} : {bg:c, edge:null};
+}
+const othersFill = ()=>F1Theme.current()==='dark' ? '#6b7280' : '#aaa9a1'; // neutral grey per theme
 const pctWord = p=>p>0 && p<0.5 ? '<1%' : p<100 && p>99.5 ? '>99%' : Math.round(p)+'%';
-function decidedSummaryHTML(rows){
+const champFlag = ch=>F1Common.flagHTML(F1Common.nationalityOf('drivers', ch.id));
+function decidedSummaryHTML(rows, champs){
  const last=rows[rows.length-1], future=rows.slice(1);
- if(rows[0].at>=100) return `<b>Already decided:</b> after Round ${rows[0].round}, no one can catch the leader in the races left.`;
+ if(rows[0].at>=100) return `<b>Already decided:</b> after Round ${rows[0].round}, no one can catch `
+   +(champs && champs.length===1 ? `<b>${champFlag(champs[0])}${champs[0].code}</b>` : 'the leader')+` in the races left.`;
  const mode=future.reduce((m,r)=>r.at>m.at ? r : m, future[0]);
  const half=future.find(r=>r.by>=50);
  const parts=[ mode===last
@@ -957,17 +987,24 @@ function decidedSummaryHTML(rows){
    : `Most likely decided: <b>${roundText(mode.round)}</b>, ${pctWord(mode.at)}` ];
  if(half && half!==last) parts.push(`Half of seasons decided by ${roundText(half.round)}`);
  if(mode!==last) parts.push(`${pctWord(last.at)} go to the final round`);
+ // Who most often wraps it up before the final round (shown champions only; Others isn't a driver).
+ if(champs && champs.length){
+   const early=champs.map((ch,k)=>({ch, p:rows.slice(0,-1).reduce((s,r)=>s+r.seg[k],0)})).reduce((m,x)=>x.p>m.p ? x : m);
+   if(early.p>=0.5) parts.push(`Most often clinched early by <b style="white-space:nowrap">${champFlag(early.ch)}${early.ch.code}</b> (${pctWord(early.p)} of seasons)`);
+ }
  return parts.join(' · ');
 }
 function renderDecided(run){
- const rows=decidedRows=decidedStats(run), P=F1Theme.chart(), ff=getComputedStyle(document.body).fontFamily;
- const lineC=P.knock, barC=F1Common.withAlpha(P.knock, 0.28);
- document.getElementById('decidedSummary').innerHTML=decidedSummaryHTML(rows);
+ const st=decidedStats(run), rows=decidedRows=st.rows, champs=decidedChamps=st.champs, P=F1Theme.chart(), ff=getComputedStyle(document.body).fontFamily;
+ const lineC=P.knock, othersC=othersFill(), hasOthers=st.others>0;
+ document.getElementById('decidedSummary').innerHTML=decidedSummaryHTML(rows, champs);
+ const swatch = f=>`<i class="keyBar" style="background:${f.bg};${f.edge ? `box-shadow:inset 0 0 0 1.5px ${f.edge};` : ''}"></i>`;
  document.getElementById('decidedKey').innerHTML=
-   `<span class="ridgeKeyItem"><i class="keyBar" style="background:${barC}"></i>decided at this round</span>`
+   champs.map(ch=>`<span class="ridgeKeyItem" data-id="${ch.id}">${swatch(champFill(ch))}<span>${champFlag(ch)}${ch.code}</span></span>`).join('')
+   +(hasOthers ? `<span class="ridgeKeyItem" data-id="others">${swatch({bg:othersC})}Others</span>` : '')
    +`<span class="ridgeKeyItem"><i class="keyLine" style="border-color:${lineC}"></i>decided by this round</span>`;
  document.getElementById('decidedNote').textContent=
-   `A simulated season's title counts as decided after the first round in which its champion leads every other driver by more than the points still available: 25 for each Grand Prix and 8 for each sprint left, as for the knockout line on the drivers' page. A lead of exactly that many isn't enough, since a tie would go to countback. Covers every driver, not just the tracked ones. Round ${rows[0].round} has already been run.`;
+   `Each bar is the share of simulated seasons decided at that round, split by who became champion; drivers with under ${DECIDED_MIN_SHARE}% of titles are grouped as Others, and a teammate is a lighter shade; "clinched early" means before the final round. A simulated season's title counts as decided after the first round in which its champion leads every other driver by more than the points still available: 25 for each Grand Prix and 8 for each sprint left, as for the knockout line on the drivers' page. A lead of exactly that many isn't enough, since a tie would go to countback. Covers every driver, not just the tracked ones. Round ${rows[0].round} has already been run.`;
  // Shade the column of the round already run, labelled "Run".
  const shade={id:'runShade', beforeDatasetsDraw(ch){
    const {ctx, chartArea:a, scales:{x}}=ch, x0=x.getPixelForValue(0), half=rows.length>1 ? (x.getPixelForValue(1)-x0)/2 : (a.right-a.left)/2;
@@ -976,25 +1013,35 @@ function renderDecided(run){
    ctx.fillStyle=P.dividerText; ctx.font='10.5px '+ff; ctx.textAlign='center';
    if(ctx.measureText('Run').width+6 <= x0+half-a.left) ctx.fillText('Run', (a.left+x0+half)/2, a.top+12); // the tooltip says it on narrow columns
    ctx.restore(); }};
+ // One stacked bar dataset per shown champion (title chance order, bottom up), then Others on top.
+ const bar=(label, k, f, extra)=>({type:'bar', label, data:rows.map(r=>r.seg[k]), backgroundColor:f.bg, borderColor:f.edge||f.bg,
+   borderWidth:f.edge ? 1.5 : 0, borderSkipped:false, maxBarThickness:28, stack:'decided', order:1, ...extra});
+ const bars=champs.map((ch,k)=>bar(ch.code, k, champFill(ch), {_id:ch.id}));
+ if(hasOthers) bars.push(bar('Others', champs.length, {bg:othersC}, {_id:'others'}));
  if(decidedChart) decidedChart.destroy();
  decidedChart=new Chart(document.getElementById('decidedCanvas'), { type:'bar',
    data:{ labels:rows.map(r=>String(r.round)), datasets:[
      {type:'line', label:'Decided by this round', data:rows.map(r=>r.by), borderColor:lineC, backgroundColor:lineC, borderWidth:2.5,
-      pointRadius:2.5, pointHoverRadius:4, tension:0, order:0},
-     {type:'bar', label:'Decided at this round', data:rows.map(r=>r.at), backgroundColor:barC, borderRadius:2, maxBarThickness:28, order:1},
+      pointRadius:2.5, pointHoverRadius:4, tension:0, order:0, stack:'by'},
+     ...bars,
    ]},
    plugins:[shade],
    options:{ responsive:true, maintainAspectRatio:false, animation:false, interaction:{mode:'index', intersect:false},
      layout:{padding:{top:4}},
-     plugins:{ legend:{display:false}, tooltip:{ itemSort:(a,b)=>a.datasetIndex-b.datasetIndex,
+     plugins:{ legend:{display:false}, tooltip:{
+       itemSort:(a,b)=>(a.dataset.type==='line')-(b.dataset.type==='line') || a.datasetIndex-b.datasetIndex,
+       filter:t=>t.dataset.type==='line' || t.raw>0,
        callbacks:{ title:t=>{ const r=rows[t[0].dataIndex]; return `Round ${r.round}`+(r.race ? ' · '+r.race : '')+(r.run ? ' (already run)' : ''); },
-         label:t=>` ${t.dataset.label}: ${t.raw>0 && t.raw<0.1 ? '<0.1' : t.raw.toFixed(1)}%` } } },
+         beforeBody:t=>{ const r=rows[t[0].dataIndex]; return `Decided at this round: ${decidedPct(r.at)}`; },
+         label:t=>t.dataset.type==='line' ? `Decided by this round: ${decidedPct(t.raw)}` : ` ${t.dataset.label} ${decidedPct(t.raw)}`,
+         labelColor:t=>({borderColor:t.dataset.borderColor, backgroundColor:t.dataset.backgroundColor, borderWidth:t.dataset.type==='line' ? 0 : t.dataset.borderWidth}) } } },
      scales:{
-       x:{grid:{display:false}, border:{color:P.axis}, ticks:{color:P.text, maxRotation:0, autoSkip:true}, title:{display:true, text:'Round', color:P.text}},
-       y:{min:0, max:100, ticks:{stepSize:25, color:P.text, callback:v=>v+'%'}, grid:{color:P.grid}, border:{display:false},
+       x:{stacked:true, grid:{display:false}, border:{color:P.axis}, ticks:{color:P.text, maxRotation:0, autoSkip:true}, title:{display:true, text:'Round', color:P.text}},
+       y:{stacked:true, min:0, max:100, ticks:{stepSize:25, color:P.text, callback:v=>v+'%'}, grid:{color:P.grid}, border:{display:false},
           title:{display:!F1Common.isNarrow(), text:'Simulated seasons', color:P.text}} } }
  });
 }
+const decidedPct = v=>(v>0 && v<0.1 ? '<0.1' : v.toFixed(1))+'%';
 
 // #33: PNG / CSV of the result charts. The subtitle says what was simulated.
 const simSubtitle = ()=>`${F1Export.roundText(currentCalendar && currentCalendar.totalRounds)} · ${lastRun ? lastRun.N.toLocaleString() : 0} simulated seasons`;
@@ -1020,9 +1067,13 @@ F1Export.attach(document.getElementById('oddsCard'), {
 F1Export.attach(document.getElementById('decidedCard'), { // #86
  name:'sim-title-decided', title:()=>'When the title is decided', subtitle:simSubtitle,
  canvas:()=>document.getElementById('decidedCanvas'),
- legend:()=>{ const P=F1Theme.chart(); return [{label:'Decided at this round', color:F1Common.withAlpha(P.knock, 0.28)}, {label:'Decided by this round', color:P.knock}]; },
- csv:()=>decidedRows.length ? [['Round','Race','Already run','Decided at this round (% of seasons)','Decided by this round (% of seasons)'],
-   ...decidedRows.map(r=>[r.round, r.race, r.run ? 'yes' : 'no', r.at, r.by])] : null,
+ // the legend as on the card: each champion's colour (a teammate's lighter), Others, then the line
+ legend:()=>decidedChart ? [...decidedChart.data.datasets.filter(d=>d.type==='bar').map(d=>({label:d.label, color:d.backgroundColor})),
+   {label:'Decided by this round', color:F1Theme.chart().knock}] : [],
+ // per champion: the share of all seasons decided at this round with that champion (they add up to "decided at")
+ csv:()=>decidedRows.length ? [['Round','Race','Already run','Decided at this round (% of seasons)','Decided by this round (% of seasons)',
+     ...decidedChamps.map(ch=>`Decided at this round: ${ch.code} champion (% of seasons)`), 'Decided at this round: other champion (% of seasons)'],
+   ...decidedRows.map(r=>[r.round, r.race, r.run ? 'yes' : 'no', r.at, r.by, ...r.seg])] : null,
 });
 const ridgeCSV = (key, head)=>()=>{ const ch=ridgeCharts[key]; if(!ch) return null; const ds=ch.data.datasets.filter(d=>!d._baseline);
  return [['Driver', ...ch.data.labels.map(head)], ...ds.map(d=>[d._code, ...d._pct])]; };
