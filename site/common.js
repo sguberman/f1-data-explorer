@@ -517,7 +517,7 @@ const F1Common = (() => {
    const raceName = r => { const n=names[r] || (seasonRounds.find(x=>x.round===r)||{}).raceName;
      const s = n ? String(n).replace(/ Grand Prix.*/i,'').replace(String(year),'').trim() : '';
      return s && !/^Round \d+$/i.test(s) ? s : ''; };
-   const raceOf = r => raceName(r) ? ` (${raceName(r)})` : '';
+   const raceOf = r => raceName(r) ? ` (${raceName(r)} GP)` : ''; // "Austrian GP", not just "Austrian"
    const pl = (n, w) => `${n} ${w}${n===1?'':'s'}`;
    const list = a => a.length>1 ? a.slice(0,-1).join(', ')+' and '+a[a.length-1] : a[0]||'';
    // " by outscoring NOR by 12 or more and PIA by 3 or more, unless LEC outscores VER by 5 or more"
@@ -554,7 +554,7 @@ const F1Common = (() => {
    } else {
      const gap = tr.gap==null ? '' : tr.gap>0 ? `${nm(tr.leader)} leads ${nm(tr.second)} by ${pl(tr.gap,'point')}. ` : `${nm(tr.leader)} leads ${nm(tr.second)} on countback. `;
      main = gap + (tr.earliest>=tr.total
-       ? `<b>The title can't be decided before the final round</b> (round ${tr.earliest}${raceName(tr.earliest) ? ', '+raceName(tr.earliest) : ''}).`
+       ? `<b>The title can't be decided before the final round</b> (round ${tr.earliest}${raceName(tr.earliest) ? ', '+raceName(tr.earliest)+' GP' : ''}).`
        : `<b>The title can't be decided before round ${tr.earliest}${raceOf(tr.earliest)}</b> at the earliest.`);
    }
    const who = kind==='teams' ? 'Every team' : 'Every driver';

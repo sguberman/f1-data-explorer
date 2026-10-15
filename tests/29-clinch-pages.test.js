@@ -170,13 +170,13 @@ module.exports = async (t, h) => {
   const snap = s => ({ v: 1, year: 2026, generatedAt: Date.now() - 3600e3, complete: true, calendar: calendar(s), rounds: s.rounds });
   const open = async (name, s, opts = {}) => { const q = await h.openPage(name, { snapshots: { 2026: snap(s) }, ...opts }); await h.loaded(q); return q; };
   const wording = [
-    ['drivers', 'twoRivals', 8, 'VER clinches the title in round 9 (Las Vegas) by outscoring NOR by 12 or more and PIA by 3 or more. For example, a win with NOR P4 or lower.'],
-    ['drivers', 'sprintNext', 8, 'VER clinches the title in round 9 (Las Vegas) by outscoring NOR by 12 or more and PIA by 3 or more. For example, winning both with NOR on 21 points or fewer for the weekend.'],
-    ['drivers', 'oneRival', 7, 'VER clinches the title in round 8 (Austrian) by outscoring NOR by 2 or more. A win would do it, whatever the others do.'],
-    ['drivers', 'decided', 9, 'VER is champion: clinched in round 8 (Austrian), with 2 rounds to spare.'],
-    ['drivers', 'decided', 3, 'VER leads NOR by 21 points. The title can\'t be decided before round 7 (Spanish) at the earliest.'],
+    ['drivers', 'twoRivals', 8, 'VER clinches the title in round 9 (Las Vegas GP) by outscoring NOR by 12 or more and PIA by 3 or more. For example, a win with NOR P4 or lower.'],
+    ['drivers', 'sprintNext', 8, 'VER clinches the title in round 9 (Las Vegas GP) by outscoring NOR by 12 or more and PIA by 3 or more. For example, winning both with NOR on 21 points or fewer for the weekend.'],
+    ['drivers', 'oneRival', 7, 'VER clinches the title in round 8 (Austrian GP) by outscoring NOR by 2 or more. A win would do it, whatever the others do.'],
+    ['drivers', 'decided', 9, 'VER is champion: clinched in round 8 (Austrian GP), with 2 rounds to spare.'],
+    ['drivers', 'decided', 3, 'VER leads NOR by 21 points. The title can\'t be decided before round 7 (Spanish GP) at the earliest.'],
     ['drivers', 'final', 9, null],
-    ['drivers', 'cbOpen', 4, 'NOR is the 2026 champion: clinched in the final round (Miami), level on points with VER and ahead on countback.'],
+    ['drivers', 'cbOpen', 4, 'NOR is the 2026 champion: clinched in the final round (Miami GP), level on points with VER and ahead on countback.'],
   ];
   for(const [name, sc, L, want] of wording){
     const q = await open(name, S[sc]);
@@ -184,7 +184,7 @@ module.exports = async (t, h) => {
     const got = await q.$eval('#titleRace .trText', e => e.textContent.replace(/\s+/g, ' ').trim());
     if(want) t.check(`${name}, ${sc}, round ${L}: "${want}"`, got === want, got);
     else { const f = results['final:drivers:9'], ver = f.lead[0], others = f.lead.slice(1);
-      t.check(`${name}, final round: names the final round, the leader's terms and the other contenders`, got.startsWith('VER clinches the title in round 10 (Abu Dhabi), the final round, unless ') && got.includes('the final round, unless NOR outscores VER by 5 or more.')
+      t.check(`${name}, final round: names the final round, the leader's terms and the other contenders`, got.startsWith('VER clinches the title in round 10 (Abu Dhabi GP), the final round, unless ') && got.includes('the final round, unless NOR outscores VER by 5 or more.')
         && got.includes('NOR can also clinch it there by outscoring VER by 6 or more') && others.length >= 1, got); }
     if(SHOTS) await q.locator('#titleRace').screenshot({ path: path.join(SHOTS, `clinch-state-${sc}-${L}.png`) });
     t.check(`${name}, ${sc}: the countback note shows only for a next-race clinch`, (await q.$('#titleRace .trTie') !== null) === (results[`${sc}:drivers:${L}`].state === 'next'));
@@ -194,11 +194,11 @@ module.exports = async (t, h) => {
   const tq = await open('constructors', S.twoRivals);
   const tr = results['twoRivals:teams:8'], tmain = await tq.$eval('#titleRace .trText', e => e.textContent.replace(/\s+/g, ' ').trim());
   const tname = { red_bull: 'Red Bull', mclaren: 'McLaren', ferrari: 'Ferrari', mercedes: 'Mercedes', aston_martin: 'Aston Martin', alpine: 'Alpine' };
-  const wantT = tr.state === 'next' ? `${tname[tr.lead[0].id]} clinches the title in round 9 (Las Vegas)` : tr.state === 'decided' ? `${tname[tr.champion]} is champion` : `${tname[tr.leader]} leads`;
+  const wantT = tr.state === 'next' ? `${tname[tr.lead[0].id]} clinches the title in round 9 (Las Vegas GP)` : tr.state === 'decided' ? `${tname[tr.champion]} is champion` : `${tname[tr.leader]} leads`;
   t.check(`constructors, twoRivals round 8: team names, points only ("${wantT}…")`, tmain.startsWith(wantT) && !/ P\d| a win/i.test(tmain) && await h.text(tq, '#titleRace .trSub') === 'Every team, after round 8.', tmain);
   const iw = indep(S.twoRivals, 8, 'teams'), [[rid, rneed]] = Object.entries(iw.lead[0].conds);
   t.check(`constructors: a single rival who may outscore the leader by a little reads "…unless ${tname[rid]} outscores ${tname[iw.lead[0].id]} by ${1 - rneed} or more."`,
-    Object.keys(iw.lead[0].conds).length === 1 && rneed < 0 && tmain === `${tname[iw.lead[0].id]} clinches the title in round 9 (Las Vegas) unless ${tname[rid]} outscores ${tname[iw.lead[0].id]} by ${1 - rneed} or more.`, tmain);
+    Object.keys(iw.lead[0].conds).length === 1 && rneed < 0 && tmain === `${tname[iw.lead[0].id]} clinches the title in round 9 (Las Vegas GP) unless ${tname[rid]} outscores ${tname[iw.lead[0].id]} by ${1 - rneed} or more.`, tmain);
   for(const L of [7, 3]){
     await h.setRound(tq, L); await tq.waitForTimeout(60);
     const w = indep(S.twoRivals, L, 'teams'), m = await tq.$eval('#titleRace .trText', e => e.textContent.replace(/\s+/g, ' ').trim());
