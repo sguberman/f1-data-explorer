@@ -157,7 +157,8 @@ Move something into `common.js` only once it's genuinely identical on every page
   - position: `d`, `sort`, `chart`, `below10`, `sprint`
   - what-if: `gp` and `sprint` orders (`-` marks the not-classified line), and `start=clinch` (#85: start from the
     "🏆 Title clinch" order; the orders are then left out while they're still that order)
-  - simulator: `d`, `sort`, `o` (`id:dnf:win`, `a` = auto), `c` (`a:b:n`), `n` (runs) and `seed`
+  - simulator: `d`, `sort`, `o` (`id:dnf:win`, `a` = auto), `c` (`a:b:n`), `n` (runs), `w` (#117: Form from, a
+    number of races or `all`; left out at the default 8) and `seed`
   
   How it works:
   - `F1Controls` reads the season and round on the first load.
@@ -365,11 +366,23 @@ squares on desktop, ~11px at 390px with 24 rounds, with no scrolling. Export: th
 NC, or blank), plus a sprint column after each sprint round while Sprints is shown. Never fetches; redraws on
 picker, sort, slider, Show options, season and theme changes.
 
-**simulator.html** — Simulates the rest of the season for the **whole grid**. Each race order is drawn slot
-by slot from each driver's own finishing-position histogram (GP results only, every classified result —
-DNFs, i.e. no classified position, are left out; `HIST_SMOOTH = 0.5`). Retirements are modeled separately
-(#39): drivers on **auto** retire in each event at their own DNF rate this season (results with no classified
-position ÷ GP starts — the same rule as the position page's NC, #46). Everyone is on auto unless set
+**simulator.html** — Simulates the rest of the season for **every driver in the latest round** (anyone who didn't
+start round L, e.g. a replaced driver, keeps their points but doesn't race; they get no settings and can't be in a
+collision). **Race model (#117, replacing #30's exact-place histogram + flat 0.5 bonus, which gave every driver a
+share of every place and simulated leaders at ~60% of their real scoring):** each race order is drawn place by place
+for **every position** (P1 to last), weighting the drivers not yet placed by `placeWeight`: their finishes at **that
+place or better** in the data window, plus a **near bonus** for finishes just behind it (+0.5 one place behind,
+halving each place further: `NEAR_BONUS`, `NEAR_DECAY`), plus a 0.01 floor (`WEIGHT_FLOOR`), so a driver usually
+finishes near where they have been and anything stays possible (#116). The **data window** is the "Form from"
+stepper in the run card: the last N Grand Prix starts of each driver (`WINDOW_MIN` 3, default 8) up to the **whole
+season** (`dataWindow = Infinity`; a window as long as the races so far shows as the whole season). GP results only;
+sprints use the same weights with sprint points. Retirements are modeled separately (#39): drivers on **auto**
+retire in each event with `modelDnfRate`: the window's DNF share (no classified position, the same rule as the
+position page's NC, #46) blended with 4 races (`DNF_PRIOR_RACES`) at the grid's DNF rate so far (`gridDnfRate`).
+Final standings split **equal points by countback** (most GP wins, then P2s, …: real finishes so far plus the
+simulated GP places, `countback()`), then the current standings. A 2021–2025 backtest (average miss on the final
+top 10's points at ½ / ⅔ / ⅚ of a season) gave: last-5 average 28 / 29 / 13, old model 41 / 31 / 16, this model
+27 / 25 / 12. Everyone is on auto unless set
 otherwise in the "Tracked drivers in the remaining races" card: each tracked driver has a **DNFs** and a
 **Wins** stepper, both showing grey "auto" by default (#42, #14); − from auto sets 0, + sets 1, − at 0 goes
 back to auto. "Reset all to auto" clears both; "Reset all to 0" sets both to 0. A set DNF count = retire
@@ -521,8 +534,8 @@ interaction. If the calendar fails or has no dates, the strip stays hidden.
 
 - position.html and simulator.html default to the **top 8**, which no longer matches any preset, so no
   preset is highlighted on first load (owner was told; no decision yet).
-- The simulator's histograms use **GP results only**, while position.html now includes sprints by
-  default, so the two pages' "form" can differ.
+- The simulator's race model uses **GP results only** (#117: its last N starts by default), while position.html
+  includes sprints and the whole season by default, so the two pages' "form" can differ.
 - The season list and per-season round/sprint estimates come from the hardcoded `SEASON_META` in `common.js`.
 - Mobile Safari behavior can't be fully verified with headless Chromium. Check owner screenshots.
 
@@ -548,7 +561,10 @@ since fonts render differently on different machines.
 - Test files (`NN-name.test.js`) export `async (t, h) => { t.check(name, ok, detail) ... }`. Current files:
   smoke (every page, both themes, desktop + phone, no errors), common (#44), knockout (#45/#46),
   status (#23/#48/#49), movement (#47), position (#9), projection (#10),
-  simulator (#39 DNF modeling, #42 auto DNFs, #14 wins, #11 collisions, #17 results kept), when the title is decided
+  simulator (#39 DNF modeling, #42 auto DNFs, #14 wins, #11 collisions, #17 results kept), the race model (#117: weights
+  for every place and the DNF blend against an independent calculation at windows 8, 4 and the whole season; every running
+  driver placed in every event; countback on equal points; drivers not in the latest round never race; the top 3 score
+  within 20% of their recent points per GP; Form from stepper limits, URL, link, early rounds, never fetches), when the title is decided
   (#86: the decided round on constructed seasons against an independent calculation — early, final round, countback tie,
   sprints; the engine against an independent replay of simulated seasons; cumulative chart matching `lastRun.decided`;
   stacked per-champion segments against an independent count from `lastRun.decided` + `lastRun.champion`, segments adding up
