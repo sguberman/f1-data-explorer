@@ -13,6 +13,10 @@ const DRIVER_NAT = ['British','Italy','Monaco','Great Britain','British','Austra
 const DRIVER_NUM = [63,12,16,44,1,81,3,6,10,43,31,87,23,55,27,5,14,18,30,41,77,11];
 const CIRCUITS = ['Australia','China','Japan','Bahrain','Saudi Arabia','USA','Canada','Monaco','Spain','Austria','United Kingdom','Belgium',
   'Hungary','Netherlands','Italy','Spain','Azerbaijan','Singapore','United States','Mexico','Brazil','United States','Qatar'];
+// #85: the calendar's circuit cities (f1api.dev's circuit.city), for the homepage's location line. Round 22 has none
+// (country only), and round 8's city is its country's name (Monaco).
+const CITIES = ['Melbourne','Shanghai','Suzuka','Sakhir','Jeddah','Miami','Montréal','Monaco','Barcelona','Spielberg','Silverstone',
+  'Spa-Francorchamps','Budapest','Zandvoort','Monza','Madrid','Baku','Marina Bay','Austin','Mexico City','São Paulo',null,'Lusail'];
 const DRIVERS = TEAMS.flatMap(([teamId, teamName], i) => [0,1].map(k => ({
   driverId:`d${i}_${k}`, shortName:`D${String.fromCharCode(65+i)}${k}`, name:`Driver${i}`, surname:`Team${k}`, teamId, teamName,
   number:DRIVER_NUM[2*i+k], nationality:DRIVER_NAT[2*i+k], teamNationality:TEAM_NAT[i] })));
@@ -45,7 +49,7 @@ function api(url){
   if(+p[0] !== 2026) return {status:404, body:{}};
   // circuit: an object on odd rounds, a one-item array on even ones (the race endpoint does the latter)
   const circuit = r => r % 2 ? {circuitId:`c${r}`, country:CIRCUITS[r-1]} : [{circuitId:`c${r}`, country:CIRCUITS[r-1]}];
-  if(p.length === 1) return {status:200, body:{races: Array.from({length:TOTAL}, (_,i) => ({round:i+1, raceName:`Round ${i+1} Grand Prix`, circuit:{country:CIRCUITS[i]},
+  if(p.length === 1) return {status:200, body:{races: Array.from({length:TOTAL}, (_,i) => ({round:i+1, raceName:`Round ${i+1} Grand Prix`, circuit:{country:CIRCUITS[i], ...(CITIES[i] ? {city:CITIES[i]} : {})},
     schedule:{race:{date:RACE_DATES[i], time:RACE_TIMES[i]}, sprintRace:{date: SPRINTS.includes(i+1) ? dayBefore(RACE_DATES[i]) : null, time:null}}}))}};
   const r = +p[1];
   if(p[2] === 'sprint'){
@@ -56,4 +60,4 @@ function api(url){
   return {status:200, body:{races:{raceName:`Round ${r} Grand Prix`, circuit:circuit(r), results:results(r, false)}}};
 }
 
-module.exports = { api, COMPLETED, TOTAL, SPRINTS, RACE_DATES, RACE_TIMES, DRIVER_NAT, DRIVER_NUM, TEAM_NAT, CIRCUITS };
+module.exports = { api, COMPLETED, TOTAL, SPRINTS, RACE_DATES, RACE_TIMES, DRIVER_NAT, DRIVER_NUM, TEAM_NAT, CIRCUITS, CITIES };

@@ -562,9 +562,13 @@ const F1Common = (() => {
    return {tr, main, note, nm};
   }
 
+  // #85: the "Try it in What-If →" link for a title that can be clinched at the race after `round`:
+  // `whatif.html?season=Y&round=L&start=clinch` opens What-If on round L+1, starting from a finishing order that clinches
+  // it. The round is left out on the latest round (`latest`), as #31's links do.
+  const clinchLink = (year, round, latest) => `whatif.html?season=${year}${round<latest ? '&round='+round : ''}&start=clinch`;
+
   // #85: the "Title race" line under the points chart (both championship pages), written into `el`. When someone can
-  // clinch at the next race it ends with a link to try that race in What-If (`whatif.html?season=Y&round=L` opens it on
-  // round L+1; the round is left out on the latest round, as #31's links do).
+  // clinch at the next race it ends with a link to try that race in What-If (clinchLink()).
   function renderTitleRace(el, seasonRounds, round, kind, {year, calendar=null}={}){
    const {tr, main, note} = titleRaceText(seasonRounds, round, kind, {year, calendar});
    el.dataset.state = tr.state;
@@ -572,7 +576,7 @@ const F1Common = (() => {
    el.hidden=false;
    const latest = Math.max(...seasonRounds.map(r=>r.round));
    const link = tr.state==='next'
-     ? ` <a class="trLink" href="whatif.html?season=${year}${round<latest ? '&round='+round : ''}">Try it in What-If →</a>` : '';
+     ? ` <a class="trLink" href="${clinchLink(year, round, latest)}">Try it in What-If →</a>` : '';
    el.innerHTML = `<div class="trMain"><span class="trLabel">Title race</span> <span class="trText">${main}</span>${link}</div>`
      + (note ? `<div class="trNote"><span class="trTie">${note}</span></div>` : '');
    return tr;
@@ -590,16 +594,15 @@ const F1Common = (() => {
      return {champion:tr.champion, html, won:true};
    }
    const list = a => a.length>1 ? a.slice(0,-1).join(', ')+' and '+a[a.length-1] : a[0]||'';
-   const short = a => a.length>4 ? list([...a.slice(0,3), `${a.length-3} others`]) : list(a);
    const full = tr.contenders.filter(c=>!c.tieOnly).map(c=>nm(c.id)), tie = tr.contenders.filter(c=>c.tieOnly).map(c=>nm(c.id));
    const html = !full.length
      ? `Title still open: ${list(tie)} can only draw level with ${nm(tr.leader)} on points, which would go to countback.`
-     : `Title still open: ${short([nm(tr.leader), ...full])} can still win`
-       + (tie.length ? ` (${short(tie)} only by drawing level on points, which would go to countback).` : '.');
+     : `Title still open: ${list([nm(tr.leader), ...full])} can still win` // everyone, in standings order
+       + (tie.length ? ` (${list(tie)} only by drawing level on points, which would go to countback).` : '.');
    return {champion:null, html, won:false};
   }
 
-  return { TEAM_COLORS, SEASON_TEAM_COLORS, setSeason, maxWeekendPoints, titleRace, titleRaceText, renderTitleRace, titleResultText, teamColor, SHORT_TEAM_NAMES, shortTeamName, SEASON_META, seasonMeta, YEARS,
+  return { TEAM_COLORS, SEASON_TEAM_COLORS, setSeason, maxWeekendPoints, titleRace, titleRaceText, renderTitleRace, titleResultText, clinchLink, teamColor, SHORT_TEAM_NAMES, shortTeamName, SEASON_META, seasonMeta, YEARS,
     isNarrow, withAlpha, standingsMoves, moveHTML, driverPickerRowHTML, markActivePreset,
     flagCode, flagHTML, flagSpace, FLAG_ROOM, drawFlag, indexPeople, nationalityOf, numberOf, ridgeFlags, ridgeMarkers, ridgeKeyHTML, standingsOrder, standingsRank, pickerTeamLabelHTML,
     standingsByRound, renderPositionChart, projectionsByRound, renderProjectedPointsChart };
