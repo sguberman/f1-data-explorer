@@ -36,7 +36,7 @@ site/                 The website (deployed as the site root, so URLs are unchan
   position.html       Race finishing-position ridgeline chart per driver, with sort/show options, and a
                       results heat strip (#87).
   simulator.html      Monte Carlo rest-of-season title simulator with ridgeline result charts.
-  whatif.html         What-if: drag a finishing order for a round, see both championships after it.
+  whatif.html         What-if: drag a finishing order for a round, see both championships after it, with the title race (#85).
   common.js           F1Common: helpers shared by the chart pages (issue #44 and later).
   data.js             F1Data: fetch, cache (localStorage), normalize f1api.dev data; SPRINT_OVERRIDES.
   controls.js         F1Controls: shared season dropdown + "as of round" slider; emits events.
@@ -71,7 +71,8 @@ across pages lives in shared files instead (issue #44), so a change is made once
   `indexPeople()` / `nationalityOf()` / `numberOf()`), `ridgeMarkers()` / `ridgeKeyHTML()` (#30),
   `standingsByRound()` / `renderPositionChart()` (the championship-position chart, issue #9),
   `projectionsByRound()` / `renderProjectedPointsChart()` (projection history, issue #10),
-  `maxWeekendPoints()` / `titleRace()` / `renderTitleRace()` (the title clinch calculator, #85).
+  `maxWeekendPoints()` / `titleRace()` / `titleRaceText()` / `renderTitleRace()` / `titleResultText()` (the title clinch
+  calculator, #85).
 - `theme.css`: picker list styles (`.pickerRow`, `.pickerDot`, …), `.flag`, `.pickerNum`, `.ridgeKey`.
 - `flags/`: small SVG flags (from flag-icons, MIT, see `flags/LICENSE.txt`) for the countries the site maps.
   Spain and Mexico are simplified to keep them small. Add a file (and a name in `FLAG_CODES`) for a new country.
@@ -217,11 +218,10 @@ and NOR · 3 wins each"; more than three read "VER, NOR, LEC +2 more", all names
 come from `standingsOrder()`. Tiles three across on desktop, two on phones; a note under them says what each fact
 counts. Rebuilt only when the season or round changes (theme colours are CSS variables); never fetches; no export.
 
-**Title race (#85, version A, both championship pages; `titleRace()` / `renderTitleRace()` in `common.js`):** a compact
+**Title race (#85, both championship pages and What-If; `titleRace()` / `titleRaceText()` / `renderTitleRace()` in `common.js`):** a compact
 highlighted line in the points card, between the chart (and the phone end legend) and the knockout note, saying in plain
 sentences what the title needs, for the **whole field** (the real standings via `standingsOrder()`, not the picked entries)
-as of the slider's round L, the next race being L+1. Version A of #85 (a version B on the What-If page was built in
-parallel for the owner to compare). States:
+as of the slider's round L, the next race being L+1. Driver codes / short team names in bold with their flags. States:
 - **decided**: "VER is champion: clinched in round 20 (Qatar), with 3 rounds to spare." After the last round: "VER is the
   2026 champion: clinched in round 20 (Qatar)" / "…in the final round (Abu Dhabi)", plus ", level on points with NOR and
   ahead on countback" when it ended level.
@@ -230,8 +230,10 @@ parallel for the owner to compare). States:
   least as many points as NOR" for a margin of 0. Drivers add a finishing-position example: "A win would do it, whatever the
   others do." / "For example, a win with NOR P4 or lower." (sprint weekends: "winning both with NOR on 21 points or fewer for
   the weekend"). Constructors are points only. Anyone else who could clinch there gets "NOR can also clinch it there by …"
-  (two at most, then "N more…"). The final round reads "…in round 24 (Abu Dhabi), the final round, …". A note says one point
-  less could leave them level on points, which countback would decide.
+  (two at most, then "N more…"). The final round reads "…in round 24 (Abu Dhabi), the final round, …". A note under it says
+  "One point less could leave them level on points, which would go to countback." The line ends with **"Try it in What-If →"**,
+  linking to `whatif.html?season=Y` (plus `&round=L` when the slider isn't on the latest round, as #31's links do), which
+  opens What-If on round L+1. The link is shown in this state only: in the others the next race can't decide the title.
 - **can't yet**: "VER leads NOR by 34 points. The title can't be decided before round 19 (Las Vegas) at the earliest." (or
   "…before the final round (round 24, Abu Dhabi)."): the first round where anyone still in it could clinch by scoring the
   most possible from the next race on while everyone else scores nothing.
@@ -244,7 +246,22 @@ remaining sprints are put straight after the loaded rounds (the most points stil
 Clinched = every rival is more points behind than are left, or exactly that many when countback is already settled even if
 the rival wins every Grand Prix left (teams: 1-2) while the leader scores nothing. Next-race margins are strict (one point more
 than a tie). The earliest round counts a tie as possible, so it is never later than the real earliest. Rebuilt only when the
-season or round changes (colours are CSS variables); never fetches; no export. "Every driver/team, after round L." under it.
+season or round changes (colours are CSS variables); never fetches; no export. (An "Every driver/team, after round L." line
+under it was removed by the owner.)
+
+**Title race on What-If (#85):** the same calculation and wording (`titleRaceText()`, so the pages can't drift apart):
+- A "Title race" box (the same look) above the drag lists, for the round being edited (T = L+1) from the standings after L,
+  one line per championship labelled "Drivers' title" / "Constructors' title" (constructors in points only), plus the
+  countback note when either can be clinched there. No What-If link, and no "Every driver" line. On a replayed past round
+  it uses only the rounds before it.
+- A live line above each result table, from `titleResultText()` = `titleRace()` on the season with your dragged result as
+  round T (later rounds left out), rebuilt on every move: "🏆 With this result, VER is champion." / "…, level on points with
+  NOR and ahead on countback." (final round tie) / "🏆 VER is already champion." (clinched before T) / "Title still open:
+  VER and NOR can still win." (more than four: "…, PIA and 2 others") / "Title still open: NOR can only draw level with VER
+  on points, which would go to countback." (a lead equal to the points left with countback still open; `titleRace()`'s
+  `contenders` with `tieOnly`). Each championship on its own, so the constructors' title can be won while the drivers'
+  stays open.
+- A **🏆 Champion** tag (just 🏆 on phones) on the champion's row in its table, shaded row.
 
 **Gap to leader (#83, both championship pages):** a **Show** dropdown (`#ptsView`, `.ddSelect`, beside the legend; on
 phones on its own line above it) switches the points chart between *Points* (default) and *Gap to leader*: each picked
@@ -383,6 +400,8 @@ drivers' and constructors' tables after that round: position, ▲/▼ vs the sta
 before, gained and after, ranked with countback (`F1Common.standingsOrder` on the season with that round
 replaced by your result; later rounds left out). Full names on desktop, codes / short team names on phones.
 Live and lap-by-lap running orders were considered and left out (see #48 for the API research).
+Title race (#85, see "Title race on What-If" above): a box above the lists with what each title needs at this round, a live
+line above each table and a 🏆 Champion tag on the champion's row as you drag.
 
 **index.html** — Static landing page (#50): five cards, one per row, in the order Drivers' Championship,
 Constructors' Championship, Race Finishing Positions, Title Simulator, What-If Results. Each card has a
@@ -511,11 +530,16 @@ since fonts render differently on different machines.
   result, CSV/PNG of the gap view, URL round-trip, never fetches, phone layout, both pages), results heat strip (#87:
   squares against an independent calculation incl. NC, picker, sort order, slider, hover/tap details with sprints,
   PNG/CSV, both themes' colours and a live theme switch, a 24-round season fitting 390px, never fetches;
-  `HEAT_SHOTS=<folder>` saves card screenshots), title race (#85 version A, both championship pages: the calculation on
+  `HEAT_SHOTS=<folder>` saves card screenshots), title race (#85, both championship pages: the calculation on
   constructed seasons — decided, next-race clinch against one and two rivals, a sprint weekend, can't yet, final round,
   countback ties, fastest-lap seasons — against an independent calculation for drivers and teams at every round; each
   state's wording, the fake season's earliest round, slider, whole field, theme, season switch, never fetches, both
-  themes and the phone fit; `CLINCH_SHOTS=<folder>` saves card and state screenshots). The harness
+  themes and the phone fit, the What-If link only on a next-race clinch with the round when the slider is back, and no
+  "Every driver" line; `CLINCH_SHOTS=<folder>` saves card and state screenshots), title race on What-If (#85, `30-clinch-whatif`:
+  the box's wording against an independent calculation and the championship pages' line, the live line and champion tag
+  appearing and disappearing with keyboard drags on constructed near-decided seasons, the constructors' title won with the
+  drivers' open, a level-at-best lead with countback open or settled, a final-round countback tie, a decided season, a
+  replayed sprint round, never fetching, both themes and the phone fit). The harness
   never serves the real `site/data/*.json`: tests pass `snapshots` built from the fake season. The fixture's names mix country names and demonyms, with
   one unknown. Logic is checked against
   independent calculations written in the tests, not against the site's own helpers.

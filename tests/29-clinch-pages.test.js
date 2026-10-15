@@ -1,9 +1,10 @@
-// #85 (version A): the "Title race" line under the points chart on the drivers' and constructors' pages — what the
+// #85: the "Title race" line under the points chart on the drivers' and constructors' pages — what the
 // championship leader needs at the next race to clinch the title, or the earliest round it can be decided, for the
 // whole field. The fake fixture season is far from decided, so the calculation is checked on constructed seasons
 // (decided, can clinch next race against one or two rivals, a sprint weekend, can't yet, final round, countback ties)
 // against an independent calculation written here, for drivers and teams at every round. The rendered text, slider
-// following, never fetching, both themes and the phone fit are checked on both pages.
+// following, the What-If link (only when someone can clinch at the next race; it opens that round in What-If), never
+// fetching, both themes and the phone fit are checked on both pages. The What-If page's side is in 30-clinch-whatif.
 const path = require('path');
 module.exports = async (t, h) => {
   const SHOTS = process.env.CLINCH_SHOTS || null; // a folder: save card screenshots there
@@ -137,7 +138,8 @@ module.exports = async (t, h) => {
   const want12 = `${codeOf(fxWant.leader)} leads ${codeOf(second)} by ${tot(fxWant.leader, 12) - tot(second, 12)} points. The title can't be decided before round ${fxWant.earliest} at the earliest.`;
   const main = () => p.$eval('#titleRace .trText', e => e.textContent.replace(/\s+/g, ' ').trim()).catch(() => '(missing)');
   t.check('fake season, round 12: says who leads and the earliest round, from the independent calculation', await main() === want12, await main() + ' ≠ ' + want12);
-  t.check('…labelled "Title race", with "Every driver, after round 12." under it', await h.text(p, '#titleRace .trLabel') === 'Title race' && await h.text(p, '#titleRace .trSub') === 'Every driver, after round 12.', await h.text(p, '#titleRace'));
+  t.check('…labelled "Title race", with no "Every driver, after round 12." line under it (nor any note or link)', await h.text(p, '#titleRace .trLabel') === 'Title race'
+    && !/Every driver|after round/.test(await h.text(p, '#titleRace')) && !(await p.$('#titleRace .trSub, #titleRace .trNote, #titleRace .trLink')), await h.text(p, '#titleRace'));
   t.check('placement: in the points card, under the chart, above the knockout note', await p.evaluate(() => {
     const el = document.getElementById('titleRace'), card = document.getElementById('c').closest('.card');
     return card.contains(el) && el.nextElementSibling.id === 'sm' && el.getBoundingClientRect().top > document.getElementById('chartWrap').getBoundingClientRect().bottom; }));
@@ -145,7 +147,7 @@ module.exports = async (t, h) => {
   for(const r of [6, 2]){
     await h.setRound(p, r); await p.waitForTimeout(60);
     const w = indep(fx, r, 'drivers');
-    t.check(`slider to round ${r}: follows (earliest round ${w.earliest})`, (await main()).endsWith(`before round ${w.earliest} at the earliest.`) && (await h.text(p, '#titleRace .trSub')) === `Every driver, after round ${r}.`, await main());
+    t.check(`slider to round ${r}: follows (earliest round ${w.earliest})`, (await main()).endsWith(`before round ${w.earliest} at the earliest.`) && !/Every driver/.test(await h.text(p, '#titleRace')), await main());
   }
   await h.setRound(p, 12); await p.waitForTimeout(60);
   const before = await p.$eval('#titleRace', e => e.innerHTML);
@@ -187,7 +189,14 @@ module.exports = async (t, h) => {
       t.check(`${name}, final round: names the final round, the leader's terms and the other contenders`, got.startsWith('VER clinches the title in round 10 (Abu Dhabi GP), the final round, unless ') && got.includes('the final round, unless NOR outscores VER by 5 or more.')
         && got.includes('NOR can also clinch it there by outscoring VER by 6 or more') && others.length >= 1, got); }
     if(SHOTS) await q.locator('#titleRace').screenshot({ path: path.join(SHOTS, `clinch-state-${sc}-${L}.png`) });
-    t.check(`${name}, ${sc}: the countback note shows only for a next-race clinch`, (await q.$('#titleRace .trTie') !== null) === (results[`${sc}:drivers:${L}`].state === 'next'));
+    const isNext = results[`${sc}:drivers:${L}`].state === 'next';
+    t.check(`${name}, ${sc}: the countback note shows only for a next-race clinch, alone (no "Every driver" line)`, (await q.$('#titleRace .trTie') !== null) === isNext
+      && (isNext ? await h.text(q, '#titleRace .trNote') === 'One point less could leave them level on points, which would go to countback.' : !(await q.$('#titleRace .trNote'))) && !(await q.$('#titleRace .trSub')), await h.text(q, '#titleRace'));
+    // The What-If link: only for a next-race clinch; the round only when the slider isn't on the latest round.
+    const href = await q.$eval('#titleRace .trLink', a => a.getAttribute('href')).catch(() => null);
+    const wantHref = isNext ? `whatif.html?season=2026${L < S[sc].rounds.length ? '&round=' + L : ''}` : null;
+    t.check(`${name}, ${sc}, round ${L}: ${isNext ? 'ends with "Try it in What-If →" linking to ' + wantHref : 'no What-If link'}`, href === wantHref
+      && (!isNext || (await h.text(q, '#titleRace .trMain')).endsWith('Try it in What-If →')), String(href));
     await q.done();
   }
   // Constructors: points only (no finishing-position example), team names.
@@ -195,7 +204,8 @@ module.exports = async (t, h) => {
   const tr = results['twoRivals:teams:8'], tmain = await tq.$eval('#titleRace .trText', e => e.textContent.replace(/\s+/g, ' ').trim());
   const tname = { red_bull: 'Red Bull', mclaren: 'McLaren', ferrari: 'Ferrari', mercedes: 'Mercedes', aston_martin: 'Aston Martin', alpine: 'Alpine' };
   const wantT = tr.state === 'next' ? `${tname[tr.lead[0].id]} clinches the title in round 9 (Las Vegas GP)` : tr.state === 'decided' ? `${tname[tr.champion]} is champion` : `${tname[tr.leader]} leads`;
-  t.check(`constructors, twoRivals round 8: team names, points only ("${wantT}…")`, tmain.startsWith(wantT) && !/ P\d| a win/i.test(tmain) && await h.text(tq, '#titleRace .trSub') === 'Every team, after round 8.', tmain);
+  t.check(`constructors, twoRivals round 8: team names, points only ("${wantT}…"), no "Every team" line`, tmain.startsWith(wantT) && !/ P\d| a win/i.test(tmain) && !/Every team/.test(await h.text(tq, '#titleRace')), tmain);
+  t.check('constructors: the What-If link on a next-race clinch (latest round: season only)', await tq.$eval('#titleRace .trLink', a => a.getAttribute('href')).catch(() => null) === 'whatif.html?season=2026');
   const iw = indep(S.twoRivals, 8, 'teams'), [[rid, rneed]] = Object.entries(iw.lead[0].conds);
   t.check(`constructors: a single rival who may outscore the leader by a little reads "…unless ${tname[rid]} outscores ${tname[iw.lead[0].id]} by ${1 - rneed} or more."`,
     Object.keys(iw.lead[0].conds).length === 1 && rneed < 0 && tmain === `${tname[iw.lead[0].id]} clinches the title in round 9 (Las Vegas GP) unless ${tname[rid]} outscores ${tname[iw.lead[0].id]} by ${1 - rneed} or more.`, tmain);
@@ -206,6 +216,16 @@ module.exports = async (t, h) => {
       : w.state === 'decided' ? m.startsWith(`${tname[w.champion]} is champion: clinched in round ${w.clinched}`) : m.includes(`before round ${w.earliest}`);
     t.check(`constructors: slider to round ${L} follows (${w.state})`, ok, m + ' ' + JSON.stringify(w));
   }
+  // Following the link from an earlier round opens What-If on the round after it, with the same title-race wording.
+  const tw = indep(S.twoRivals, 7, 'teams');
+  if(tw.state === 'next'){
+    await h.setRound(tq, 7); await tq.waitForTimeout(60);
+    const t7 = await tq.$eval('#titleRace .trText', e => e.textContent.replace(/\s+/g, ' ').trim());
+    t.check('constructors, round 7: the link carries the round', await tq.$eval('#titleRace .trLink', a => a.getAttribute('href')).catch(() => null) === 'whatif.html?season=2026&round=7');
+    await tq.click('#titleRace .trLink'); await h.loaded(tq);
+    t.check('…and opens What-If on round 8, saying the same about the constructors\' title', /whatif\.html/.test(tq.url()) && /Round 8/.test(await h.text(tq, '#orderHeading'))
+      && await tq.$eval('#wiTitleRace .trMain[data-kind="teams"] .trText', e => e.textContent.replace(/\s+/g, ' ').trim()).catch(() => '') === t7, tq.url());
+  } else t.check('constructors, round 7 is a next-race clinch (scenario check)', false, JSON.stringify(tw));
   t.check('constructors: no page errors', tq.errors.length === 0, tq.errors.join('; '));
   await tq.done();
   // Constructors on the fake season: the independent earliest round.

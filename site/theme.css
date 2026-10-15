@@ -212,8 +212,9 @@ html.f1-loading .f1-skel::after{content:"";position:absolute;inset:0;z-index:6;b
   .rr-table th,.rr-table td{padding-left:4px;padding-right:4px;}
 }
 
-/* #85 (version A): "Title race" line under the points chart on both championship pages — what the leader needs at
-   the next race to clinch the title, or the earliest round it can be decided. Whole field, follows the slider. */
+/* #85: "Title race" box — under the points chart on both championship pages (what the leader needs at the next race
+   to clinch the title, or the earliest round it can be decided; whole field, follows the slider) and on the What-If page
+   (the same wording for the round being edited, both championships). */
 .titleRace{margin:10px 0 0;padding:7px 10px 8px;background:var(--inset);border:1px solid var(--line);border-left:3px solid var(--ink2);
   border-radius:8px;font-size:12.5px;line-height:1.5;color:var(--ink2);}
 .titleRace[hidden]{display:none;}
@@ -221,3 +222,5 @@ html.f1-loading .f1-skel::after{content:"";position:absolute;inset:0;z-index:6;b
 .trMain b{color:var(--ink);font-weight:600;}
 .trName{white-space:nowrap;font-weight:600;color:var(--ink);}
 .trNote{font-size:11.5px;color:var(--sub);margin-top:2px;}
+.trLink{color:var(--ink);font-weight:600;text-decoration:underline;text-underline-offset:2px;white-space:nowrap;}
+.trLink:hover{color:var(--ink2);}

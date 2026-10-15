@@ -310,8 +310,9 @@ function recompute(round){
  drawTitleRace(round); // #85
 }
 
-// #85 (version A): the "Title race" line under the points chart — whole field, as of the slider's round. Rebuilt only
-// when the season or round changes (colours are CSS variables, so a theme change needs nothing); never fetches.
+// #85: the "Title race" line under the points chart — whole field, as of the slider's round, with a What-If link when
+// someone can clinch at the next race. Rebuilt only when the season or round changes (colours are CSS variables, so a
+// theme change needs nothing); never fetches.
 let trKey=null;
 function drawTitleRace(round){
  const key=currentYear+':'+round+':'+currentSeasonRounds.length;
