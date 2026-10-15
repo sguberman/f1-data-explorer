@@ -507,6 +507,20 @@ const F1Common = (() => {
    }
   }
 
+  // #85: a race's short name for running text: "Singapore GP", "Las Vegas GP", "Austrian GP", "Sao Paulo GP". Drops the
+  // series prefix, year and title sponsor, and turns "X Grand Prix", "Grand Prix de X" and "Gran(de) Premio de X" into
+  // "X GP". '' when there's no proper name (e.g. "Round 12 Grand Prix" in test data).
+  const RACE_SPONSORS = /^(qatar airways|heineken( silver)?|aramco|crypto\.com|lenovo|louis vuitton|msc cruises|pirelli|aws|tag heuer|gulf air|singapore airl\w*|etihad airways|rolex|stc|dell)\s+/i;
+  function shortGP(name){
+   let n = String(name||'').replace(/^formula (1|one)\s+/i,'').replace(/\s+\d{4}$/,'').trim();
+   for(let prev=''; prev!==n;){ prev=n; n=n.replace(RACE_SPONSORS,''); }
+   let m;
+   if((m = n.match(/^(.*?)\s+grand prix\b/i)) && m[1]) n = m[1];                                   // "Singapore Grand Prix"
+   else if((m = n.match(/^(?:grand prix|gran(?:de)? premio|gran)\s+(?:du |de la |de |di |d'|d’)?(?:la ciudad de )?(.+)$/i))) n = m[1]; // "Grand Prix de Monaco"
+   n = n.trim().replace(/^ciudad de (.+)$/i, '$1 City'); // "Ciudad de México" -> "México City"
+   return n && !/^round \d+$/i.test(n) ? n+' GP' : '';
+  }
+
   // #85: the title-race wording as of `round`, as HTML: {tr (titleRace's result), main, note (the countback note, or
   // ''), nm (an entry's bold name with its flag)}. The championship pages' line and the What-If page's box and result
   // lines are all written from this, so they always say the same thing.
@@ -516,10 +530,8 @@ const F1Common = (() => {
    const nm = id => { const i=info[id]||{}; const label = kind==='teams' ? shortTeamName(id, i.teamName) : (i.code||id);
      return `<span class="trName">${flagHTML(nationalityOf(kind, id))}${label}</span>`; };
    const names = calendar && calendar.raceNames || {};
-   const raceName = r => { const n=names[r] || (seasonRounds.find(x=>x.round===r)||{}).raceName;
-     const s = n ? String(n).replace(/ Grand Prix.*/i,'').replace(String(year),'').trim() : '';
-     return s && !/^Round \d+$/i.test(s) ? s : ''; };
-   const raceOf = r => raceName(r) ? ` (${raceName(r)} GP)` : ''; // "Austrian GP", not just "Austrian"
+   const raceName = r => shortGP(names[r] || (seasonRounds.find(x=>x.round===r)||{}).raceName); // "Singapore GP"
+   const raceOf = r => raceName(r) ? ` (${raceName(r)})` : '';
    const pl = (n, w) => `${n} ${w}${n===1?'':'s'}`;
    const list = a => a.length>1 ? a.slice(0,-1).join(', ')+' and '+a[a.length-1] : a[0]||'';
    // " by outscoring NOR by 12 or more and PIA by 3 or more, unless LEC outscores VER by 5 or more"
@@ -534,8 +546,8 @@ const F1Common = (() => {
    let main='', note='';
    if(tr.state==='decided'){
      const where = tr.final ? `in the final round${raceOf(tr.clinched)}` : `in round ${tr.clinched}${raceOf(tr.clinched)}`;
-     main = tr.over ? `<b>${nm(tr.champion)} is the ${year} champion</b>: clinched ${where}`
-                    : `<b>${nm(tr.champion)} is champion</b>: clinched ${where}`;
+     main = tr.over ? `🏆 <b>${nm(tr.champion)} is the ${year} champion</b>: clinched ${where}`
+                    : `🏆 <b>${nm(tr.champion)} is champion</b>: clinched ${where}`;
      if(!tr.over && tr.left>0) main += `, with ${pl(tr.left,'round')} to spare`;
      main += tr.tieWith ? `, level on points with ${nm(tr.tieWith)} and ahead on countback.` : '.';
    } else if(tr.state==='next'){
@@ -556,7 +568,7 @@ const F1Common = (() => {
    } else {
      const gap = tr.gap==null ? '' : tr.gap>0 ? `${nm(tr.leader)} leads ${nm(tr.second)} by ${pl(tr.gap,'point')}. ` : `${nm(tr.leader)} leads ${nm(tr.second)} on countback. `;
      main = gap + (tr.earliest>=tr.total
-       ? `<b>The title can't be decided before the final round</b> (round ${tr.earliest}${raceName(tr.earliest) ? ', '+raceName(tr.earliest)+' GP' : ''}).`
+       ? `<b>The title can't be decided before the final round</b> (round ${tr.earliest}${raceName(tr.earliest) ? ', '+raceName(tr.earliest) : ''}).`
        : `<b>The title can't be decided before round ${tr.earliest}${raceOf(tr.earliest)}</b> at the earliest.`);
    }
    return {tr, main, note, nm};
@@ -567,18 +579,17 @@ const F1Common = (() => {
   // it. The round is left out on the latest round (`latest`), as #31's links do.
   const clinchLink = (year, round, latest) => `whatif.html?season=${year}${round<latest ? '&round='+round : ''}&start=clinch`;
 
-  // #85: the "Title race" line under the points chart (both championship pages), written into `el`. When someone can
+  // #85: the "Title race" line above the points chart (both championship pages), written into `el`. When someone can
   // clinch at the next race it ends with a link to try that race in What-If (clinchLink()).
   function renderTitleRace(el, seasonRounds, round, kind, {year, calendar=null}={}){
-   const {tr, main, note} = titleRaceText(seasonRounds, round, kind, {year, calendar});
+   const {tr, main} = titleRaceText(seasonRounds, round, kind, {year, calendar});
    el.dataset.state = tr.state;
    if(tr.state==='none'){ el.hidden=true; el.innerHTML=''; return tr; }
    el.hidden=false;
    const latest = Math.max(...seasonRounds.map(r=>r.round));
    const link = tr.state==='next'
      ? ` <a class="trLink" href="${clinchLink(year, round, latest)}">Try it in What-If →</a>` : '';
-   el.innerHTML = `<div class="trMain"><span class="trLabel">Title race</span> <span class="trText">${main}</span>${link}</div>`
-     + (note ? `<div class="trNote"><span class="trTie">${note}</span></div>` : '');
+   el.innerHTML = `<div class="trMain"><span class="trLabel">Title race</span> <span class="trText">${main}</span>${link}</div>`;
    return tr;
   }
 
@@ -593,16 +604,17 @@ const F1Common = (() => {
          + (tr.tieWith ? `, level on points with ${nm(tr.tieWith)} and ahead on countback.` : '.');
      return {champion:tr.champion, html, won:true};
    }
+   // Who can still win is shown in the table itself, by a line under the last of them (contenders: the leader and
+   // everyone who can still take the title, in standings order).
    const list = a => a.length>1 ? a.slice(0,-1).join(', ')+' and '+a[a.length-1] : a[0]||'';
-   const full = tr.contenders.filter(c=>!c.tieOnly).map(c=>nm(c.id)), tie = tr.contenders.filter(c=>c.tieOnly).map(c=>nm(c.id));
-   const html = !full.length
-     ? `Title still open: ${list(tie)} can only draw level with ${nm(tr.leader)} on points, which would go to countback.`
-     : `Title still open: ${list([nm(tr.leader), ...full])} can still win` // everyone, in standings order
-       + (tie.length ? ` (${list(tie)} only by drawing level on points, which would go to countback).` : '.');
-   return {champion:null, html, won:false};
+   const tie = tr.contenders.filter(c=>c.tieOnly).map(c=>nm(c.id));
+   const everyone = tr.contenders.length + 1 >= standingsOrder(seasonRounds, round, kind).length; // no line to draw then
+   const html = (everyone ? 'Title still open: everyone can still win.' : 'Title still open: everyone above the line can still win.')
+     + (tie.length ? ` ${list(tie)} only by drawing level on points, which would go to countback.` : '');
+   return {champion:null, html, won:false, contenders:[tr.leader, ...tr.contenders.map(c=>c.id)]};
   }
 
-  return { TEAM_COLORS, SEASON_TEAM_COLORS, setSeason, maxWeekendPoints, titleRace, titleRaceText, renderTitleRace, titleResultText, clinchLink, teamColor, SHORT_TEAM_NAMES, shortTeamName, SEASON_META, seasonMeta, YEARS,
+  return { TEAM_COLORS, SEASON_TEAM_COLORS, setSeason, maxWeekendPoints, titleRace, titleRaceText, renderTitleRace, titleResultText, clinchLink, shortGP, teamColor, SHORT_TEAM_NAMES, shortTeamName, SEASON_META, seasonMeta, YEARS,
     isNarrow, withAlpha, standingsMoves, moveHTML, driverPickerRowHTML, markActivePreset,
     flagCode, flagHTML, flagSpace, FLAG_ROOM, drawFlag, indexPeople, nationalityOf, numberOf, ridgeFlags, ridgeMarkers, ridgeKeyHTML, standingsOrder, standingsRank, pickerTeamLabelHTML,
     standingsByRound, renderPositionChart, projectionsByRound, renderProjectedPointsChart };

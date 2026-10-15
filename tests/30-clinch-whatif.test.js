@@ -73,11 +73,12 @@ module.exports = async (t, h) => {
   const TEAM = { mercedes: 'Mercedes', mclaren: 'McLaren', ferrari: 'Ferrari', red_bull: 'Red Bull' };
   const nm = (kind, id) => kind === 'teams' ? (TEAM[id] || id) : CODE[id];
   const list = a => a.length > 1 ? a.slice(0, -1).join(', ') + ' and ' + a[a.length-1] : a[0];
-  const lineFor = (st, k, kind) => { const n = id => nm(kind, id);
+  const lineFor = (st, k, kind, rounds) => { const n = id => nm(kind, id);
     if(st.champion) return st.clinched < k ? `🏆 ${n(st.champion)} is already champion.` : `🏆 With this result, ${n(st.champion)} is champion` + (st.tieWith ? `, level on points with ${n(st.tieWith)} and ahead on countback.` : '.');
-    const full = st.contenders.filter(x => !x.tieOnly).map(x => n(x.id)), tie = st.contenders.filter(x => x.tieOnly).map(x => n(x.id));
-    return !full.length ? `Title still open: ${list(tie)} can only draw level with ${n(st.leader)} on points, which would go to countback.`
-      : `Title still open: ${list([n(st.leader), ...full])} can still win` + (tie.length ? ` (${list(tie)} only by drawing level on points, which would go to countback).` : '.'); };
+    // Open: who can still win is shown by a line in the table (checked separately); the line names only draw-only rivals.
+    const tie = st.contenders.filter(x => x.tieOnly).map(x => n(x.id));
+    const everyone = st.contenders.length + 1 >= ranked(rounds, k, kind).order.length;
+    return (everyone ? 'Title still open: everyone can still win.' : 'Title still open: everyone above the line can still win.') + (tie.length ? ` ${list(tie)} only by drawing level on points, which would go to countback.` : ''); };
 
   // ---- Page helpers ----
   const text = (pg, sel) => h.text(pg, sel);
@@ -112,7 +113,9 @@ module.exports = async (t, h) => {
     && await text(w, '#wiTitleRace .trNote') === 'One point less could leave them level on points, which would go to countback.' && !/Every (driver|team)|after round/.test(await text(w, '#wiTitleRace')), await text(w, '#wiTitleRace'));
   t.check('box: bold names with flags, no What-If link', await w.$$eval('#wiTitleRace .trName', x => x.length) >= 6 && await w.$$eval('#wiTitleRace .trName img.flag', x => x.length) >= 4 && !(await w.$('#wiTitleRace a')));
   const box = await w.$eval('#wiTitleRace', el => { const r = el.getBoundingClientRect(), l = document.getElementById('orders').getBoundingClientRect(); return { above: r.bottom <= l.top, h: r.height, cls: el.className }; });
-  t.check('box: the championship pages\' "Title race" box, above the lists, compact', box.above && box.cls === 'titleRace' && box.h < 120, J(box));
+  t.check('box: the championship pages\' "Title race" box, above the lists, compact', box.above && box.cls === 'titleRace' && box.h < 190, J(box));
+  t.check('box: "Drivers’ title" / "Constructors’ title" each on its own line, above its text', await w.$$eval('#wiTitleRace .trMain', ms => ms.every(m => {
+    const l = m.querySelector('.trLabel').getBoundingClientRect(), x = m.querySelector('.trText').getClientRects()[0]; return l.bottom <= x.top + 1; })));
   // The same words as the championship pages for the same round (they come from the same helper).
   for(const [page, kind] of [['drivers', 'drivers'], ['constructors', 'teams']]){
     const c = await h.openPage(page, { snapshots: { 2026: snap(S) } }); await h.loaded(c);
@@ -122,7 +125,7 @@ module.exports = async (t, h) => {
 
   // Live line and champion tag, keyboard drags.
   const live = async (label, kind = 'drivers') => {
-    const st = status(await dragged(w, S, 20), 20, kind, cal), want = lineFor(st, 20, kind);
+    const rr = await dragged(w, S, 20), st = status(rr, 20, kind, cal), want = lineFor(st, 20, kind, rr);
     return [st, want]; };
   let [st, want] = await live();
   t.check(`standings order: "${want}"`, !st.champion && await text(w, '#clinchDrivers') === want && (await champRows(w, 'driverTable')).length === 0, await text(w, '#clinchDrivers'));
@@ -148,7 +151,7 @@ module.exports = async (t, h) => {
   const stT = status(await dragged(w, S, 20), 20, 'teams', cal), stD = status(await dragged(w, S, 20), 20, 'drivers', cal);
   t.check('constructors: champion line and tag follow the dragged order (independent)', stT.champion === 'mercedes' && await text(w, '#clinchTeams') === '🏆 With this result, Mercedes is champion.'
     && J(await w.$$eval('#teamTable tr.champ', trs => trs.map(t => t.dataset.id))) === J(['mercedes']), J([stT, await text(w, '#clinchTeams')]));
-  t.check('…while the drivers\' title stays open', !stD.champion && await text(w, '#clinchDrivers') === lineFor(stD, 20, 'drivers') && (await champRows(w, 'driverTable')).length === 0, await text(w, '#clinchDrivers'));
+  t.check('…while the drivers\' title stays open', !stD.champion && await text(w, '#clinchDrivers') === lineFor(stD, 20, 'drivers', await dragged(w, S, 20)) && (await champRows(w, 'driverTable')).length === 0, await text(w, '#clinchDrivers'));
   t.check('…the box above the lists doesn\'t change while dragging', await boxText(w, 'drivers') === wantD && await boxText(w, 'teams') === wantT);
   await w.click('#useStandings');
   t.check('Standings order button: both open again, no tags', /^Title still open/.test(await text(w, '#clinchDrivers')) && /^Title still open/.test(await text(w, '#clinchTeams')) && (await w.$$('tr.champ')).length === 0);
@@ -164,7 +167,7 @@ module.exports = async (t, h) => {
     && !(await w.$eval('#useActual', b => b.hidden)) && J((await gpOrder(w)).slice(0, 3)) === J(pat.p6));
   t.check(`replay round 19: box from the standings after round 18 (${m18.length ? 'margins' : 'earliest'})`, (await boxText(w, 'drivers')).startsWith(`${CODE[A]} ${m18.every(o => o.m <= 33) ? 'clinches the title in round 19' : 'leads'}`)
     && (m18.every(o => o.m <= 33) || (await boxText(w, 'drivers')).endsWith(`before round ${earliest(S, 18, 'drivers', cal)} at the earliest.`)), await boxText(w, 'drivers'));
-  t.check(`replay round 19: the live line is what actually happened ("${lineFor(st19, 19, 'drivers')}")`, await text(w, '#clinchDrivers') === lineFor(st19, 19, 'drivers'), await text(w, '#clinchDrivers'));
+  t.check(`replay round 19: the live line is what actually happened ("${lineFor(st19, 19, 'drivers', S.filter(r => r.round <= 19))}")`, await text(w, '#clinchDrivers') === lineFor(st19, 19, 'drivers', S.filter(r => r.round <= 19)), await text(w, '#clinchDrivers'));
   t.check('what-if: drags, keys, buttons and slider never fetch', w.apiHits.length === hits, w.apiHits.slice(hits).join(' '));
   t.check('what-if: no page errors', w.errors.length === 0, w.errors.join('; '));
 
@@ -175,8 +178,8 @@ module.exports = async (t, h) => {
   await w6.goto(linkFor(orderWith(A, p6[0], B, p6[1]))); await h.loaded(w6);
   let s6 = status(await dragged(w6, S6, 20), 20, 'drivers', cal);
   t.check(`S6, A P${p6[0] + 1} and B P${p6[1] + 1}: A exactly the points left ahead, B can only draw level (independent)`, (await gpOrder(w6))[p6[0]] === A && J(s6.contenders) === J([{ id: B, tieOnly: true }]), J([s6, p6, R6.t[A], R6.t[B]]));
-  t.check(`…"Title still open: ${CODE[B]} can only draw level with ${CODE[A]} on points, which would go to countback."`,
-    await text(w6, '#clinchDrivers') === `Title still open: ${CODE[B]} can only draw level with ${CODE[A]} on points, which would go to countback.` && (await champRows(w6, 'driverTable')).length === 0, await text(w6, '#clinchDrivers'));
+  t.check(`…"Title still open: everyone above the line can still win. ${CODE[B]} only by drawing level on points…"`,
+    await text(w6, '#clinchDrivers') === `Title still open: everyone above the line can still win. ${CODE[B]} only by drawing level on points, which would go to countback.` && (await champRows(w6, 'driverTable')).length === 0, await text(w6, '#clinchDrivers'));
   await w6.focus(`.wiList[data-session="gp"] li[data-id="${A}"] .wiGrip`); await w6.keyboard.press('ArrowUp');
   s6 = status(await dragged(w6, S6, 20), 20, 'drivers', cal);
   t.check('…A one place up: champion, tag appears', s6.champion === A && await text(w6, '#clinchDrivers') === `🏆 With this result, ${CODE[A]} is champion.` && J(await champRows(w6, 'driverTable')) === J([A + ':true']), await text(w6, '#clinchDrivers'));
@@ -201,7 +204,7 @@ module.exports = async (t, h) => {
   // ---- S3: already decided ----
   const wd = await h.openPage('whatif', { snapshots: { 2026: snap(S3) } }); await h.loaded(wd);
   const s3 = status(S3, 19, 'drivers', cal);
-  t.check(`decided season: box "${CODE[A]} is champion: clinched in round ${s3.clinched}, with ${23 - s3.clinched} rounds to spare."`, await boxText(wd, 'drivers') === `${CODE[A]} is champion: clinched in round ${s3.clinched}, with ${23 - s3.clinched} rounds to spare.`, await boxText(wd, 'drivers'));
+  t.check(`decided season: box "🏆 ${CODE[A]} is champion: clinched in round ${s3.clinched}, with ${23 - s3.clinched} rounds to spare."`, await boxText(wd, 'drivers') === `🏆 ${CODE[A]} is champion: clinched in round ${s3.clinched}, with ${23 - s3.clinched} rounds to spare.`, await boxText(wd, 'drivers'));
   t.check('decided season: "🏆 … is already champion.", tag shown', await text(wd, '#clinchDrivers') === `🏆 ${CODE[A]} is already champion.` && J(await champRows(wd, 'driverTable')) === J([A + ':true']), await text(wd, '#clinchDrivers'));
   await wd.done();
 
@@ -315,28 +318,37 @@ module.exports = async (t, h) => {
     await stale.done();
   }
 
-  // Every potential winner listed: the fake season after round 12, round 13 in standings order (many can still win).
+  // Who can still win: a line in the drivers' table under the last of them (the fake season after round 12, round 13 in
+  // standings order: many can still win), everyone below it out; checked against the independent status().
   {
     const { api } = require('./lib/fixture');
     const fx = []; for(let r = 1; r <= 12; r++){ const g = api(`https://f1api.dev/api/2026/${r}/race`).body.races, s = api(`https://f1api.dev/api/2026/${r}/sprint/race`);
       const norm = (rows, kind) => rows.map(q => ({ ...kit.row(q.driver.driverId), position: Number.isFinite(parseInt(q.position, 10)) ? parseInt(q.position, 10) : null, points: q.points, session: kind }));
       fx.push({ round: r, raceResults: norm(g.results, 'race'), sprintResults: s.status === 200 ? norm(s.body.races.sprintRaceResults, 'sprint') : null }); }
+    // The fake season: everyone can still win, so no line, and the live line says so.
+    { const fp = await h.openPage('whatif'); await h.loaded(fp);
+      const st = K.status(fromLists(fx, 13, await lists(fp)), 13, 'drivers', kit.cal);
+      t.check('everyone can still win (fake season, round 13): no line, "Title still open: everyone can still win."', st.contenders.length === 21
+        && !(await fp.$('#driverTable tr.outLine')) && await text(fp, '#clinchDrivers') === 'Title still open: everyone can still win.', await text(fp, '#clinchDrivers'));
+      await fp.done(); }
     for(const [width, theme] of [[1000, 'light'], [390, 'dark'], [390, 'light'], [1000, 'dark']]){
-      const lp = await h.openPage('whatif', { width, theme }); await h.loaded(lp);
-      const o = await lists(lp), st = K.status(fromLists(fx, 13, o), 13, 'drivers', kit.cal);
-      const names = [st.leader, ...st.contenders.filter(c => !c.tieOnly).map(c => c.id)].map(id => kit.CODE[id]);
-      const want = `Title still open: ${names.slice(0, -1).join(', ')} and ${names[names.length - 1]} can still win.`;
-      const got = await text(lp, '#clinchDrivers');
+      const lp = await h.openPage('whatif', { width, theme, snapshots: { 2026: snap(S) } }); await h.loaded(lp);
+      const st = status(await dragged(lp, S, 20), 20, 'drivers', cal);
+      const inIds = [st.leader, ...st.contenders.map(c => c.id)];
+      const tbl = await lp.$$eval('#driverTable tr', trs => trs.slice(1).map(tr => tr.classList.contains('outLine') ? '|' : tr.dataset.id));
+      const cut = tbl.indexOf('|'), above = tbl.slice(0, cut), below = tbl.slice(cut + 1);
       if(width === 1000 && theme === 'light'){
-        t.check(`long list: ${names.length} drivers can still win (independent), more than four`, names.length > 4 && !st.contenders.some(c => c.tieOnly), J(names));
-        t.check('long list: every one named in standings order, no "…others"', got === want && !/others/.test(got), got);
-        t.check('long list: bold names with flags', await lp.$$eval('#clinchDrivers .trName', x => x.length) === names.length && await lp.$$eval('#clinchDrivers .trName img.flag', x => x.length) >= names.length - 2);
+        t.check(`line in the table: ${inIds.length} can still win (independent), the rest can't`, inIds.length > 1 && inIds.length < tbl.length - 1, J(inIds.map(id => CODE[id])));
+        t.check('line in the table: exactly one line, everyone above can still win, everyone below is out', tbl.filter(x => x === '|').length === 1
+          && J([...above].sort()) === J([...inIds].sort()) && below.every(id => !inIds.includes(id)) && below.length > 0, J({ above, inIds }));
+        t.check('line in the table: labelled, and the live line points to it (no list of names)', /Can still win the title/.test(await text(lp, '#driverTable tr.outLine'))
+          && await text(lp, '#clinchDrivers') === 'Title still open: everyone above the line can still win.' && !(await lp.$('#clinchDrivers .trName')), await text(lp, '#clinchDrivers'));
       }
-      const fit = await lp.evaluate(() => { const el = document.getElementById('clinchDrivers'), r = el.getBoundingClientRect(), td = document.getElementById('driverTable').getBoundingClientRect();
-        return { over: el.scrollWidth > el.clientWidth + 1, right: r.right, tableRight: td.right, h: r.height, scroll: document.documentElement.scrollWidth }; });
-      t.check(`long list ${width}px ${theme}: wraps inside the column, no sideways scroll`, !fit.over && fit.right <= fit.tableRight + 1 && fit.scroll <= width && got === want, J(fit));
-      await h.screenshot(lp, `clinch-whatif-longlist-${width}-${theme}.png`);
-      if(SHOTS) await lp.locator('#resultCard').screenshot({ path: path.join(SHOTS, `whatif-longlist-${width}-${theme}.png`) });
+      const fit = await lp.evaluate(() => { const td = document.getElementById('driverTable').getBoundingClientRect(), l = document.querySelector('#driverTable tr.outLine').getBoundingClientRect();
+        return { right: l.right, tableRight: td.right, scroll: document.documentElement.scrollWidth }; });
+      t.check(`line in the table ${width}px ${theme}: fits, no sideways scroll`, fit.right <= fit.tableRight + 1 && fit.scroll <= width, J(fit));
+      await h.screenshot(lp, `clinch-whatif-line-${width}-${theme}.png`);
+      if(SHOTS) await lp.locator('#resultCard').screenshot({ path: path.join(SHOTS, `whatif-line-${width}-${theme}.png`) });
       await lp.done();
     }
   }

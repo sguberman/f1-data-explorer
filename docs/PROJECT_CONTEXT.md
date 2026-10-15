@@ -226,25 +226,29 @@ come from `standingsOrder()`. Tiles three across on desktop, two on phones; a no
 counts. Rebuilt only when the season or round changes (theme colours are CSS variables); never fetches; no export.
 
 **Title race (#85, both championship pages and What-If; `titleRace()` / `titleRaceText()` / `renderTitleRace()` in `common.js`):** a compact
-highlighted line in the points card, between the chart (and the phone end legend) and the knockout note, saying in plain
+highlighted line at the top of the points card, above the legend and the chart, saying in plain
 sentences what the title needs, for the **whole field** (the real standings via `standingsOrder()`, not the picked entries)
 as of the slider's round L, the next race being L+1. Driver codes / short team names in bold with their flags. States:
-- **decided**: "VER is champion: clinched in round 20 (Qatar), with 3 rounds to spare." After the last round: "VER is the
-  2026 champion: clinched in round 20 (Qatar)" / "…in the final round (Abu Dhabi)", plus ", level on points with NOR and
-  ahead on countback" when it ended level.
+- **decided**: "🏆 VER is champion: clinched in round 20 (Qatar GP), with 3 rounds to spare." After the last round: "🏆 VER
+  is the 2026 champion: clinched in round 20 (Qatar GP)" / "…in the final round (Abu Dhabi GP)", plus ", level on points
+  with NOR and ahead on countback" when it ended level.
 - **can clinch at the next race**: "VER clinches the title in round 21 (Las Vegas) by outscoring NOR by 12 or more and PIA by
   3 or more." A rival the leader may be outscored by a little reads "…, unless LEC outscores VER by 5 or more"; "scoring at
   least as many points as NOR" for a margin of 0. Drivers add a finishing-position example: "A win would do it, whatever the
   others do." / "For example, a win with NOR P4 or lower." (sprint weekends: "winning both with NOR on 21 points or fewer for
   the weekend"). Constructors are points only. Anyone else who could clinch there gets "NOR can also clinch it there by …"
-  (two at most, then "N more…"). The final round reads "…in round 24 (Abu Dhabi), the final round, …". A note under it says
-  "One point less could leave them level on points, which would go to countback." The line ends with **"Try it in What-If →"**,
+  (two at most, then "N more…"). The final round reads "…in round 24 (Abu Dhabi GP), the final round, …". (The countback
+  note "One point less could…" was removed from these pages by the owner; it stays on What-If.) The line ends with **"Try it in What-If →"**,
   linking to `whatif.html?season=Y` (plus `&round=L` when the slider isn't on the latest round, as #31's links do) and
   `&start=clinch` (`F1Common.clinchLink()`), which opens What-If on round L+1 starting from its "🏆 Title clinch" order. The
   link is shown in this state only: in the others the next race can't decide the title.
 - **can't yet**: "VER leads NOR by 34 points. The title can't be decided before round 19 (Las Vegas) at the earliest." (or
   "…before the final round (round 24, Abu Dhabi)."): the first round where anyone still in it could clinch by scoring the
   most possible from the next race on while everyone else scores nothing.
+
+Race names in this wording are short (`F1Common.shortGP()`): "Singapore GP", "Las Vegas GP", "Sao Paulo GP", "Canada GP",
+"México City GP": the series prefix, year and title sponsor dropped, and "X Grand Prix" / "Grand Prix de X" / "Gran(de)
+Premio de X" made "X GP". No race name (test data's "Round 12 Grand Prix") shows just the round number.
 
 Rules: the points still available are the real calendar's rounds (sprint weekends add a sprint), at the **season's own
 maximum** (`maxWeekendPoints()`): 25 a Grand Prix and 8 a sprint for a driver, 43 and 15 for a team, plus the fastest-lap
@@ -259,17 +263,20 @@ under it was removed by the owner.)
 
 **Title race on What-If (#85):** the same calculation and wording (`titleRaceText()`, so the pages can't drift apart):
 - A "Title race" box (the same look) above the drag lists, for the round being edited (T = L+1) from the standings after L,
-  one line per championship labelled "Drivers' title" / "Constructors' title" (constructors in points only), plus the
+  one line per championship, its label ("Drivers' title" / "Constructors' title") on a line of its own above it
+  (constructors in points only), plus the
   countback note when either can be clinched there. No What-If link, and no "Every driver" line. On a replayed past round
   it uses only the rounds before it.
 - A live line above each result table, from `titleResultText()` = `titleRace()` on the season with your dragged result as
   round T (later rounds left out), rebuilt on every move: "🏆 With this result, VER is champion." / "…, level on points with
   NOR and ahead on countback." (final round tie) / "🏆 VER is already champion." (clinched before T) / "Title still open:
-  VER and NOR can still win." (more than four: "…, PIA and 2 others") / "Title still open: NOR can only draw level with VER
-  on points, which would go to countback." (a lead equal to the points left with countback still open; `titleRace()`'s
-  `contenders` with `tieOnly`). "Can still win" names **everyone** who still can, in standings order (no "…and N others"
-  cap since the owner asked for the full list; names don't break, the line wraps between them). Each championship on its
-  own, so the constructors' title can be won while the drivers' stays open.
+  everyone above the line can still win." While the title is open, **a red dashed line in the table** sits under the last
+  driver/team who can still win it ("Can still win the title ↑ · Out of contention ↓"): everyone above is in, everyone
+  below is out (`titleResultText()`'s `contenders`; this replaced a list of names, at the owner's request). When
+  everyone can still win there's no line and it says "Title still open: everyone can still win." Rivals who can only
+  draw level are named after it ("NOR only by drawing level on points, which would go to countback"; `titleRace()`'s
+  `contenders` with `tieOnly`). Each championship on its own, so the constructors' title can be won while the drivers'
+  stays open.
 - A **🏆 Champion** tag (just 🏆 on phones) on the champion's row in its table, shaded row.
 - A **"🏆 Title clinch"** preset after "Start from … Standings order" (the presets row wraps on phones), shown only when
   someone can win a title at round T (`titleRace()` says 'next' after L). It sets a finishing order that wins it: the
@@ -569,8 +576,9 @@ since fonts render differently on different machines.
   constructed seasons — decided, next-race clinch against one and two rivals, a sprint weekend, can't yet, final round,
   countback ties, fastest-lap seasons — against an independent calculation for drivers and teams at every round; each
   state's wording, the fake season's earliest round, slider, whole field, theme, season switch, never fetches, both
-  themes and the phone fit, the What-If link only on a next-race clinch with the round when the slider is back, and no
-  "Every driver" line; `CLINCH_SHOTS=<folder>` saves card and state screenshots), title race on What-If (#85, `30-clinch-whatif`:
+  themes and the phone fit, the What-If link only on a next-race clinch with the round when the slider is back, the line
+  at the top of the points card, short race names (`shortGP()`), the 🏆 when decided, and no "Every driver" line or
+  countback note; `CLINCH_SHOTS=<folder>` saves card and state screenshots), title race on What-If (#85, `30-clinch-whatif`: the labels on their own lines, the table's line under who can still win (and none when everyone can),
   the box's wording against an independent calculation and the championship pages' line, the live line and champion tag
   appearing and disappearing with keyboard drags on constructed near-decided seasons, the constructors' title won with the
   drivers' open, a level-at-best lead with countback open or settled, a final-round countback tie, a decided season, a
