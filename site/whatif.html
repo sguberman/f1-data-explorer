@@ -67,6 +67,16 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
 .reset{background:transparent;color:var(--sub);border:1px solid var(--line);border-radius:6px;padding:6px 11px;font:inherit;font-size:12.5px;cursor:pointer;}
 .reset:hover{border-color:var(--ink2);color:var(--ink);}
 #emptyMsg{font-size:12.5px;color:var(--sub);}
+/* #85: the title race for the round being edited (the championship pages' "Title race" box, both championships),
+   the live line above each result table, and the champion's tag in its table */
+#wiTitleRace{margin:-2px 0 12px;}
+#wiTitleRace .trMain + .trMain{margin-top:3px;}
+.clinchRes{font-size:12.5px;line-height:1.5;color:var(--sub);margin:-2px 0 6px;min-height:1.5em;}
+.clinchRes.won{color:var(--ink2);}
+.stTable .nmIn{display:flex;align-items:center;min-width:0;}
+.stTable .nmTxt{min-width:0;overflow:hidden;text-overflow:ellipsis;}
+.champTag{flex:0 0 auto;margin-left:6px;font-size:11px;font-weight:600;line-height:1;padding:3px 7px;border-radius:999px;background:var(--inset);border:1px solid var(--line-strong);color:var(--ink);white-space:nowrap;}
+tr.champ td{background:var(--inset);}
 </style>
 </head>
 <body>
@@ -80,6 +90,7 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
   <div class="cardHead">
     <h2 id="orderHeading">Your result</h2>
   </div>
+  <div class="titleRace" id="wiTitleRace" hidden aria-live="polite"></div>
   <!-- heading on its own line; the two presets always sit together on one row below it -->
   <div class="wiPresets" id="presetBar"><span class="presetLbl">Start from</span>
     <button class="reset" id="useActual" type="button" hidden>Actual result</button>
@@ -93,8 +104,8 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
 <div class="card" id="resultCard">
   <div class="cardHead"><h2 id="resultHeading">Championships after this result</h2></div>
   <div class="tables">
-    <div><div class="orderTitle">Drivers</div><table class="stTable" id="driverTable"></table></div>
-    <div><div class="orderTitle">Constructors</div><table class="stTable" id="teamTable"></table></div>
+    <div><div class="orderTitle">Drivers</div><div class="clinchRes" id="clinchDrivers" aria-live="polite"></div><table class="stTable" id="driverTable"></table></div>
+    <div><div class="orderTitle">Constructors</div><div class="clinchRes" id="clinchTeams" aria-live="polite"></div><table class="stTable" id="teamTable"></table></div>
   </div>
   <div class="note">▲/▼ are places gained or lost against the standings before this round. Ties on points are broken by countback (most wins, then most second places, and so on), the same as the championship-position charts.</div>
 </div>
@@ -247,6 +258,7 @@ function readOrders(){
 function renderTables(){
  const rounds=whatIfRounds(), before=seasonRounds.filter(r=>r.round<=L);
  [['drivers','driverTable'],['teams','teamTable']].forEach(([kind, el])=>{
+   const champ=renderClinchResult(kind, rounds); // #85
    const now=totals(before, kind), next=totals(rounds, kind);
    const prevOrder=F1Common.standingsOrder(before, L, kind), order=F1Common.standingsOrder(rounds, T, kind);
    const info={}; rounds.forEach(r=>[...r.raceResults, ...(r.sprintResults||[])].forEach(res=>{ info[kind==='teams'?res.teamId:res.driverId]=res; }));
@@ -256,8 +268,9 @@ function renderTables(){
      const name = kind==='teams'
        ? `<span class="long">${F1Common.flagHTML(r.teamNationality)}${r.teamName}</span><span class="short">${F1Common.flagHTML(r.teamNationality)}${F1Common.shortTeamName(id, r.teamName)}</span>`
        : `<span class="long">${F1Common.flagHTML(F1Common.nationalityOf('drivers', id))}${r.name}</span><span class="short">${F1Common.flagHTML(F1Common.nationalityOf('drivers', id))}${r.code}</span>`;
-     return `<tr data-id="${id}"><td class="pos">${i+1}</td><td>${F1Common.moveHTML(move)}</td>
-       <td class="nm"><span class="dot" style="background:${color}"></span>${name}</td>
+     const tag = id===champ ? '<span class="champTag" title="Champion with this result">🏆<span class="long"> Champion</span></span>' : '';
+     return `<tr data-id="${id}"${tag?' class="champ"':''}><td class="pos">${i+1}</td><td>${F1Common.moveHTML(move)}</td>
+       <td class="nm"><span class="nmIn"><span class="dot" style="background:${color}"></span><span class="nmTxt">${name}</span>${tag}</span></td>
        <td>${Math.round(now[id]||0)}</td><td class="gain${gain?'':' zero'}">${gain?'+'+Math.round(gain):'–'}</td><td class="tot">${Math.round(next[id]||0)}</td></tr>`;
    }).join('');
    document.getElementById(el).innerHTML = `<tr><th>Pos</th><th></th><th>${kind==='teams'?'Team':'Driver'}</th><th>Before</th><th>+</th><th>After</th></tr>`+rows;
@@ -270,7 +283,7 @@ function render(){
  document.getElementById('presetBar').hidden = !has;
  const act=actualRound();
  document.getElementById('useActual').hidden = !has || !act;
- if(!has){ document.getElementById('orderNote').textContent=''; document.getElementById('orderHeading').textContent='Your result'; return; }
+ if(!has){ document.getElementById('wiTitleRace').hidden=true; document.getElementById('orderNote').textContent=''; document.getElementById('orderHeading').textContent='Your result'; return; }
  document.getElementById('orderHeading').textContent = `Your result for Round ${T}: ${raceName(T)}`;
  document.getElementById('resultHeading').textContent = `Championships after Round ${T}`;
  document.getElementById('pageSub').textContent = act
@@ -281,7 +294,27 @@ function render(){
    + `Drag the “Not classified” line to set who doesn’t finish (no points). Points: ${PTS_GP.join('-')}`
    + (sessions.includes('sprint') ? `, sprint ${sprintPoints(year).join('-')}` : '')
    + (year<=2024 ? '. The fastest-lap point (until 2024) isn’t included.' : '.');
- renderLists(); renderTables();
+ renderTitleRace(); renderLists(); renderTables();
+}
+
+// ---- #85: title clinch, from F1Common.titleRace (the championship pages' maths and wording; whole field, never fetches) ----
+// Above the lists: the title race for the round being edited, from the standings before it, for both championships.
+function renderTitleRace(){
+ const el=document.getElementById('wiTitleRace');
+ const parts=[['drivers','Drivers’ title'],['teams','Constructors’ title']]
+   .map(([kind, label])=>({kind, label, ...F1Common.titleRaceText(seasonRounds, L, kind, {year, calendar})})).filter(x=>x.tr.state!=='none');
+ el.hidden=!parts.length;
+ const note=(parts.find(x=>x.note)||{}).note;
+ el.innerHTML = parts.map(x=>`<div class="trMain" data-kind="${x.kind}" data-state="${x.tr.state}"><span class="trLabel">${x.label}</span> <span class="trText">${x.main}</span></div>`).join('')
+   + (note ? `<div class="trNote"><span class="trTie">${note}</span></div>` : '');
+}
+// Above each table: champion with the dragged result, or who can still win. Returns the champion's id (or null).
+function renderClinchResult(kind, rounds){
+ const el=document.getElementById(kind==='teams' ? 'clinchTeams' : 'clinchDrivers');
+ const r=F1Common.titleResultText(rounds, T, kind, {year, calendar});
+ el.classList.toggle('won', r.won);
+ el.innerHTML=r.html;
+ return r.champion;
 }
 
 // ---- Drag to reorder (pointer events: mouse, touch and pen), plus arrow keys on a focused handle ----

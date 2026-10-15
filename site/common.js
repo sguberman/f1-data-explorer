@@ -398,7 +398,7 @@ const F1Common = (() => {
          y:{grid:{color:P.grid}, ticks:{color:P.text}, title:{display:true, text:'Projected final points', color:P.text}}}}});
   }
 
-  // ---- #85 (version A): title clinch calculator for the championship pages ----
+  // ---- #85: title clinch calculator (the championship pages' title-race line and the What-If page) ----
   // The most one entry can score in a weekend, by season: a Grand Prix win (plus the fastest-lap point,
   // 2019–2024) and a sprint win (3-2-1 sprints in 2021). Teams: both cars first and second. This is the
   // season's real maximum, so "clinched" is only said when it's certain (the knockout line keeps its 25/8).
@@ -414,6 +414,8 @@ const F1Common = (() => {
   //   'next'     {next, final, lead:[{id, conds:[{id, need}], example}], ...} — someone can clinch at the next race:
   //              `need` = the fewest points they must outscore that rival by (≤ 0: may lose up to -need to them)
   //   'later'    {earliest, leader, second, gap} — the first round the title could be decided at all
+  // 'next' and 'later' also carry contenders: [{id, tieOnly}], the leader's rivals who can still take the title
+  // (tieOnly: only by drawing level on points, which countback would decide).
   // Margins are strict: one point fewer could leave them level on points, which countback would decide.
   function titleRace(seasonRounds, round, kind, {year, calendar=null}={}){
    const rounds = seasonRounds.filter(r=>r.round<=round).sort((a,b)=>a.round-b.round);
@@ -475,7 +477,8 @@ const F1Common = (() => {
      const conds = ids.filter(x=>x!==c).map(x=>({id:x, need: Mn - (P(c)-P(x)) + 1})).filter(o=>o.need > -maxNext);
      if(conds.every(o=>o.need<=maxNext)) lead.push({id:c, conds, example: kind==='drivers' ? positionExample(conds, isSprint[n]) : null});
    });
-   const base = {leader:ids[0], second:ids[1]||null, gap: ids[1] ? P(ids[0])-P(ids[1]) : null, total:N, sprintNext:!!isSprint[n]};
+   const contenders = ids.slice(1).filter(x=>!safe(snap, ids[0], x, L)).map(x=>({id:x, tieOnly: P(ids[0])-P(x)===left(L)}));
+   const base = {leader:ids[0], second:ids[1]||null, gap: ids[1] ? P(ids[0])-P(ids[1]) : null, total:N, sprintNext:!!isSprint[n], contenders};
    if(lead.length) return {state:'next', next:n, final:n>=N, lead, ...base};
    // Earliest round anyone could clinch: they score the most possible from the next race on, everyone else nothing.
    // A tie on points counts as possible here, so the round given is never later than the real earliest.
@@ -504,12 +507,11 @@ const F1Common = (() => {
    }
   }
 
-  // #85: the "Title race" line under the points chart (both championship pages), written into `el`.
-  function renderTitleRace(el, seasonRounds, round, kind, {year, calendar=null}={}){
+  // #85: the title-race wording as of `round`, as HTML: {tr (titleRace's result), main, note (the countback note, or
+  // ''), nm (an entry's bold name with its flag)}. The championship pages' line and the What-If page's box and result
+  // lines are all written from this, so they always say the same thing.
+  function titleRaceText(seasonRounds, round, kind, {year, calendar=null}={}){
    const tr = titleRace(seasonRounds, round, kind, {year, calendar});
-   el.dataset.state = tr.state;
-   if(tr.state==='none'){ el.hidden=true; el.innerHTML=''; return tr; }
-   el.hidden=false;
    const info = standingsByRound(seasonRounds.filter(r=>r.round<=round), kind).info;
    const nm = id => { const i=info[id]||{}; const label = kind==='teams' ? shortTeamName(id, i.teamName) : (i.code||id);
      return `<span class="trName">${flagHTML(nationalityOf(kind, id))}${label}</span>`; };
@@ -557,13 +559,47 @@ const F1Common = (() => {
        ? `<b>The title can't be decided before the final round</b> (round ${tr.earliest}${raceName(tr.earliest) ? ', '+raceName(tr.earliest)+' GP' : ''}).`
        : `<b>The title can't be decided before round ${tr.earliest}${raceOf(tr.earliest)}</b> at the earliest.`);
    }
-   const who = kind==='teams' ? 'Every team' : 'Every driver';
-   el.innerHTML = `<div class="trMain"><span class="trLabel">Title race</span> <span class="trText">${main}</span></div>`
-     + `<div class="trNote"><span class="trSub">${who}, after round ${round}.</span>${note ? ' <span class="trTie">'+note+'</span>' : ''}</div>`;
+   return {tr, main, note, nm};
+  }
+
+  // #85: the "Title race" line under the points chart (both championship pages), written into `el`. When someone can
+  // clinch at the next race it ends with a link to try that race in What-If (`whatif.html?season=Y&round=L` opens it on
+  // round L+1; the round is left out on the latest round, as #31's links do).
+  function renderTitleRace(el, seasonRounds, round, kind, {year, calendar=null}={}){
+   const {tr, main, note} = titleRaceText(seasonRounds, round, kind, {year, calendar});
+   el.dataset.state = tr.state;
+   if(tr.state==='none'){ el.hidden=true; el.innerHTML=''; return tr; }
+   el.hidden=false;
+   const latest = Math.max(...seasonRounds.map(r=>r.round));
+   const link = tr.state==='next'
+     ? ` <a class="trLink" href="whatif.html?season=${year}${round<latest ? '&round='+round : ''}">Try it in What-If →</a>` : '';
+   el.innerHTML = `<div class="trMain"><span class="trLabel">Title race</span> <span class="trText">${main}</span>${link}</div>`
+     + (note ? `<div class="trNote"><span class="trTie">${note}</span></div>` : '');
    return tr;
   }
 
-  return { TEAM_COLORS, SEASON_TEAM_COLORS, setSeason, maxWeekendPoints, titleRace, renderTitleRace, teamColor, SHORT_TEAM_NAMES, shortTeamName, SEASON_META, seasonMeta, YEARS,
+  // #85: the What-If page's live line above a result table: the title after `round` with the dragged result in
+  // `seasonRounds` (the rounds before it plus your result). {champion (id or null), html, won}.
+  function titleResultText(seasonRounds, round, kind, {year, calendar=null}={}){
+   const {tr, nm} = titleRaceText(seasonRounds, round, kind, {year, calendar});
+   if(tr.state==='none') return {champion:null, html:'', won:false};
+   if(tr.state==='decided'){
+     const html = tr.clinched<round ? `🏆 ${nm(tr.champion)} is already champion.`
+       : `🏆 With this result, ${nm(tr.champion)} is champion`
+         + (tr.tieWith ? `, level on points with ${nm(tr.tieWith)} and ahead on countback.` : '.');
+     return {champion:tr.champion, html, won:true};
+   }
+   const list = a => a.length>1 ? a.slice(0,-1).join(', ')+' and '+a[a.length-1] : a[0]||'';
+   const short = a => a.length>4 ? list([...a.slice(0,3), `${a.length-3} others`]) : list(a);
+   const full = tr.contenders.filter(c=>!c.tieOnly).map(c=>nm(c.id)), tie = tr.contenders.filter(c=>c.tieOnly).map(c=>nm(c.id));
+   const html = !full.length
+     ? `Title still open: ${list(tie)} can only draw level with ${nm(tr.leader)} on points, which would go to countback.`
+     : `Title still open: ${short([nm(tr.leader), ...full])} can still win`
+       + (tie.length ? ` (${short(tie)} only by drawing level on points, which would go to countback).` : '.');
+   return {champion:null, html, won:false};
+  }
+
+  return { TEAM_COLORS, SEASON_TEAM_COLORS, setSeason, maxWeekendPoints, titleRace, titleRaceText, renderTitleRace, titleResultText, teamColor, SHORT_TEAM_NAMES, shortTeamName, SEASON_META, seasonMeta, YEARS,
     isNarrow, withAlpha, standingsMoves, moveHTML, driverPickerRowHTML, markActivePreset,
     flagCode, flagHTML, flagSpace, FLAG_ROOM, drawFlag, indexPeople, nationalityOf, numberOf, ridgeFlags, ridgeMarkers, ridgeKeyHTML, standingsOrder, standingsRank, pickerTeamLabelHTML,
     standingsByRound, renderPositionChart, projectionsByRound, renderProjectedPointsChart };
