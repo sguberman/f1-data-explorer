@@ -109,8 +109,8 @@ module.exports = async (t, h) => {
   const wantT = `Mercedes clinches the title in round 20 by outscoring McLaren by ${mT[0].m} or more, unless Ferrari outscores Mercedes by ${1 - mT[1].m} or more.`;
   t.check('box: the drivers\' title in the championship pages\' wording', await boxText(w, 'drivers') === wantD, await boxText(w, 'drivers') + ' ≠ ' + wantD);
   t.check('box: the constructors\' title, points only', await boxText(w, 'teams') === wantT, await boxText(w, 'teams') + ' ≠ ' + wantT);
-  t.check('box: labelled "Drivers’ title" / "Constructors’ title", with the countback note, no "Every driver" line', J(await w.$$eval('#wiTitleRace .trLabel', l => l.map(x => x.textContent))) === J(['Drivers’ title', 'Constructors’ title'])
-    && await text(w, '#wiTitleRace .trNote') === 'One point less could leave them level on points, which would go to countback.' && !/Every (driver|team)|after round/.test(await text(w, '#wiTitleRace')), await text(w, '#wiTitleRace'));
+  t.check('box: labelled "Drivers’ title" / "Constructors’ title", no countback note, no "Every driver" line', J(await w.$$eval('#wiTitleRace .trLabel', l => l.map(x => x.textContent))) === J(['Drivers’ title', 'Constructors’ title'])
+    && !(await w.$('#wiTitleRace .trNote')) && !/One point less|Every (driver|team)|after round/.test(await text(w, '#wiTitleRace')), await text(w, '#wiTitleRace'));
   t.check('box: bold names with flags, no What-If link', await w.$$eval('#wiTitleRace .trName', x => x.length) >= 6 && await w.$$eval('#wiTitleRace .trName img.flag', x => x.length) >= 4 && !(await w.$('#wiTitleRace a')));
   const box = await w.$eval('#wiTitleRace', el => { const r = el.getBoundingClientRect(), l = document.getElementById('orders').getBoundingClientRect(); return { above: r.bottom <= l.top, h: r.height, cls: el.className }; });
   t.check('box: the championship pages\' "Title race" box, above the lists, compact', box.above && box.cls === 'titleRace' && box.h < 190, J(box));
@@ -341,6 +341,7 @@ module.exports = async (t, h) => {
         t.check(`line in the table: ${inIds.length} can still win (independent), the rest can't`, inIds.length > 1 && inIds.length < tbl.length - 1, J(inIds.map(id => CODE[id])));
         t.check('line in the table: exactly one line, everyone above can still win, everyone below is out', tbl.filter(x => x === '|').length === 1
           && J([...above].sort()) === J([...inIds].sort()) && below.every(id => !inIds.includes(id)) && below.length > 0, J({ above, inIds }));
+        t.check('line in the table: its text sits above the dashed line', await lp.$eval('#driverTable tr.outLine span', e => { const c = getComputedStyle(e); return c.borderBottomStyle === 'dashed' && c.borderTopStyle === 'none'; }));
         t.check('line in the table: labelled, and the live line points to it (no list of names)', /Can still win the title/.test(await text(lp, '#driverTable tr.outLine'))
           && await text(lp, '#clinchDrivers') === 'Title still open: everyone above the line can still win.' && !(await lp.$('#clinchDrivers .trName')), await text(lp, '#clinchDrivers'));
       }

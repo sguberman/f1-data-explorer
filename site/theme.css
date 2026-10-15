@@ -219,9 +219,10 @@ html.f1-loading .f1-skel::after{content:"";position:absolute;inset:0;z-index:6;b
   border-radius:8px;font-size:12.5px;line-height:1.5;color:var(--ink2);}
 .titleRace[hidden]{display:none;}
 #titleRace{margin:0 0 10px;} /* championship pages: at the top of the points card, above the chart */
-.trLabel{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--sub);margin-right:4px;}
+.trLabel{display:block;margin:0 0 1px;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--sub);} /* label on its own line */
 .trMain b{color:var(--ink);font-weight:600;}
 .trName{white-space:nowrap;font-weight:600;color:var(--ink);}
 .trNote{font-size:11.5px;color:var(--sub);margin-top:2px;}
+.trLinkLine{margin-top:3px;}
 .trLink{color:var(--ink);font-weight:600;text-decoration:underline;text-underline-offset:2px;white-space:nowrap;}
 .trLink:hover{color:var(--ink2);}

@@ -71,10 +71,9 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
    the live line above each result table, and the champion's tag in its table */
 #wiTitleRace{margin:-2px 0 12px;}
 #wiTitleRace .trMain + .trMain{margin-top:6px;}
-#wiTitleRace .trLabel{display:block;margin:0 0 1px;} /* "Drivers' title" / "Constructors' title" on their own lines */
 /* #85: under the last driver/team who can still win the title */
 tr.outLine td{padding:0;border-bottom:none;}
-tr.outLine span{display:block;margin:2px 0;padding:3px 0 0;border-top:2px dashed var(--elim);font-size:11px;color:var(--elim);text-align:center;letter-spacing:.01em;}
+tr.outLine span{display:block;margin:2px 0;padding:2px 0 3px;border-bottom:2px dashed var(--elim);font-size:11px;color:var(--elim);text-align:center;letter-spacing:.01em;}
 .clinchRes{font-size:12.5px;line-height:1.5;color:var(--sub);margin:-2px 0 6px;min-height:1.5em;}
 .clinchRes.won{color:var(--ink2);}
 .stTable .nmIn{display:flex;align-items:center;min-width:0;}
@@ -335,9 +334,7 @@ function renderTitleRace(){
  const parts=[['drivers','Drivers’ title'],['teams','Constructors’ title']]
    .map(([kind, label])=>({kind, label, ...F1Common.titleRaceText(seasonRounds, L, kind, {year, calendar})})).filter(x=>x.tr.state!=='none');
  el.hidden=!parts.length;
- const note=(parts.find(x=>x.note)||{}).note;
- el.innerHTML = parts.map(x=>`<div class="trMain" data-kind="${x.kind}" data-state="${x.tr.state}"><span class="trLabel">${x.label}</span> <span class="trText">${x.main}</span></div>`).join('')
-   + (note ? `<div class="trNote"><span class="trTie">${note}</span></div>` : '');
+ el.innerHTML = parts.map(x=>`<div class="trMain" data-kind="${x.kind}" data-state="${x.tr.state}"><span class="trLabel">${x.label}</span> <span class="trText">${x.main}</span></div>`).join('');
 }
 // Above each table: champion with the dragged result, or that the title is still open. Returns titleResultText()'s
 // result ({champion, contenders (who can still win, while it's open), …}); the table draws the line under them.

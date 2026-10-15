@@ -151,7 +151,7 @@ module.exports = async (t, h) => {
     both: mk(17, r => kit.round(r, r % 3 === 0 ? [kA, kA2, kB] : [kA, kB])),
     none: mk(17, r => kit.round(r, [[kA, kB, kC], [kB, kC, kA], [kC, kA, kB]][r % 3])),
   };
-  const clinchLines = pg => pg.$$eval('#nextRace .nr-line', ls => ls.map(l => ({ kind: l.dataset.kind, text: l.textContent.replace(/\s+/g, ' ').trim(),
+  const clinchLines = pg => pg.$$eval('#nextRace .nr-line[data-kind]', ls => ls.map(l => ({ kind: l.dataset.kind, text: l.textContent.replace(/\s+/g, ' ').trim(),
     flags: l.querySelectorAll('.nr-who img.flag').length, bold: getComputedStyle(l.querySelector('.nr-who')).fontWeight, link: (l.querySelector('a') || {}).getAttribute ? l.querySelector('a').getAttribute('href') : null })));
   const waitClinch = pg => pg.waitForFunction(() => document.querySelector('#nextRace .nr-clinch'), null, { timeout: 4000 }).catch(() => {});
   const NAME = { d0_0: 'Driver0 Team0' }, TEAM = { mercedes: 'Mercedes' };
@@ -166,10 +166,12 @@ module.exports = async (t, h) => {
     const got = await clinchLines(p);
     const last = want.length - 1;
     t.check(`"${name}": ${want.length ? want.map(w => `"${w.text}"`).join(' + ') : 'no clinch line'}`, got.length === want.length
-      && want.every((w, i) => got[i].kind === w.kind && got[i].text === w.text + (i === last ? ' Try it in What-If →' : '')), J(got));
+      && want.every((w, i) => got[i].kind === w.kind && got[i].text === w.text), J(got));
     if(want.length){
       t.check(`"${name}": names in bold with a flag`, got.every(g => g.flags === 1 && +g.bold >= 600), J(got));
-      t.check(`"${name}": one "Try it in What-If →" link, on the last line: whatif.html?season=2026&start=clinch`, got.every((g, i) => g.link === (i === last ? 'whatif.html?season=2026&start=clinch' : null)), J(got));
+      const links = await p.$$eval('#nextRace .nr-clinch a', as => as.map(a => [a.getAttribute('href'), a.textContent.trim(), a.closest('.nr-line').classList.contains('nr-link'), a.closest('.nr-clinch').lastElementChild === a.closest('.nr-line')]));
+      t.check(`"${name}": one "Try it in What-If →" link, on its own line after the clinch lines: whatif.html?season=2026&start=clinch`, got.every(g => g.link === null)
+        && J(links) === J([['whatif.html?season=2026&start=clinch', 'Try it in What-If →', true, true]]), J(links));
     }
     // Requests: the season file once (shared by the calendar and the season), and f1api.dev only for the site's
     // once-a-day check of the round after the file; nothing more when using the page.

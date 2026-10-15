@@ -212,9 +212,8 @@ a.card:hover,a.card:focus-visible{border-color:var(--line-strong);box-shadow:0 4
       return `<div class="nr-line" data-kind="${kind}">🏆 ${tr.lead.map(l => who(kind, l.id)).join(' or ')} can clinch the ${label} title</div>`;
     }).filter(Boolean);
     if(!lines.length) return;
-    const link = ` <a class="nr-wi" href="${F1Common.clinchLink(year, L, L)}">Try it in What-If →</a>`;
-    lines[lines.length-1] = lines[lines.length-1].replace(/<\/div>$/, link + '</div>');
-    el.insertAdjacentHTML('beforeend', `<div class="nr-clinch">${lines.join('')}</div>`);
+    const link = `<div class="nr-line nr-link"><a class="nr-wi" href="${F1Common.clinchLink(year, L, L)}">Try it in What-If →</a></div>`; // on its own line
+    el.insertAdjacentHTML('beforeend', `<div class="nr-clinch">${lines.join('')}${link}</div>`);
   }
 
   const el = document.getElementById('nextRace'), year = F1Common.YEARS[0];

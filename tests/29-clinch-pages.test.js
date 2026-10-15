@@ -140,6 +140,7 @@ module.exports = async (t, h) => {
   t.check('fake season, round 12: says who leads and the earliest round, from the independent calculation', await main() === want12, await main() + ' ≠ ' + want12);
   t.check('…labelled "Title race", with no "Every driver, after round 12." line under it (nor any note or link)', await h.text(p, '#titleRace .trLabel') === 'Title race'
     && !/Every driver|after round/.test(await h.text(p, '#titleRace')) && !(await p.$('#titleRace .trSub, #titleRace .trNote, #titleRace .trLink')), await h.text(p, '#titleRace'));
+  t.check('"Title race" on its own line, above the text', await p.evaluate(() => { const l = document.querySelector('#titleRace .trLabel').getBoundingClientRect(), x = document.querySelector('#titleRace .trText').getClientRects()[0]; return l.bottom <= x.top + 1; }));
   t.check('placement: at the top of the points card, above the legend and the chart', await p.evaluate(() => {
     const el = document.getElementById('titleRace'), card = document.getElementById('c').closest('.card');
     return card.contains(el) && card.firstElementChild === el && el.getBoundingClientRect().bottom <= document.getElementById('chartWrap').getBoundingClientRect().top; }));
@@ -200,8 +201,8 @@ module.exports = async (t, h) => {
     // What-If to start from the title-clinch order (start=clinch).
     const href = await q.$eval('#titleRace .trLink', a => a.getAttribute('href')).catch(() => null);
     const wantHref = isNext ? `whatif.html?season=2026${L < S[sc].rounds.length ? '&round=' + L : ''}&start=clinch` : null;
-    t.check(`${name}, ${sc}, round ${L}: ${isNext ? 'ends with "Try it in What-If →" linking to ' + wantHref : 'no What-If link'}`, href === wantHref
-      && (!isNext || (await h.text(q, '#titleRace .trMain')).endsWith('Try it in What-If →')), String(href));
+    t.check(`${name}, ${sc}, round ${L}: ${isNext ? '"Try it in What-If →" on its own line, linking to ' + wantHref : 'no What-If link'}`, href === wantHref
+      && (!isNext || (await h.text(q, '#titleRace .trLinkLine')) === 'Try it in What-If →' && !/What-If/.test(await h.text(q, '#titleRace .trMain'))), String(href));
     await q.done();
   }
   // Constructors: points only (no finishing-position example), team names.
@@ -247,7 +248,7 @@ module.exports = async (t, h) => {
     const fit = await q.evaluate(() => { const el = document.getElementById('titleRace'), b = el.getBoundingClientRect(), card = el.closest('.card').getBoundingClientRect();
       return { right: b.right, cardRight: card.right, scroll: document.documentElement.scrollWidth, h: Math.round(b.height), over: el.scrollWidth > el.clientWidth + 1 }; });
     t.check(`${name} ${width}px ${theme}: fits the card with no sideways scroll`, fit.right <= fit.cardRight && fit.scroll <= width && !fit.over, JSON.stringify(fit));
-    t.check(`${name} ${width}px ${theme}: compact (≤ ${width > 600 ? 80 : 160}px tall)`, fit.h <= (width > 600 ? 80 : 160), JSON.stringify(fit));
+    t.check(`${name} ${width}px ${theme}: compact (≤ ${width > 600 ? 110 : 190}px tall)`, fit.h <= (width > 600 ? 110 : 190), JSON.stringify(fit));
     await h.screenshot(q, `clinch-${name}-${width}-${theme}.png`);
     if(SHOTS) await q.locator('#chartWrap').locator('xpath=..').screenshot({ path: path.join(SHOTS, `clinch-card-${name}-${width}-${theme}.png`) });
     t.check(`${name} ${width}px ${theme}: no page errors`, q.errors.length === 0, q.errors.join('; '));
