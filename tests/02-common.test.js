@@ -3,6 +3,8 @@ module.exports = async (t, h) => {
   const p = await h.openPage('drivers'); await h.loaded(p);
   const r = await p.evaluate(() => ({
     hex: F1Common.withAlpha('#FF8000', .5),
+    hex3: F1Common.withAlpha('#666', .5),
+    hex3mixed: F1Common.withAlpha('#f80', .25),
     hsl: F1Common.withAlpha('hsl(120 55% 45%)', .35),
     known: F1Common.teamColor('ferrari'),
     unknown: F1Common.teamColor('mystery_gp'),
@@ -13,6 +15,7 @@ module.exports = async (t, h) => {
     dropdown: [...document.querySelectorAll('.f1c-year option')].map(o => +o.value),
   }));
   t.check('withAlpha: hex -> rgba()', r.hex === 'rgba(255,128,0,0.5)', r.hex);
+  t.check('withAlpha: 3-digit hex is expanded (#666 → grey, #f80 → orange)', r.hex3 === 'rgba(102,102,102,0.5)' && r.hex3mixed === 'rgba(255,136,0,0.25)', r.hex3 + ' ' + r.hex3mixed);
   t.check('withAlpha: hsl -> hsl(... / a)', r.hsl === 'hsl(120 55% 45% / 0.35)', r.hsl);
   t.check('teamColor: known team', r.known === '#DC0000', r.known);
   t.check('teamColor: unknown team gets a stable hsl()', /^hsl\(/.test(r.unknown) && r.unknown === r.unknownAgain, r.unknown);

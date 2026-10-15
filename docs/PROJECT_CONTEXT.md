@@ -470,7 +470,7 @@ interaction. If the calendar fails or has no dates, the strip stays hidden.
 - Page introductions say what the page shows, then how to use it, in plain sentences (#15/#16).
 - Team colors via `F1Common.TEAM_COLORS` (Mercedes teal, McLaren papaya, Ferrari red, Red Bull navy, Alpine pink,
   Audi salmon/red, Haas black, …). Unknown team ids get a stable hashed `hsl()` color; use `F1Common.withAlpha()`
-  for transparency, since a hex alpha suffix breaks on `hsl()`.
+  for transparency, since a hex alpha suffix breaks on `hsl()`. It takes `#abc`, `#aabbcc` and `hsl()` (#100).
 - Theme: light / dark / system through the dropdown in `.theme-bar`. Canvas colors come from
   `F1Theme.chart()`, and `F1Theme.team(color)` swaps colors too dark for the dark background. Redraw on the
   `themechange` event.
