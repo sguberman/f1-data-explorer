@@ -253,7 +253,7 @@ selection (except Talking points, which covers the whole field); the card below 
 
 **Title clinch pointer (#85, version B, both championship pages):** one more line at the end of the knockout note
 under the points chart, about the whole field (not the picked entries) and the round after the slider ("next race"):
-"VER can clinch the title in Las Vegas. Try results in What-If →" (link to `whatif.html?season=…`, plus `&round=…` when
+"VER can clinch the title in round 20 (Las Vegas GP). Try results in What-If →" (link to `whatif.html?season=…`, plus `&round=…` when
 the slider isn't on the latest round, so What-If opens on that race), "The title can't be decided before round 21
 (Mexico City GP)." (no link), or "🏆 VER clinched the title in round 20 (Las Vegas GP)." once decided. It follows the slider
 and shows in both Show views and with nothing picked; nothing without a real calendar. Never fetches
