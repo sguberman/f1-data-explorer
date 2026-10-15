@@ -159,7 +159,7 @@ module.exports = async (t, h) => {
   const tip = await p.evaluate(() => { const tt = decidedChart.tooltip; return { title: tt.title, before: tt.beforeBody, body: tt.body.map(b => b.lines.join('')) }; });
   const pc = v => (v > 0 && v < 0.1 ? '<0.1' : v.toFixed(1)) + '%';
   const wantBody = [...r.bars.filter(b => b.data[tj] > 0).map(b => ` ${b.label} ${pc(b.data[tj])}`), `Decided by this round: ${pc(r.by[tj])}`];
-  t.check('tooltip: round, decided at it, each champion\'s share, then decided by it', tip.title[0].startsWith(`Round ${tipRound}`) && tip.before.join() === `Decided at this round: ${pc(r.at[tj])}`
+  t.check('tooltip: round, decided at it, each champion\'s share, then decided by it', tip.title[0].startsWith(`Round ${tipRound}`) && tip.before.join() === `Decided at this round: ${pc(r.rows[tj].at)}` && Math.abs(r.rows[tj].at - r.at[tj]) < 1e-9 /* (the label rounds the page's own figure; the segments' float sum can land on the other side of a .x5) */
     && tip.body.join('|') === wantBody.join('|') && wantBody.length >= 3, JSON.stringify({ tip, wantBody }));
   // a round with nothing decided at it (the round already run) lists no champions
   const box0 = await p.evaluate(() => { const c = decidedChart, rc = c.canvas.getBoundingClientRect(); return { x: rc.left + c.scales.x.getPixelForValue(0), y: rc.top + c.chartArea.bottom - 6 }; });
