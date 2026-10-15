@@ -43,6 +43,7 @@ site/                 The website (deployed as the site root, so URLs are unchan
   nav.js              Site navigation (#62): home link + Pages menu at the left of .theme-bar (data pages).
   share.js            F1Share (#31): each page's setup in its URL (read once, kept current), Share button.
   export.js           F1Export (#33): "⤓ PNG · CSV" under each chart (composed PNG, CSV of the chart's data).
+  roundresult.js      F1RoundResult (#29): tap a round on a championship points chart for its result.
   theme.css           Shared CSS variables (both themes), controls, pills, dropdowns, legends, pickers.
   flags/              Flag SVGs (#18).
   favicon.svg         Favicon (#68): red rising line on a checkered flag. favicon.ico (16/32/48px) and
@@ -136,6 +137,7 @@ Move something into `common.js` only once it's genuinely identical on every page
   isn't on the latest round, plus each page's own keys, leaving out anything at its default:
   - drivers: `d` (ids), `sort`, `pos`
   - constructors: `t`, `pos`
+  - both championship pages: `result` (the open round, #29) and `session=sprint`
   - position: `d`, `sort`, `chart`, `below10`, `sprint`
   - what-if: `gp` and `sprint` orders (`-` marks the not-classified line)
   - simulator: `d`, `sort`, `o` (`id:dnf:win`, `a` = auto), `c` (`a:b:n`), `n` (runs) and `seed`
@@ -144,7 +146,7 @@ Move something into `common.js` only once it's genuinely identical on every page
   - `F1Controls` reads the season and round on the first load.
   - Each page reads its keys once in its first `buildFromSelection` (`F1Share.take()`), drops unknown ids, then
     calls `F1Share.sync()`.
-  - Each page registers a getter (`F1Share.register`), and the URL is rewritten in place
+  - Each page registers a getter (`F1Share.register`; several can register — the round-result panel does too), and the URL is rewritten in place
     (`history.replaceState`) after every click, change or key press. No reload, no fetch.
   - Opening a link loads the season as usual.
   - The **Share** button (in the season row) copies the link, or opens the share sheet on touch devices.
@@ -192,6 +194,15 @@ win the title) based on the **highest-ranked selected driver**, eliminated / pro
 legend grouped by short team name, end-of-line labels (replaced by a ranked list below the chart on screens
 ≤600px). Picker below the chart: "Sort by" Team/Ranking dropdown, presets All/None/Top 5/Top 10, default
 Top 5.
+
+**Round results (#29, `roundresult.js`, both championship pages):** clicking or tapping a round on the points
+chart (up to the slider's round; projected rounds don't open) opens that round's result in a panel under the
+chart, with the round shaded on the chart. Drivers' page: finishing order (pos, team dot, flag, name — code on
+phones — team, points), not classified last as NC, top 10 with "Show all N"; picked drivers in bold.
+Constructors' page: every team with its points from that round (most first, ties by best finish) and its
+drivers' finishes ("P1, P4"). Sprint weekends get a Grand Prix / Sprint switch; ‹ › (and ←/→) step through
+rounds, × or Escape closes it, and moving the slider before the open round closes it. The tooltip title names
+the race, with "Click for the full result" on actual rounds (not on touch screens). Never fetches.
 
 Both championship pages are laid out (issue #10, "Layout A"): points chart → **Projected final points**
 card → picker → **Championship position by round** card. Cards above the picker follow the picker
@@ -366,7 +377,8 @@ since fonts render differently on different machines.
   links (#31: every page's setup round-trips through the URL, defaults left out, bad values ignored, Share copies it, a
   simulator link reproduces the same results) and exports (#33: PNG and CSV contents per chart, never fetches; #75/#76: share sheet on phones with download fallbacks,
   icon in the picture's corner), Jolpica patch (#59: a stripped season patched from a fake Jolpica comes back exactly; mismatches
-  stop the patch). The harness
+  stop the patch), round results (#29: tap a round for its result, sprint switch, arrows, close, NC last, projected
+  rounds closed, never fetches, URL round-trip, phone fit). The harness
   never serves the real `site/data/*.json`: tests pass `snapshots` built from the fake season. The fixture's names mix country names and demonyms, with
   one unknown. Logic is checked against
   independent calculations written in the tests, not against the site's own helpers.

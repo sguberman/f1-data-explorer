@@ -11,9 +11,9 @@
   // Canvas colours for Chart.js pages (CSS variables can't reach canvas drawing directly)
   const CHART={
     light:{text:'#666',label:'#333',grid:'#e1e0d9',axis:'#c3c2b7',projShade:'rgba(0,0,0,0.04)',divider:'#b4b2a9',dividerText:'#6b6a66',
-      knock:'#1f1f1f',knockFill:'rgba(200,40,40,0.09)',knockFillProj:'rgba(200,40,40,0.05)',elim:'#c62828',elimText:'#a32020',pointRing:'#fff'},
+      knock:'#1f1f1f',knockFill:'rgba(200,40,40,0.09)',knockFillProj:'rgba(200,40,40,0.05)',elim:'#c62828',elimText:'#a32020',pointRing:'#fff',pick:'rgba(0,0,0,0.075)'},
     dark:{text:'#9aa3af',label:'#d5d9de',grid:'#232830',axis:'#3a404b',projShade:'rgba(255,255,255,0.035)',divider:'#4a515c',dividerText:'#9aa3af',
-      knock:'#eef0f2',knockFill:'rgba(239,83,80,0.13)',knockFillProj:'rgba(239,83,80,0.07)',elim:'#ef5350',elimText:'#ff8a80',pointRing:'#191d24'}
+      knock:'#eef0f2',knockFill:'rgba(239,83,80,0.13)',knockFillProj:'rgba(239,83,80,0.07)',elim:'#ef5350',elimText:'#ff8a80',pointRing:'#191d24',pick:'rgba(255,255,255,0.08)'}
   };
   // Team colours too dark to read on the dark background get a lighter stand-in
   // (#72: plus the season colours of Alfa Romeo 2021–22, AlphaTauri 2021 and Sauber 2024–25 — see common.js)

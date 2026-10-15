@@ -11,12 +11,13 @@
    - share() copies the link, or opens the phone's share sheet. */
 const F1Share = (() => {
   const initial = new URLSearchParams(location.search);
-  let getPageState = null, taken = false, pending = false;
+  const providers = []; let taken = false, pending = false;
 
   const param = key => initial.get(key);
   // The page's own URL keys, for the first season it builds only (later season switches start from defaults).
   function take(){ if(taken) return null; taken = true; return initial; }
-  function register(fn){ getPageState = fn; sync(); }
+  // Several parts of a page can register (e.g. the page itself and its round-result panel, #29).
+  function register(fn){ providers.push(fn); sync(); }
 
   // A comma-separated id list from the URL, keeping only ids that exist (e.g. drivers of this season).
   function ids(value, valid){
@@ -30,7 +31,7 @@ const F1Share = (() => {
     const st = typeof F1Controls !== 'undefined' ? F1Controls.state : {};
     const p = new URLSearchParams();
     if(st.year) p.set('season', st.year);
-    const page = getPageState ? getPageState() : {};
+    const page = Object.assign({}, ...providers.map(fn => fn()));
     // _round: the page needs the round kept even on the latest round (a simulator run depends on it)
     if(st.round && (page._round || st.round < st.maxRound)) p.set('round', st.round);
     Object.entries(page).forEach(([k, v]) => { if(k[0] !== '_' && v != null) p.set(k, v); });

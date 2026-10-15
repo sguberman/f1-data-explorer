@@ -14,6 +14,7 @@
 <script src="data.js"></script>
 <script src="share.js"></script>
 <script src="export.js"></script>
+<script src="roundresult.js"></script>
 <script src="controls.js"></script>
 <style>
 body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;padding:24px 16px 40px;}
@@ -27,7 +28,7 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
 <div class="wrap">
 <div class="theme-bar"><nav id="siteNav" class="site-nav" aria-label="Site"></nav><div id="themeToggle"></div></div>
 <h1>Drivers' Championship</h1>
-<p class="sub">Points for the drivers you pick below (top 5 by default), projected to the end of the season from each driver's last 5 races. Move the slider, or drag the handle on the chart, to see the standings as of any round.</p>
+<p class="sub">Points for the drivers you pick below (top 5 by default), projected to the end of the season from each driver's last 5 races. Move the slider, or drag the handle on the chart, to see the standings as of any round. Tap a round on the chart for its result.</p>
 <div id="f1controls" class="f1c"></div>
 <div class="card" style="margin-bottom:16px;">
 <div id="lg" style="display:flex;flex-wrap:wrap;gap:8px 20px;margin:0 0 10px;font-size:12px;color:var(--ink2);"></div>
@@ -268,7 +269,7 @@ function recompute(round){
 }
 
 function draw(){
- if(!D.length){ if(chart){ chart.destroy(); chart=null; } document.getElementById('lg').innerHTML=''; document.getElementById('sm').innerHTML='No drivers selected.'; return; }
+ if(!D.length){ if(chart){ chart.destroy(); chart=null; } document.getElementById('lg').innerHTML=''; document.getElementById('sm').innerHTML='No drivers selected.'; F1RoundResult.update(); return; }
 P=F1Theme.chart();Chart.defaults.color=P.text;
 const DC=D.map(d=>({...d,c:F1Theme.team(d.c)}));
 const ds=[];
@@ -303,10 +304,10 @@ const peak=Math.max(1,...D.map(d=>Math.max(...d.full)),...thr);
 const yMax=Math.ceil(peak*1.1/50)*50;
 const yStep=yMax<=300?50:yMax<=600?100:yMax<=1200?200:500;
 if(chart)chart.destroy();
-chart=new Chart(document.getElementById('c'),{type:'line',data:{labels:R.map((_,i)=>String(i+1)),datasets:ds},plugins:[shade,marks,ends],
+chart=new Chart(document.getElementById('c'),{type:'line',data:{labels:R.map((_,i)=>String(i+1)),datasets:ds},plugins:[shade,marks,ends,F1RoundResult.band],
 options:{responsive:true,maintainAspectRatio:false,animation:false,layout:{padding:{right:PR,top:4}},interaction:{mode:'index',intersect:false},
 plugins:{legend:{display:false},tooltip:{filter:i=>i.raw!=null&&((i.dataset.kind==='a'||i.dataset.kind==='ka')||i.dataIndex>L-1),itemSort:(a,b)=>b.raw-a.raw,
-callbacks:{title:t=>{const i=t[0].dataIndex;return 'Round '+(i+1)+(i>L-1?' (projected)':'');},label:t=>' '+t.dataset.driver+': '+Math.round(t.raw)}}},
+callbacks:{title:t=>{const i=t[0].dataIndex;return 'Round '+(i+1)+(R[i]&&R[i]!=='TBD'?' · '+R[i]:'')+(i>L-1?' (projected)':'');},footer:t=>F1RoundResult.hint(t[0].dataIndex),label:t=>' '+t.dataset.driver+': '+Math.round(t.raw)}}},
 scales:{x:{offset:false,grid:{display:false},border:{color:P.axis},title:{display:true,text:'Round',color:P.text}},
 y:{min:0,max:yMax,ticks:{stepSize:yStep},grid:{color:P.grid},border:{display:false},title:{display:true,text:'Cumulative championship points',color:P.text}}}}});
 const sw=(c,d,w)=>`<svg width="22" height="8" aria-hidden="true"><line x1="1" y1="4" x2="21" y2="4" stroke="${c}" stroke-width="${w||2.5}" ${d?'stroke-dasharray="5 3"':''}/></svg>`;
@@ -331,6 +332,7 @@ document.getElementById('sm').innerHTML=
  `<b>Knockout line:</b> the fewest points a driver needs to still catch ${ko}, the highest-ranked driver you've selected. After round ${L}, ${ko} has ${Math.round(lead[L-1])} pts with ${Math.round(lead[L-1]-thr[L-1])} still available${usingRealCalendar?'':' (estimated — the real calendar wasn\'t available this load)'}, so the line is at ${Math.round(thr[L-1])} pts. A driver who falls below it can't catch ${ko} even by winning every remaining race while ${ko} scores nothing.`
  +`<br><span style="color:var(--elim);">●</span> Below the line: ${now.length?now.map(lab).join(', '):'none'} &nbsp; <span style="color:var(--elim);">○</span> Projected to fall below at current form: ${proj.length?proj.map(lab).join(', '):'none'}`;
 positionHandle();
+F1RoundResult.update(); // #29
 }
 
 function positionHandle(){
@@ -363,6 +365,8 @@ function positionHandle(){
  handle.addEventListener('pointerup', e=>{ dragging=false; try{handle.releasePointerCapture(e.pointerId);}catch(err){} });
 })();
 
+F1RoundResult.attach({kind:'drivers', canvas:document.getElementById('c'), after:document.getElementById('chartWrap'), getChart:()=>chart,
+ getState:()=>({rounds:currentSeasonRounds, L, selected:selectedDriverIds})}); // #29
 F1Export.championshipPage('drivers', ()=>({D, N, L, R, thr, projChart, posChart})); // #33
 window.addEventListener('f1selection', e=>buildFromSelection(e.detail));
 window.addEventListener('f1roundchange', e=>{ if(currentSeasonRounds.length) recompute(e.detail.round); });
