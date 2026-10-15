@@ -226,7 +226,8 @@ come from `standingsOrder()`. Tiles three across on desktop, two on phones; a no
 counts. Rebuilt only when the season or round changes (theme colours are CSS variables); never fetches; no export.
 
 **Title race (#85, both championship pages and What-If; `titleRace()` / `titleRaceText()` / `renderTitleRace()` in `common.js`):** a compact
-highlighted line at the top of the points card, above the legend and the chart, saying in plain
+highlighted box at the top of the points card, above the legend and the chart (its "Title race" label on a line of its
+own), saying in plain
 sentences what the title needs, for the **whole field** (the real standings via `standingsOrder()`, not the picked entries)
 as of the slider's round L, the next race being L+1. Driver codes / short team names in bold with their flags. States:
 - **decided**: "🏆 VER is champion: clinched in round 20 (Qatar GP), with 3 rounds to spare." After the last round: "🏆 VER
@@ -238,7 +239,7 @@ as of the slider's round L, the next race being L+1. Driver codes / short team n
   others do." / "For example, a win with NOR P4 or lower." (sprint weekends: "winning both with NOR on 21 points or fewer for
   the weekend"). Constructors are points only. Anyone else who could clinch there gets "NOR can also clinch it there by …"
   (two at most, then "N more…"). The final round reads "…in round 24 (Abu Dhabi GP), the final round, …". (The countback
-  note "One point less could…" was removed from these pages by the owner; it stays on What-If.) The line ends with **"Try it in What-If →"**,
+  note "One point less could…" was removed by the owner, here and on What-If.) Under it, on a line of its own: **"Try it in What-If →"**,
   linking to `whatif.html?season=Y` (plus `&round=L` when the slider isn't on the latest round, as #31's links do) and
   `&start=clinch` (`F1Common.clinchLink()`), which opens What-If on round L+1 starting from its "🏆 Title clinch" order. The
   link is shown in this state only: in the others the next race can't decide the title.
@@ -265,13 +266,13 @@ under it was removed by the owner.)
 - A "Title race" box (the same look) above the drag lists, for the round being edited (T = L+1) from the standings after L,
   one line per championship, its label ("Drivers' title" / "Constructors' title") on a line of its own above it
   (constructors in points only), plus the
-  countback note when either can be clinched there. No What-If link, and no "Every driver" line. On a replayed past round
+  nothing else (the countback note was removed by the owner). No What-If link, and no "Every driver" line. On a replayed past round
   it uses only the rounds before it.
 - A live line above each result table, from `titleResultText()` = `titleRace()` on the season with your dragged result as
   round T (later rounds left out), rebuilt on every move: "🏆 With this result, VER is champion." / "…, level on points with
   NOR and ahead on countback." (final round tie) / "🏆 VER is already champion." (clinched before T) / "Title still open:
   everyone above the line can still win." While the title is open, **a red dashed line in the table** sits under the last
-  driver/team who can still win it ("Can still win the title ↑ · Out of contention ↓"): everyone above is in, everyone
+  driver/team who can still win it, its label "Can still win the title ↑ · Out of contention ↓" just above the dashed line: everyone above is in, everyone
   below is out (`titleResultText()`'s `contenders`; this replaced a list of names, at the owner's request). When
   everyone can still win there's no line and it says "Title still open: everyone can still win." Rivals who can only
   draw level are named after it ("NOR only by drawing level on points, which would go to countback"; `titleRace()`'s
@@ -449,8 +450,8 @@ next round. Under the name, the **location** (#85): "Marina Bay, Singapore" from
 **Title clinch (#85):** when someone can win a title at that race, a line per championship under a thin rule:
 "🏆 [flag] Max Verstappen can clinch the drivers’ title" and "🏆 [flag] McLaren can clinch the constructors’ title"
 (full driver names, also on phones, where the line wraps; short team names; "or" between two who both could; always
-"drivers’ title" / "constructors’ title", so the two lines read alike). The last line ends with the championship pages'
-"Try it in What-If →" link (`F1Common.clinchLink()`: `whatif.html?season=Y&start=clinch`, opening that race from the
+"drivers’ title" / "constructors’ title", so the two lines read alike). Under them, on a line of its own, the championship
+pages' "Try it in What-If →" link (`F1Common.clinchLink()`: `whatif.html?season=Y&start=clinch`, opening that race from the
 clinch order). It needs the standings: the page also loads the season with `F1Data.loadSeason(year)` (the same season
 file, shared with the calendar's request, plus the site's once-a-day check for newer rounds, #60), started together with
 the calendar. The strip doesn't wait for it; the lines are added when it arrives, from `titleRace()` on the latest loaded

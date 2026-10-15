@@ -521,8 +521,8 @@ const F1Common = (() => {
    return n && !/^round \d+$/i.test(n) ? n+' GP' : '';
   }
 
-  // #85: the title-race wording as of `round`, as HTML: {tr (titleRace's result), main, note (the countback note, or
-  // ''), nm (an entry's bold name with its flag)}. The championship pages' line and the What-If page's box and result
+  // #85: the title-race wording as of `round`, as HTML: {tr (titleRace's result), main, nm (an entry's bold name with
+  // its flag)}. The championship pages' line and the What-If page's box and result
   // lines are all written from this, so they always say the same thing.
   function titleRaceText(seasonRounds, round, kind, {year, calendar=null}={}){
    const tr = titleRace(seasonRounds, round, kind, {year, calendar});
@@ -543,7 +543,7 @@ const F1Common = (() => {
      const unless = neg.map(o=>`${nm(o.id)} outscores ${nm(c)} by ${1-o.need} or more`).join(', or ');
      return (by.length ? ' by '+list(by) : '') + (unless ? (by.length ? ', unless ' : ' unless ')+unless : '');
    };
-   let main='', note='';
+   let main='';
    if(tr.state==='decided'){
      const where = tr.final ? `in the final round${raceOf(tr.clinched)}` : `in round ${tr.clinched}${raceOf(tr.clinched)}`;
      main = tr.over ? `🏆 <b>${nm(tr.champion)} is the ${year} champion</b>: clinched ${where}`
@@ -564,14 +564,13 @@ const F1Common = (() => {
      }
      others.slice(0,2).forEach(o=>{ main += ` ${nm(o.id)} can also clinch it there${terms(o.id, o.conds)}.`; });
      if(others.length>2) main += ` ${others.length-2} more can still clinch it there.`;
-     note = 'One point less could leave them level on points, which would go to countback.';
    } else {
      const gap = tr.gap==null ? '' : tr.gap>0 ? `${nm(tr.leader)} leads ${nm(tr.second)} by ${pl(tr.gap,'point')}. ` : `${nm(tr.leader)} leads ${nm(tr.second)} on countback. `;
      main = gap + (tr.earliest>=tr.total
        ? `<b>The title can't be decided before the final round</b> (round ${tr.earliest}${raceName(tr.earliest) ? ', '+raceName(tr.earliest) : ''}).`
        : `<b>The title can't be decided before round ${tr.earliest}${raceOf(tr.earliest)}</b> at the earliest.`);
    }
-   return {tr, main, note, nm};
+   return {tr, main, nm};
   }
 
   // #85: the "Try it in What-If →" link for a title that can be clinched at the race after `round`:
@@ -587,9 +586,9 @@ const F1Common = (() => {
    if(tr.state==='none'){ el.hidden=true; el.innerHTML=''; return tr; }
    el.hidden=false;
    const latest = Math.max(...seasonRounds.map(r=>r.round));
-   const link = tr.state==='next'
-     ? ` <a class="trLink" href="${clinchLink(year, round, latest)}">Try it in What-If →</a>` : '';
-   el.innerHTML = `<div class="trMain"><span class="trLabel">Title race</span> <span class="trText">${main}</span>${link}</div>`;
+   const link = tr.state==='next' // on its own line under the text
+     ? `<div class="trLinkLine"><a class="trLink" href="${clinchLink(year, round, latest)}">Try it in What-If →</a></div>` : '';
+   el.innerHTML = `<div class="trMain"><span class="trLabel">Title race</span> <span class="trText">${main}</span></div>${link}`;
    return tr;
   }
 
