@@ -1,7 +1,7 @@
 /* F1RoundResult (#29): tap or click a round on a championship points chart to see that round's result in a
-   panel under the chart: the finishing order (drivers' page) or each team's points and finishes (constructors'
-   page), with a Grand Prix / Sprint switch on sprint weekends, ‹ › to step through rounds and × to close. Only
-   rounds up to the slider's round can be opened (later ones are projected). Everything comes from the season
+   panel under the chart: the finishing order, with the picked drivers (drivers' page) or the picked teams' drivers
+   (constructors' page) in bold, a Grand Prix / Sprint switch on sprint weekends, ‹ › to step through rounds and
+   × to close. Only rounds up to the slider's round can be opened (later ones are projected). Everything comes from the season
    already loaded — opening, switching and stepping never fetch.
 
    F1RoundResult.attach({
@@ -44,27 +44,16 @@ const F1RoundResult = (() => {
     return { head: '<tr><th class="rr-pos">Pos</th><th class="rr-who">Driver</th><th class="rr-team">Team</th><th class="rr-pts">Pts</th></tr>',
       body, more: all > shown.length || expanded && all > TOP + 2 ? all : 0 };
   }
-  function teamRows(results, picked){
-    const teams = {};
-    ordered(results).forEach(r => { const t = teams[r.teamId] = teams[r.teamId] || { id: r.teamId, name: r.teamName, points: 0, finishes: [], best: Infinity };
-      t.points += r.points; t.finishes.push(r.position != null ? 'P' + r.position : 'NC'); if(r.position != null) t.best = Math.min(t.best, r.position); });
-    const list = Object.values(teams).sort((a, b) => b.points - a.points || a.best - b.best);
-    const body = list.map((t, i) => `<tr data-id="${esc(t.id)}"${picked.has(t.id) ? ' class="rr-pick"' : ''}>`
-      + `<td class="rr-pos">${i + 1}</td>`
-      + `<td class="rr-who">${teamDot(t.id)}${F1Common.flagHTML(F1Common.nationalityOf('teams', t.id))}<span>${esc(F1Common.shortTeamName(t.id, t.name))}</span></td>`
-      + `<td class="rr-fin">${t.finishes.join(', ')}</td>`
-      + `<td class="rr-pts">${pts(t.points)}</td></tr>`).join('');
-    return { head: '<tr><th class="rr-pos">#</th><th class="rr-who">Team</th><th class="rr-fin">Finishes</th><th class="rr-pts">Pts</th></tr>', body, more: 0 };
-  }
-
   function render(){
     const rd = open != null && roundData(open);
     if(!rd || !opts.getChart()){ panel.hidden = true; return; }
     const hasSprint = !!(rd.sprintResults && rd.sprintResults.length);
     const shown = session === 'sprint' && hasSprint ? 'sprint' : 'gp';
     const results = shown === 'sprint' ? rd.sprintResults : rd.raceResults;
-    const picked = new Set(state().selected || []);
-    const t = opts.kind === 'teams' ? teamRows(results, picked) : driverRows(results, picked);
+    // Picked drivers in bold; on the constructors' page, the drivers of the picked teams.
+    const sel = new Set(state().selected || []);
+    const picked = new Set(results.filter(r => opts.kind === 'teams' ? sel.has(r.teamId) : sel.has(r.driverId)).map(r => r.driverId));
+    const t = driverRows(results, picked);
     const prev = open - 1, next = open + 1;
     panel.innerHTML = `<div class="rr-head">
       <div class="rr-title"><span class="rr-round">Round ${open}</span> ${esc(rd.raceName || '')}</div>

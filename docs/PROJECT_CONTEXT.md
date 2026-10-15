@@ -198,9 +198,8 @@ Top 5.
 **Round results (#29, `roundresult.js`, both championship pages):** clicking or tapping a round on the points
 chart (up to the slider's round; projected rounds don't open) opens that round's result in a panel under the
 chart, with the round shaded on the chart. Drivers' page: finishing order (pos, team dot, flag, name — code on
-phones — team, points), not classified last as NC, top 10 with "Show all N"; picked drivers in bold.
-Constructors' page: every team with its points from that round (most first, ties by best finish) and its
-drivers' finishes ("P1, P4"). Sprint weekends get a Grand Prix / Sprint switch; ‹ › (and ←/→) step through
+phones — team, points), not classified last as NC, top 10 with "Show all N"; picked drivers in bold (on the
+constructors' page, the same list with the picked teams' drivers in bold). Sprint weekends get a Grand Prix / Sprint switch; ‹ › (and ←/→) step through
 rounds, × or Escape closes it, and moving the slider before the open round closes it. The tooltip title names
 the race, with "Click for the full result" on actual rounds (not on touch screens). Never fetches.
 

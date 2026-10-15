@@ -76,14 +76,17 @@ module.exports = async (t, h) => {
   await p.selectOption('.f1c-year', '2025').catch(() => {}); await p.waitForTimeout(200);
   await p.done();
 
-  // Constructors: each team's points and finishes.
+  // Constructors: the same finishing order, with the picked teams' drivers in bold.
   p = await h.openPage('constructors', { width: 1000, theme: 'dark' }); await h.loaded(p);
   await tapRound(p, info.nc); s = await panel(p);
-  const teams = await p.evaluate(n => { const r = F1Controls.state.seasonRounds.find(x => x.round === n), t = {};
-    r.raceResults.forEach(x => { (t[x.teamId] = t[x.teamId] || { pts: 0, best: 99 }); t[x.teamId].pts += x.points; if(x.position != null) t[x.teamId].best = Math.min(t[x.teamId].best, x.position); });
-    return Object.entries(t).sort((a, b) => b[1].pts - a[1].pts || a[1].best - b[1].best).map(([id, v]) => [id, String(v.pts)]); }, info.nc);
-  t.check('constructors: every team, most points first, with the round\'s points', JSON.stringify(s.rows.map(r => [r[0], r[4]])) === JSON.stringify(teams) && !s.more, JSON.stringify(s.rows.slice(0, 3)));
-  t.check('constructors: each team\'s two finishes', s.rows.every(r => /^(P\d+|NC)(, (P\d+|NC))*$/.test(r[3])) && s.rows.some(r => /NC/.test(r[3])), JSON.stringify(s.rows.map(r => r[3])));
+  want = await expected(p, info.nc, 'gp');
+  t.check('constructors: the drivers\' finishing order, like the drivers\' page', JSON.stringify(s.rows.map(r => [r[0], r[1], r[4]])) === JSON.stringify(want.order.slice(0, 10)) && /^Show all/.test(s.more), JSON.stringify(s.rows.slice(0, 3)));
+  const teamPicks = await p.evaluate(n => { const sel = new Set(selectedTeamIds);
+    return F1Controls.state.seasonRounds.find(x => x.round === n).raceResults.filter(x => sel.has(x.teamId)).map(x => x.driverId).sort(); }, info.nc);
+  await p.click('#roundResult .rr-more'); s = await panel(p);
+  t.check('constructors: the picked teams\' drivers are highlighted', s.picked.length > 0 && JSON.stringify(s.picked.slice().sort()) === JSON.stringify(teamPicks), JSON.stringify(s.picked));
+  await p.click('#teamPicker input[data-id="' + (await p.evaluate(() => selectedTeamIds[0])) + '"]'); await p.waitForTimeout(60); s = await panel(p);
+  t.check('constructors: …and follow the team picker', s.picked.length === teamPicks.length - 2, JSON.stringify(s.picked));
   await h.screenshot(p, 'round-result-constructors-dark.png');
   t.check('constructors: no page errors', p.errors.length === 0, p.errors.join('; '));
   await p.done();

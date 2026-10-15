@@ -189,9 +189,9 @@ html.f1-loading .f1-skel::after{content:"";position:absolute;inset:0;z-index:6;b
 .rr-table .rr-pos{width:28px;text-align:right;color:var(--sub);}
 .rr-table .rr-pts{width:36px;text-align:right;}
 .rr-table td.rr-who{color:var(--ink);white-space:nowrap;}
-.rr-table .rr-team,.rr-table .rr-fin{color:var(--sub);}
+.rr-table .rr-team{color:var(--sub);}
 .rr-pick td{font-weight:700;}
-.rr-pick td.rr-pos,.rr-pick td.rr-team,.rr-pick td.rr-fin{color:var(--ink2);}
+.rr-pick td.rr-pos,.rr-pick td.rr-team{color:var(--ink2);}
 .rr-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:7px;vertical-align:0;}
 .rr-short{display:none;}
 .rr-more{margin:6px 6px 0;}
