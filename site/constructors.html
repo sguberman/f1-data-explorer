@@ -22,6 +22,24 @@ body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Hel
 h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
 .sub{font-size:12.5px;color:var(--sub);margin:0 0 16px;}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 14px 10px;}
+/* #84: driver contributions — one bar per team, a segment per driver */
+#contrib{position:relative;display:flex;flex-direction:column;gap:7px;}
+.ctRow{display:grid;grid-template-columns:118px 1fr;align-items:center;gap:8px;}
+.ctTeam{font-size:12px;font-weight:500;color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;align-items:center;}
+.ctBar{display:flex;align-items:center;min-width:0;height:24px;}
+.ctSegs{display:flex;height:100%;border-radius:4px;overflow:hidden;flex:none;}
+.ctSeg{position:relative;display:flex;align-items:center;justify-content:center;min-width:0;overflow:hidden;white-space:nowrap;
+  font-size:11px;font-weight:600;font-variant-numeric:tabular-nums;cursor:default;outline:none;box-sizing:border-box;}
+.ctSeg + .ctSeg{box-shadow:inset 1px 0 0 var(--panel);}
+.ctSeg:focus-visible{box-shadow:inset 0 0 0 2px var(--ink);}
+.ctTotal{flex:none;padding-left:6px;font-size:12px;font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums;}
+.ctTip{position:absolute;z-index:5;pointer-events:none;background:var(--panel);border:1px solid var(--line-strong);border-radius:6px;
+  box-shadow:0 2px 8px var(--shadow);padding:6px 8px;font-size:12px;color:var(--ink2);line-height:1.45;white-space:nowrap;}
+.ctTip b{color:var(--ink);font-weight:600;}
+@media (max-width:600px){
+  .ctRow{grid-template-columns:1fr;gap:2px;}
+  #contrib{gap:9px;}
+}
 </style>
 </head>
 <body>
@@ -38,6 +56,14 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
 </div>
 <div id="endLegend" class="endLegend"></div>
 <div id="sm" style="font-size:12px;color:var(--muted);line-height:1.6;margin:10px 2px 2px;"></div>
+</div>
+<div class="card" style="margin-bottom:16px;" id="contribCard">
+<div style="display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px;margin:0 0 10px;">
+ <span style="font-size:13px;font-weight:600;color:var(--ink);">Driver contributions</span>
+ <span id="contribSub" style="font-size:12px;color:var(--sub);"></span>
+</div>
+<div id="contrib" class="f1-skel" role="list" aria-label="Each selected team's points, split by the drivers who scored them."></div>
+<div style="font-size:12px;color:var(--muted);line-height:1.6;margin:8px 2px 2px;">Each team's championship points split by the drivers who scored them, Grand Prix and sprints together, as of the slider's round. The top scorer is solid, a teammate is a lighter shade, any further driver is striped. Hover or tap a segment for the details.</div>
 </div>
 <div class="card" style="margin-bottom:16px;">
 <div style="display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px;margin:0 0 10px;">
@@ -121,7 +147,7 @@ function drawProjPoints(force){
 async function buildFromSelection(detail){
  currentYear = detail.year;
  currentSeasonRounds = detail.seasonRounds;
- if(!currentSeasonRounds.length){ D=[]; if(chart) chart.destroy(); projData=null; drawPositions(); drawProjPoints(true); return; }
+ if(!currentSeasonRounds.length){ D=[]; if(chart) chart.destroy(); projData=null; drawPositions(); drawProjPoints(true); drawContrib(); return; }
  currentCalendar = await F1Data.getCalendar(currentYear);
  const link = F1Share.take(); // #31: a shared link's setup, first season only
  if(link && link.get('pos')==='proj') document.getElementById('posView').value='proj';
@@ -244,6 +270,7 @@ function recompute(round){
  draw();
  renderTeamPicker();
  drawProjPoints(); // issue #10: follows the selection; no-op when only the round changed
+ drawContrib(); // #84
 }
 
 function draw(){
@@ -337,15 +364,151 @@ function positionHandle(){
  handle.addEventListener('pointerup', e=>{ dragging=false; try{handle.releasePointerCapture(e.pointerId);}catch(err){} });
 })();
 
+// #84: driver contributions. Each team's points through `round` (Grand Prix + sprints, the same rows as the
+// championship totals), split into one entry per driver who drove for it — a driver who raced for two teams
+// appears under both, with only the points scored for each. Teams come back in `teamIds`' order (unknown ids
+// dropped); drivers top scorer first. Pure: no DOM, no fetch.
+function contributions(seasonRounds, round, teamIds){
+ const teams={};
+ seasonRounds.filter(r=>r.round<=round).forEach(r=>[...r.raceResults, ...(r.sprintResults||[])].forEach(res=>{
+   const t = teams[res.teamId] || (teams[res.teamId]={teamId:res.teamId, teamName:res.teamName, total:0, drivers:{}});
+   const d = t.drivers[res.driverId] || (t.drivers[res.driverId]={driverId:res.driverId, code:res.code||res.driverId, name:res.name, nationality:res.nationality, points:0});
+   d.points += res.points||0; t.total += res.points||0;
+ }));
+ return teamIds.filter(id=>teams[id]).map(id=>{
+   const t=teams[id];
+   return {...t, drivers:Object.values(t.drivers).sort((a,b)=>b.points-a.points || String(a.code).localeCompare(String(b.code)))};
+ });
+}
+
+// Text colour with the better contrast on a solid team colour (hex or the hashed hsl() fallback).
+function inkOn(color){
+ let r,g,b;
+ if(color[0]==='#'){ const n=parseInt(color.slice(1),16); r=n>>16&255; g=n>>8&255; b=n&255; }
+ else { const m=color.match(/hsl\(\s*([\d.]+)\D+([\d.]+)%\D+([\d.]+)%/); if(!m) return '#fff';
+   const h=+m[1], s=m[2]/100, l=m[3]/100, a=s*Math.min(l,1-l), f=k=>{ const q=(k+h/30)%12; return 255*(l-a*Math.max(-1,Math.min(q-3,9-q,1))); };
+   r=f(0); g=f(8); b=f(4); }
+ const lin=v=>{ v/=255; return v<=0.03928 ? v/12.92 : Math.pow((v+0.055)/1.055,2.4); };
+ const L=0.2126*lin(r)+0.7152*lin(g)+0.0722*lin(b);
+ return (L+0.05)/0.05 > 1.05/(L+0.05) ? '#111' : '#fff';
+}
+// How a team's k-th driver (top scorer first) is filled: solid, a lighter shade, then striped.
+function contribFill(c, k){
+ if(k===0) return {bg:c, ink:inkOn(c)};
+ const ink=getComputedStyle(document.documentElement).getPropertyValue('--ink').trim()||'#222';
+ if(k===1) return {bg:F1Common.withAlpha(c,.38), ink, edge:c};
+ return {bg:F1Common.withAlpha(c,.16), stripe:F1Common.withAlpha(c,.5), ink, edge:c};
+}
+
+let contribData=[], contribMax=0;
+const contribPct = (p,t)=>t>0 ? Math.round(p/t*100) : 0;
+function contribText(t, d){ return `${d.name} (${F1Common.shortTeamName(t.teamId,t.teamName)}): ${Math.round(d.points)} pts, ${contribPct(d.points,t.total)}% of ${Math.round(t.total)}`; }
+function drawContrib(){
+ const el=document.getElementById('contrib'), sub=document.getElementById('contribSub');
+ hideContribTip();
+ if(!currentSeasonRounds.length){ contribData=[]; el.innerHTML=''; sub.textContent=''; return; }
+ contribData = contributions(currentSeasonRounds, L, rankedTeamIds().filter(id=>(selectedTeamIds||[]).includes(id)));
+ sub.textContent = `same teams as above · after round ${L}`;
+ if(!contribData.length){ el.innerHTML='<div style="font-size:12px;color:var(--muted);">No teams selected.</div>'; return; }
+ contribMax = Math.max(1, ...contribData.map(t=>t.total));
+ el.innerHTML = contribData.map((t,ti)=>{
+   const c=F1Theme.team(F1Common.teamColor(t.teamId));
+   const segs=t.drivers.map((d,k)=>{
+     if(!(d.points>0)) return '';
+     const f=contribFill(c,k);
+     const bg = f.stripe ? `background:repeating-linear-gradient(135deg,${f.stripe} 0 3px,${f.bg} 3px 7px);` : `background:${f.bg};`;
+     const edge = f.edge ? `border:1px solid ${f.edge};` : '';
+     return `<span class="ctSeg" role="listitem" tabindex="0" data-t="${ti}" data-k="${k}" data-id="${d.driverId}" data-pts="${d.points}" data-full="${d.code} ${Math.round(d.points)}" data-code="${d.code}"
+       style="width:${d.points/t.total*100}%;${bg}${edge}color:${f.ink};" aria-label="${contribText(t,d).replace(/"/g,'&quot;')}"></span>`;
+   }).join('');
+   return `<div class="ctRow" data-team="${t.teamId}">
+     <span class="ctTeam">${F1Common.flagHTML(F1Common.nationalityOf('teams', t.teamId))}${F1Common.shortTeamName(t.teamId,t.teamName)}</span>
+     <span class="ctBar"><span class="ctSegs" role="list" style="width:calc((100% - 44px) * ${t.total/contribMax});">${segs}</span><span class="ctTotal">${Math.round(t.total)}</span></span>
+   </div>`;
+ }).join('');
+ fitContribLabels();
+}
+// Each segment shows "CODE pts" if it fits, else just the code, else nothing (the tooltip still has it all).
+function fitContribLabels(){
+ document.querySelectorAll('#contrib .ctSeg').forEach(s=>{
+   for(const txt of [s.dataset.full, s.dataset.code, '']){ s.textContent=txt; if(s.scrollWidth<=s.clientWidth) break; }
+ });
+}
+// Tooltip: hover with a mouse, tap on a touch screen, or focus with the keyboard.
+let contribTipSeg=null;
+function showContribTip(seg){
+ const t=contribData[+seg.dataset.t], d=t && t.drivers[+seg.dataset.k]; if(!d) return;
+ const box=document.getElementById('contrib'); let tip=box.querySelector('.ctTip');
+ if(!tip){ tip=document.createElement('div'); tip.className='ctTip'; tip.setAttribute('role','tooltip'); box.appendChild(tip); }
+ tip.innerHTML=`${F1Common.flagHTML(d.nationality)}<b>${d.name}</b> · ${F1Common.shortTeamName(t.teamId,t.teamName)}<br>${Math.round(d.points)} pts · ${contribPct(d.points,t.total)}% of the team's ${Math.round(t.total)}`;
+ tip.hidden=false; contribTipSeg=seg;
+ const b=box.getBoundingClientRect(), r=seg.getBoundingClientRect();
+ const left=Math.max(0, Math.min(r.left-b.left + r.width/2 - tip.offsetWidth/2, box.clientWidth-tip.offsetWidth));
+ let top=r.top-b.top-tip.offsetHeight-6; if(r.top-tip.offsetHeight-6<0) top=r.bottom-b.top+6; // above the segment, unless off screen
+ tip.style.left=left+'px'; tip.style.top=top+'px';
+}
+function hideContribTip(){ const tip=document.querySelector('#contrib .ctTip'); if(tip) tip.hidden=true; contribTipSeg=null; }
+(function(){
+ const box=document.getElementById('contrib');
+ box.addEventListener('pointerover', e=>{ const s=e.target.closest('.ctSeg'); if(s && e.pointerType==='mouse') showContribTip(s); });
+ box.addEventListener('pointerout', e=>{ const s=e.target.closest('.ctSeg'); if(s && e.pointerType==='mouse' && !s.contains(e.relatedTarget)) hideContribTip(); });
+ box.addEventListener('click', e=>{ const s=e.target.closest('.ctSeg'); if(!s) return; e.stopPropagation(); showContribTip(s); });
+ box.addEventListener('focusin', e=>{ const s=e.target.closest('.ctSeg'); if(s) showContribTip(s); });
+ box.addEventListener('focusout', ()=>hideContribTip());
+ document.addEventListener('click', ()=>{ if(contribTipSeg) hideContribTip(); });
+ document.addEventListener('keydown', e=>{ if(e.key==='Escape') hideContribTip(); });
+})();
+// #33: PNG (drawn here, since the bars are HTML) and CSV.
+F1Export.attach(document.getElementById('contribCard'), {
+ name:'constructors-contributions',
+ get width(){ return document.getElementById('contrib').clientWidth || 640; }, // the picture is as wide as the card
+ title:()=>'Constructors’ Championship: driver contributions',
+ subtitle:()=>F1Export.roundText(totalRounds()),
+ draw:(ctx, x, y, w, measure)=>{
+   const narrow=F1Common.isNarrow(), rowH=narrow?44:32, h=contribData.length*rowH; if(measure) return h;
+   const ff=getComputedStyle(document.body).fontFamily, css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+   const nameW=narrow?0:126, barX=x+nameW, barW=w-nameW-48, barH=24;
+   contribData.forEach((t,i)=>{
+     const c=F1Theme.team(F1Common.teamColor(t.teamId));
+     const top=y+i*rowH, by=top+(narrow?18:4), cy=by+barH/2;
+     ctx.textBaseline='middle'; ctx.textAlign='left'; ctx.font='500 12px '+ff;
+     const nat=F1Common.nationalityOf('teams', t.teamId), fw=F1Common.flagSpace([nat]);
+     const ny=narrow?top+8:cy; F1Common.drawFlag(ctx, nat, x, ny);
+     let name=F1Common.shortTeamName(t.teamId,t.teamName); const room=(narrow?w:nameW-8)-fw;
+     if(ctx.measureText(name).width>room){ while(name.length>1 && ctx.measureText(name+'…').width>room) name=name.slice(0,-1); name+='…'; }
+     ctx.fillStyle=css('--ink2')||'#444'; ctx.fillText(name, x+fw, ny);
+     let sx=barX; const full=barW*t.total/contribMax;
+     t.drivers.forEach((d,k)=>{
+       if(!(d.points>0)) return;
+       const sw=full*d.points/t.total, f=contribFill(c,k);
+       ctx.save(); ctx.beginPath(); ctx.rect(sx,by,sw,barH); ctx.clip();
+       ctx.fillStyle=f.bg; ctx.fillRect(sx,by,sw,barH);
+       if(f.stripe){ ctx.strokeStyle=f.stripe; ctx.lineWidth=3; for(let s=-barH; s<sw; s+=7){ ctx.beginPath(); ctx.moveTo(sx+s,by+barH); ctx.lineTo(sx+s+barH,by); ctx.stroke(); } }
+       if(f.edge){ ctx.strokeStyle=f.edge; ctx.lineWidth=1; ctx.strokeRect(sx+.5,by+.5,sw-1,barH-1); }
+       if(k>0){ ctx.fillStyle=css('--panel'); ctx.fillRect(sx,by,1,barH); }
+       ctx.font='600 11px '+ff; ctx.fillStyle=f.ink; ctx.textAlign='center';
+       const label=[`${d.code} ${Math.round(d.points)}`, d.code].find(s=>ctx.measureText(s).width+8<=sw);
+       if(label) ctx.fillText(label, sx+sw/2, cy);
+       ctx.restore(); sx+=sw;
+     });
+     ctx.font='600 12px '+ff; ctx.fillStyle=css('--ink')||'#222'; ctx.textAlign='left';
+     ctx.fillText(String(Math.round(t.total)), barX+full+6, cy);
+   });
+   ctx.textAlign='left'; return h;
+ },
+ csv:()=>contribData.length ? [['Team','Driver','Code','Points','Share of team (%)','Team points'],
+   ...contribData.flatMap(t=>t.drivers.map(d=>[F1Common.shortTeamName(t.teamId,t.teamName), d.name, d.code, d.points, t.total>0 ? d.points/t.total*100 : 0, t.total]))] : null,
+});
 F1RoundResult.attach({kind:'teams', canvas:document.getElementById('c'), after:document.getElementById('chartWrap'), getChart:()=>chart,
  getState:()=>({rounds:currentSeasonRounds, L, selected:selectedTeamIds})}); // #29
 F1Export.championshipPage('teams', ()=>({D, N, L, R, thr, projChart, posChart})); // #33
 window.addEventListener('f1selection', e=>buildFromSelection(e.detail));
 window.addEventListener('f1roundchange', e=>{ if(currentSeasonRounds.length) recompute(e.detail.round); });
-window.addEventListener('themechange',()=>{ draw(); drawPositions(); drawProjPoints(true); });
+window.addEventListener('themechange',()=>{ draw(); drawPositions(); drawProjPoints(true); drawContrib(); });
 let lastNarrow=F1Common.isNarrow();
 window.addEventListener('resize', ()=>{
  if(chart) positionHandle();
+ fitContribLabels(); // #84: labels follow the bar widths
  const now=F1Common.isNarrow(); if(now!==lastNarrow){ lastNarrow=now; draw(); drawPositions(); drawProjPoints(true); }
 });
 F1Controls.mount('f1controls');

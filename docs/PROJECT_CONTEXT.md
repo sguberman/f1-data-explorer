@@ -32,7 +32,7 @@ Only `site/` is deployed to GitHub Pages (issue #51); everything else in the rep
 site/                 The website (deployed as the site root, so URLs are unchanged)
   index.html          Landing page: the next race (#89), then a card per page, each with a picture of its main chart.
   drivers.html        Drivers' championship: cumulative points line chart, projections, knockout line.
-  constructors.html   Constructors' championship: same chart pattern for teams.
+  constructors.html   Constructors' championship: same chart pattern for teams, plus driver contributions (#84).
   position.html       Race finishing-position ridgeline chart per driver, with sort/show options.
   simulator.html      Monte Carlo rest-of-season title simulator with ridgeline result charts.
   whatif.html         What-if: drag a finishing order for a round, see both championships after it.
@@ -167,7 +167,7 @@ Move something into `common.js` only once it's genuinely identical on every page
   - On a touch device that can share files (`navigator.canShare`), PNG and CSV open the share sheet (#75); anywhere
     else, or if sharing is refused, they download.
   - The CSV is the data behind the chart: points and projection per round with the knockout line, projected
-    totals, positions per round, finishing-position counts, simulated shares, and the what-if tables (CSV only).
+    totals, positions per round, driver contributions per team (#84), finishing-position counts, simulated shares, and the what-if tables (CSV only).
   - Files are named `f1-{season}-{chart}-r{round}`.
   - `F1Export.championshipPage()` wires the three charts shared by the drivers and constructors pages.
 
@@ -226,6 +226,15 @@ selection; the card below it shows every driver/team.
 
 **constructors.html** — Same chart pattern for teams (remaining points per weekend 43 GP + 15 sprint).
 Knockout line based on the highest-ranked selected team. Presets All/None/Top 2/Top 5, default Top 5.
+Between the points chart and Projected final points, a **Driver contributions** card (#84): one horizontal bar
+per picked team (standings order), split into a segment per driver with that driver's points for the team as of
+the slider's round (Grand Prix + sprints, so each bar is the team's championship total). A driver who scored for
+two teams gets a segment in each. HTML/CSS bars on one shared scale; the top scorer is solid team colour, a
+teammate a lighter shade (team-colour border), any further driver striped. Segments read "CODE pts", just the
+code, or nothing as space allows; the total sits at the bar end. Hover, tap or focus a segment for the driver
+(flag, name, team), points and share of the team. Team name above the bar on phones. Follows the slider, picker,
+season and theme; never fetches. Its PNG is drawn for the picture (export `draw`); its CSV has a row per driver
+per team (`contributions()` in the page is the pure data function).
 
 **position.html** — One ridgeline chart: each selected driver's finishing-position histogram through the
 chosen round, normalized to its own peak. "Sort by" Most common / Championship / Team (team = constructors' order,
@@ -392,7 +401,9 @@ since fonts render differently on different machines.
   simulator link reproduces the same results) and exports (#33: PNG and CSV contents per chart, never fetches; #75/#76: share sheet on phones with download fallbacks,
   icon in the picture's corner), Jolpica patch (#59: a stripped season patched from a fake Jolpica comes back exactly; mismatches
   stop the patch), round results (#29: tap a round for its result, sprint switch, arrows, close, NC last, projected
-  rounds closed, never fetches, URL round-trip, phone fit). The harness
+  rounds closed, never fetches, URL round-trip, phone fit), driver contributions (#84: per-driver and per-team points
+  checked against an independent sum and the picker, picker/slider/theme/season, a driver with two teams on constructed
+  data, labels never cut off, tooltip, PNG/CSV, never fetches, phone fit). The harness
   never serves the real `site/data/*.json`: tests pass `snapshots` built from the fake season. The fixture's names mix country names and demonyms, with
   one unknown. Logic is checked against
   independent calculations written in the tests, not against the site's own helpers.
