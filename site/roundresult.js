@@ -1,6 +1,6 @@
 /* F1RoundResult (#29): tap or click a round on a championship points chart to see that round's result in a
    panel under the chart: the finishing order, with the picked drivers (drivers' page) or the picked teams' drivers
-   (constructors' page) in bold, a Grand Prix / Sprint switch on sprint weekends, ‹ › to step through rounds and
+   (constructors' page) in bold, a Sprint / Grand Prix switch on sprint weekends, ‹ › to step through rounds and
    × to close. Only rounds up to the slider's round can be opened (later ones are projected). Everything comes from the season
    already loaded — opening, switching and stepping never fetch.
 
@@ -58,7 +58,7 @@ const F1RoundResult = (() => {
     panel.innerHTML = `<div class="rr-head">
       <div class="rr-title"><span class="rr-round">Round ${open}</span> ${esc(rd.raceName || '')}</div>
       <div class="rr-tools">
-        ${hasSprint ? `<span class="rr-seg" role="group" aria-label="Session"><button type="button" class="pill rr-gp${shown === 'gp' ? ' active' : ''}" aria-pressed="${shown === 'gp'}">Grand Prix</button><button type="button" class="pill rr-sprint${shown === 'sprint' ? ' active' : ''}" aria-pressed="${shown === 'sprint'}">Sprint</button></span>` : ''}
+        ${hasSprint ? `<span class="rr-seg" role="group" aria-label="Session"><button type="button" class="pill rr-sprint${shown === 'sprint' ? ' active' : ''}" aria-pressed="${shown === 'sprint'}">Sprint</button><button type="button" class="pill rr-gp${shown === 'gp' ? ' active' : ''}" aria-pressed="${shown === 'gp'}">Grand Prix</button></span>` : ''}
         <button type="button" class="rr-btn rr-prev" aria-label="Previous round"${openable(prev) ? '' : ' disabled'}>‹</button>
         <button type="button" class="rr-btn rr-next" aria-label="Next round"${openable(next) ? '' : ' disabled'}>›</button>
         <button type="button" class="rr-btn rr-close" aria-label="Close result">×</button>

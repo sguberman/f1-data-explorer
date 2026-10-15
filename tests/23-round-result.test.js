@@ -41,6 +41,7 @@ module.exports = async (t, h) => {
   const sr = info.sprints[0];
   await tapRound(p, sr); s = await panel(p);
   t.check('a sprint weekend has a Grand Prix / Sprint switch, starting on the Grand Prix', s.sprint && JSON.stringify(s.rows.map(r => r[0])) === JSON.stringify((await expected(p, sr, 'gp')).order.map(x => x[0])));
+  t.check('…Sprint on the left, Grand Prix on the right (in weekend order)', await p.$$eval('#roundResult .rr-seg button', bs => bs.map(b => b.textContent).join('|')) === 'Sprint|Grand Prix');
   await p.click('#roundResult .rr-sprint'); s = await panel(p);
   const wantS = await expected(p, sr, 'sprint');
   t.check('…Sprint shows the sprint result', JSON.stringify(s.rows.map(r => [r[0], r[1], r[4]])) === JSON.stringify(wantS.order), JSON.stringify(s.rows.slice(0, 2)));

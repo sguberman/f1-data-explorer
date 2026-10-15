@@ -199,7 +199,7 @@ Top 5.
 chart (up to the slider's round; projected rounds don't open) opens that round's result in a panel under the
 chart, with the round shaded on the chart. Drivers' page: finishing order (pos, team dot, flag, name — code on
 phones — team, points), not classified last as NC, top 10 with "Show all N"; picked drivers in bold (on the
-constructors' page, the same list with the picked teams' drivers in bold). Sprint weekends get a Grand Prix / Sprint switch; ‹ › (and ←/→) step through
+constructors' page, the same list with the picked teams' drivers in bold). Sprint weekends get a Sprint / Grand Prix switch (weekend order; the Grand Prix shows first); ‹ › (and ←/→) step through
 rounds, × or Escape closes it, and moving the slider before the open round closes it. The tooltip title names
 the race, with "Click for the full result" on actual rounds (not on touch screens). Never fetches.
 
