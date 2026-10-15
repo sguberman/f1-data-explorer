@@ -140,9 +140,13 @@ module.exports = async (t, h) => {
   t.check('fake season, round 12: says who leads and the earliest round, from the independent calculation', await main() === want12, await main() + ' ≠ ' + want12);
   t.check('…labelled "Title race", with no "Every driver, after round 12." line under it (nor any note or link)', await h.text(p, '#titleRace .trLabel') === 'Title race'
     && !/Every driver|after round/.test(await h.text(p, '#titleRace')) && !(await p.$('#titleRace .trSub, #titleRace .trNote, #titleRace .trLink')), await h.text(p, '#titleRace'));
-  t.check('placement: in the points card, under the chart, above the knockout note', await p.evaluate(() => {
+  t.check('placement: at the top of the points card, above the legend and the chart', await p.evaluate(() => {
     const el = document.getElementById('titleRace'), card = document.getElementById('c').closest('.card');
-    return card.contains(el) && el.nextElementSibling.id === 'sm' && el.getBoundingClientRect().top > document.getElementById('chartWrap').getBoundingClientRect().bottom; }));
+    return card.contains(el) && card.firstElementChild === el && el.getBoundingClientRect().bottom <= document.getElementById('chartWrap').getBoundingClientRect().top; }));
+  t.check('short race names for running text ("Singapore GP"), from the real names\' many forms', await p.evaluate(() => JSON.stringify([
+    'Formula 1 Singapore Airlanes Singapore Grand Prix 2026', 'MSC Cruises United States Grand Prix 2025', 'Formula 1 Lenovo Grand Prix Du Canada 2026',
+    'Formula 1 MSC Cruises Grande Premio de Sao Paulo 2026', 'Formula 1 Gran Premio de La Ciudad de México 2026', 'Heineken Silver Las Vegas Grand Prix', 'Round 12 Grand Prix'
+  ].map(F1Common.shortGP))) === JSON.stringify(['Singapore GP', 'United States GP', 'Canada GP', 'Sao Paulo GP', 'México City GP', 'Las Vegas GP', '']));
   t.check('names carry flags', await p.$$eval('#titleRace .trName img.flag', x => x.length) === 2);
   for(const r of [6, 2]){
     await h.setRound(p, r); await p.waitForTimeout(60);
@@ -175,10 +179,10 @@ module.exports = async (t, h) => {
     ['drivers', 'twoRivals', 8, 'VER clinches the title in round 9 (Las Vegas GP) by outscoring NOR by 12 or more and PIA by 3 or more. For example, a win with NOR P4 or lower.'],
     ['drivers', 'sprintNext', 8, 'VER clinches the title in round 9 (Las Vegas GP) by outscoring NOR by 12 or more and PIA by 3 or more. For example, winning both with NOR on 21 points or fewer for the weekend.'],
     ['drivers', 'oneRival', 7, 'VER clinches the title in round 8 (Austrian GP) by outscoring NOR by 2 or more. A win would do it, whatever the others do.'],
-    ['drivers', 'decided', 9, 'VER is champion: clinched in round 8 (Austrian GP), with 2 rounds to spare.'],
+    ['drivers', 'decided', 9, '🏆 VER is champion: clinched in round 8 (Austrian GP), with 2 rounds to spare.'],
     ['drivers', 'decided', 3, 'VER leads NOR by 21 points. The title can\'t be decided before round 7 (Spanish GP) at the earliest.'],
     ['drivers', 'final', 9, null],
-    ['drivers', 'cbOpen', 4, 'NOR is the 2026 champion: clinched in the final round (Miami GP), level on points with VER and ahead on countback.'],
+    ['drivers', 'cbOpen', 4, '🏆 NOR is the 2026 champion: clinched in the final round (Miami GP), level on points with VER and ahead on countback.'],
   ];
   for(const [name, sc, L, want] of wording){
     const q = await open(name, S[sc]);
@@ -190,8 +194,8 @@ module.exports = async (t, h) => {
         && got.includes('NOR can also clinch it there by outscoring VER by 6 or more') && others.length >= 1, got); }
     if(SHOTS) await q.locator('#titleRace').screenshot({ path: path.join(SHOTS, `clinch-state-${sc}-${L}.png`) });
     const isNext = results[`${sc}:drivers:${L}`].state === 'next';
-    t.check(`${name}, ${sc}: the countback note shows only for a next-race clinch, alone (no "Every driver" line)`, (await q.$('#titleRace .trTie') !== null) === isNext
-      && (isNext ? await h.text(q, '#titleRace .trNote') === 'One point less could leave them level on points, which would go to countback.' : !(await q.$('#titleRace .trNote'))) && !(await q.$('#titleRace .trSub')), await h.text(q, '#titleRace'));
+    t.check(`${name}, ${sc}: no "One point less…" countback note and no "Every driver" line`, !(await q.$('#titleRace .trNote, #titleRace .trTie, #titleRace .trSub'))
+      && !/One point less|Every driver/.test(await h.text(q, '#titleRace')), await h.text(q, '#titleRace'));
     // The What-If link: only for a next-race clinch; the round only when the slider isn't on the latest round; it asks
     // What-If to start from the title-clinch order (start=clinch).
     const href = await q.$eval('#titleRace .trLink', a => a.getAttribute('href')).catch(() => null);
@@ -214,7 +218,7 @@ module.exports = async (t, h) => {
     await h.setRound(tq, L); await tq.waitForTimeout(60);
     const w = indep(S.twoRivals, L, 'teams'), m = await tq.$eval('#titleRace .trText', e => e.textContent.replace(/\s+/g, ' ').trim());
     const ok = w.state === 'next' ? m.startsWith(`${tname[w.lead[0].id]} clinches the title in round ${L + 1}`) && Object.entries(w.lead[0].conds).every(([id, n]) => n > 0 ? m.includes(`${tname[id]} by ${n} or more`) : n === 0 ? m.includes(tname[id]) : m.includes(`unless ${tname[id]} outscores ${tname[w.lead[0].id]} by ${1 - n} or more`))
-      : w.state === 'decided' ? m.startsWith(`${tname[w.champion]} is champion: clinched in round ${w.clinched}`) : m.includes(`before round ${w.earliest}`);
+      : w.state === 'decided' ? m.startsWith(`🏆 ${tname[w.champion]} is champion: clinched in round ${w.clinched}`) : m.includes(`before round ${w.earliest}`);
     t.check(`constructors: slider to round ${L} follows (${w.state})`, ok, m + ' ' + JSON.stringify(w));
   }
   // Following the link from an earlier round opens What-If on the round after it, with the same title-race wording.

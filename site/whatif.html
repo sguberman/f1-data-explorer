@@ -70,7 +70,11 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
 /* #85: the title race for the round being edited (the championship pages' "Title race" box, both championships),
    the live line above each result table, and the champion's tag in its table */
 #wiTitleRace{margin:-2px 0 12px;}
-#wiTitleRace .trMain + .trMain{margin-top:3px;}
+#wiTitleRace .trMain + .trMain{margin-top:6px;}
+#wiTitleRace .trLabel{display:block;margin:0 0 1px;} /* "Drivers' title" / "Constructors' title" on their own lines */
+/* #85: under the last driver/team who can still win the title */
+tr.outLine td{padding:0;border-bottom:none;}
+tr.outLine span{display:block;margin:2px 0;padding:3px 0 0;border-top:2px dashed var(--elim);font-size:11px;color:var(--elim);text-align:center;letter-spacing:.01em;}
 .clinchRes{font-size:12.5px;line-height:1.5;color:var(--sub);margin:-2px 0 6px;min-height:1.5em;}
 .clinchRes.won{color:var(--ink2);}
 .stTable .nmIn{display:flex;align-items:center;min-width:0;}
@@ -278,10 +282,13 @@ function readOrders(){
 function renderTables(){
  const rounds=whatIfRounds(), before=seasonRounds.filter(r=>r.round<=L);
  [['drivers','driverTable'],['teams','teamTable']].forEach(([kind, el])=>{
-   const champ=renderClinchResult(kind, rounds); // #85
+   const clinchRes=renderClinchResult(kind, rounds), champ=clinchRes.champion; // #85
    const now=totals(before, kind), next=totals(rounds, kind);
    const prevOrder=F1Common.standingsOrder(before, L, kind), order=F1Common.standingsOrder(rounds, T, kind);
    const info={}; rounds.forEach(r=>[...r.raceResults, ...(r.sprintResults||[])].forEach(res=>{ info[kind==='teams'?res.teamId:res.driverId]=res; }));
+   // #85: while the title is open, a line under the last driver/team who can still win it (everyone below is out).
+   const cut = clinchRes.contenders ? Math.max(...clinchRes.contenders.map(id=>order.indexOf(id))) : -1;
+   const outLine = `<tr class="outLine"><td colspan="6"><span>Can still win the title ↑ · Out of contention ↓</span></td></tr>`;
    const rows=order.map((id,i)=>{
      const r=info[id], j=prevOrder.indexOf(id), move = j<0 ? 0 : j-i, gain=(next[id]||0)-(now[id]||0);
      const color=F1Theme.team(F1Common.teamColor(r.teamId));
@@ -291,7 +298,8 @@ function renderTables(){
      const tag = id===champ ? '<span class="champTag" title="Champion with this result">🏆<span class="long"> Champion</span></span>' : '';
      return `<tr data-id="${id}"${tag?' class="champ"':''}><td class="pos">${i+1}</td><td>${F1Common.moveHTML(move)}</td>
        <td class="nm"><span class="nmIn"><span class="dot" style="background:${color}"></span><span class="nmTxt">${name}</span>${tag}</span></td>
-       <td>${Math.round(now[id]||0)}</td><td class="gain${gain?'':' zero'}">${gain?'+'+Math.round(gain):'–'}</td><td class="tot">${Math.round(next[id]||0)}</td></tr>`;
+       <td>${Math.round(now[id]||0)}</td><td class="gain${gain?'':' zero'}">${gain?'+'+Math.round(gain):'–'}</td><td class="tot">${Math.round(next[id]||0)}</td></tr>`
+       + (i===cut && i<order.length-1 ? outLine : '');
    }).join('');
    document.getElementById(el).innerHTML = `<tr><th>Pos</th><th></th><th>${kind==='teams'?'Team':'Driver'}</th><th>Before</th><th>+</th><th>After</th></tr>`+rows;
  });
@@ -331,13 +339,14 @@ function renderTitleRace(){
  el.innerHTML = parts.map(x=>`<div class="trMain" data-kind="${x.kind}" data-state="${x.tr.state}"><span class="trLabel">${x.label}</span> <span class="trText">${x.main}</span></div>`).join('')
    + (note ? `<div class="trNote"><span class="trTie">${note}</span></div>` : '');
 }
-// Above each table: champion with the dragged result, or who can still win. Returns the champion's id (or null).
+// Above each table: champion with the dragged result, or that the title is still open. Returns titleResultText()'s
+// result ({champion, contenders (who can still win, while it's open), …}); the table draws the line under them.
 function renderClinchResult(kind, rounds){
  const el=document.getElementById(kind==='teams' ? 'clinchTeams' : 'clinchDrivers');
  const r=F1Common.titleResultText(rounds, T, kind, {year, calendar});
  el.classList.toggle('won', r.won);
  el.innerHTML=r.html;
- return r.champion;
+ return r;
 }
 
 // ---- #85: the "🏆 Title clinch" preset ----
