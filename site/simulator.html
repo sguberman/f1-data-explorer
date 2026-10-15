@@ -52,6 +52,7 @@ h2{font-size:14px;font-weight:650;margin:0 0 12px;color:var(--sub);text-transfor
 .oc-ctl{display:flex;align-items:center;gap:4px;margin-left:auto;}
 .oc-ctl + .oc-ctl{margin-left:8px;}
 .oc-lbl{font-size:11px;color:var(--sub);}
+.oc-out{font-size:11.5px;color:var(--sub);margin-left:auto;text-align:right;} /* #117: a tracked driver who isn't racing any more */
 .oc-sub{font-size:12.5px;font-weight:600;color:var(--sub);margin:16px 0 8px;}
 .col-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--inset);border:1px solid var(--line);border-radius:7px;padding:7px 10px;margin-bottom:8px;font-size:12.5px;color:var(--sub);}
 .col-row select{padding:4px 6px;font-size:12.5px;}
@@ -67,6 +68,8 @@ h2{font-size:14px;font-weight:650;margin:0 0 12px;color:var(--sub);text-transfor
 .stepper button:disabled{opacity:.35;cursor:default;}
 .stepper .val{width:30px;text-align:center;font-variant-numeric:tabular-nums;font-size:13px;}
 .stepper .val.auto{color:var(--sub);font-style:italic;font-size:12px;}
+.winStep{margin-top:4px;}
+.winStep .val{width:auto;min-width:104px;}
 .reset{background:transparent;color:var(--sub);border:1px solid var(--line);border-radius:6px;padding:7px 12px;font-size:12.5px;cursor:pointer;}
 canvas{max-width:100%;}
 /* #86: when the title is decided */
@@ -104,7 +107,7 @@ canvas{max-width:100%;}
       <button type="button" class="pill" data-preset="10">Top 10</button>
     </div>
     <div id="driverPicker" class="f1-skel"></div>
-    <div class="note">The simulation always includes every driver who has raced this season; this only chooses who's shown in the results.</div>
+    <div class="note">The simulation always includes every driver who raced in the latest round (anyone else keeps their points); this only chooses who's shown in the results.</div>
   </div>
 
   <!-- #42/#14/#11: per-driver DNF and win settings for tracked drivers, plus collisions between any two drivers -->
@@ -123,6 +126,15 @@ canvas{max-width:100%;}
   </div>
 
   <div class="card row">
+    <!-- #117: how much of each driver's season the race model draws from -->
+    <div>
+      <label id="winLbl">Form from</label><br>
+      <div class="stepper winStep" role="group" aria-labelledby="winLbl">
+        <button type="button" id="winLess" aria-label="Use fewer races">−</button>
+        <span class="val" id="winVal" aria-live="polite">last 8 races</span>
+        <button type="button" id="winMore" aria-label="Use more races">+</button>
+      </div>
+    </div>
     <div>
       <label for="n">Simulations</label><br>
       <select id="n">
@@ -156,7 +168,7 @@ canvas{max-width:100%;}
     <h2>Projected final championship position</h2>
     <div class="ridgeWrap" id="ridgePosWrap"><canvas id="ridgePosCanvas"></canvas></div>
     <div class="ridgeKey"><span class="ridgeKeyItem"><i class="ridgeKeyMode"></i>most common finish</span></div>
-    <div class="note">Each ridge is one tracked driver's share of simulated seasons landing at each final position, tallest at their most likely finish. Position is rank in the full simulated standings — every driver who has raced this season, not just the tracked set — so finishing behind an untracked driver is possible; when the most common finish is outside the positions shown, its marker on the last column says which. Ordered by most common finish, best on top.</div>
+    <div class="note">Each ridge is one tracked driver's share of simulated seasons landing at each final position, tallest at their most likely finish. Position is rank in the full simulated standings — every driver who has raced this season, not just the tracked set, with equal points split by countback — so finishing behind an untracked driver is possible; when the most common finish is outside the positions shown, its marker on the last column says which. Ordered by most common finish, best on top.</div>
   </div>
 
   <div class="card" id="ridgePointsCard" style="display:none;">
@@ -222,6 +234,8 @@ async function buildFromSelection(detail){
      .filter(c=>valid.includes(c.a) && valid.includes(c.b) && c.a!==c.b);
    const nSel = document.getElementById('n');
    if([...nSel.options].some(o=>o.value===link.get('n'))) nSel.value = link.get('n');
+   const w = link.get('w'); // #117
+   if(w==='all') dataWindow = Infinity; else if(/^\d{1,3}$/.test(w||'') && +w>=WINDOW_MIN) dataWindow = +w;
    if(/^\d{1,10}$/.test(link.get('seed')||'')) linkSeed = +link.get('seed');
  }
  recompute(detail.round);
@@ -243,6 +257,7 @@ F1Share.register(()=>{
    sort: pickerSort==='team' ? null : pickerSort,
    o: o || null, c: c || null,
    n: n==='10000' ? null : n,
+   w: dataWindow===WINDOW_DEFAULT ? null : dataWindow===Infinity ? 'all' : String(dataWindow), // #117
    seed: fresh ? String(lastRun.seed) : null,
    _round: !!fresh,
  };
@@ -287,20 +302,71 @@ function buildDnfStats(){
 }
 
 // Per-driver current points and this season's DNF rate (no classified position) — for literally every driver who
-// has raced, not just tracked ones — plus the finish histogram above that drives simulated results.
+// has raced, not just tracked ones — plus the finish histogram above (shown and tested against the position chart).
+// #117: what the model draws from: results = each Grand Prix start so far in order (classified position, or null
+// for a DNF), finishes = Grand Prix finishes by exact position for countback, and active = raced in round L (only
+// they race again; anyone else keeps their points). gridDnfRate = the whole grid's DNF rate so far.
+let gridDnfRate=0;
 function recomputeRoster(){
  const cumInc = F1Data.cumulative(currentSeasonRounds, L);
  const posHist = buildPosHist(), dnfStats = buildDnfStats();
  const rank = F1Common.standingsRank(currentSeasonRounds, L, 'drivers'); // #20: standings order, ties by countback
+ const results = {}, finishes = {}, activeIds = new Set();
+ currentSeasonRounds.forEach(r=>{
+   if(r.round > L) return;
+   (r.raceResults||[]).forEach(res=>{
+     const pos = isFinish(res) ? res.position : null;
+     (results[res.driverId] = results[res.driverId] || []).push(pos);
+     if(pos){ const f = finishes[res.driverId] = finishes[res.driverId] || []; f[pos-1] = (f[pos-1]||0) + 1; }
+     if(r.round === L) activeIds.add(res.driverId);
+   });
+ });
+ let starts=0, dnfs=0;
+ Object.values(dnfStats).forEach(st=>{ starts+=st.starts; dnfs+=st.dnfs; });
+ gridDnfRate = starts ? dnfs/starts : 0;
  fullRoster = Object.keys(cumInc.drivers).map(id=>{
    const di = cumInc.drivers[id];
    const now = di.rounds.reduce((s,x)=>s+x.points,0);
    const st = dnfStats[id];
    const dnfRate = st && st.starts ? st.dnfs / st.starts : 0;
    return { driverId:id, code:di.code, name:di.name, teamId:di.teamId, teamName:di.teamName, now, dnfRate, rank:rank[id],
-            posHist: posHist[id] || new Array(11).fill(0) };
+            posHist: posHist[id] || new Array(11).fill(0), results: results[id] || [], finishes: finishes[id] || [],
+            active: activeIds.has(id) };
  });
 }
+
+// ---- #117: the race model's inputs ----
+// The data window: the last N Grand Prix starts of each driver, or the whole season (Infinity). Default 8.
+const WINDOW_DEFAULT=8, WINDOW_MIN=3;
+let dataWindow=WINDOW_DEFAULT;
+const windowResults = d => dataWindow===Infinity ? d.results : d.results.slice(-dataWindow);
+// Weight for finishing at position `place` (1-based): finishes at that place or better in the window, plus a bonus
+// for finishes just behind it (+0.5 one place behind, halving each place further), plus a small floor, so a driver is
+// most likely to finish near where they've been finishing and anything stays possible.
+const NEAR_BONUS=0.5, NEAR_DECAY=0.5, WEIGHT_FLOOR=0.01;
+function placeWeight(res, place){
+ let w=WEIGHT_FLOOR;
+ for(const f of res){ if(f==null) continue; w += f<=place ? 1 : NEAR_BONUS*Math.pow(NEAR_DECAY, f-place-1); }
+ return w;
+}
+// DNF chance: the window's DNF share, blended with DNF_PRIOR_RACES races at the grid's DNF rate (so 0 DNFs in 8
+// races isn't "never retires", and 2 bad-luck DNFs aren't 25%).
+const DNF_PRIOR_RACES=4;
+// The window as used at round L: anything as long as the races so far is the whole season.
+const windowShown = ()=>dataWindow>=L ? Infinity : dataWindow;
+function syncWindow(){
+ const w=windowShown();
+ document.getElementById('winVal').textContent = w===Infinity ? 'whole season' : `last ${w} races`;
+ document.getElementById('winLess').disabled = (w===Infinity ? L-1 : w-1) < WINDOW_MIN;
+ document.getElementById('winMore').disabled = w===Infinity;
+}
+function stepWindow(dir){
+ const w=windowShown();
+ if(dir<0){ const v=(w===Infinity ? L-1 : w-1); if(v<WINDOW_MIN) return; dataWindow=v; }
+ else{ if(w===Infinity) return; dataWindow = w+1>=L ? Infinity : w+1; }
+ syncWindow(); refreshResults(); // the last results stay, marked out of date (#17)
+}
+function modelDnfRate(res){ const k=res.filter(f=>f==null).length; return (k + DNF_PRIOR_RACES*gridDnfRate)/(res.length + DNF_PRIOR_RACES); }
 
 // Roster order everywhere on this page (pickers, settings, presets): the standings (#20).
 const byStanding = (a,b)=>a.rank-b.rank;
@@ -312,16 +378,21 @@ function buildSimContext(){
  const roster=fullRoster, n=roster.length, E=remainingEvents.length;
  const index={}; roster.forEach((d,i)=>{ index[d.driverId]=i; });
  const tracked=new Set(selectedDriverIds||[]);
- const wins=roster.map(d=>tracked.has(d.driverId) && outcomes[d.driverId] ? outcomes[d.driverId].win : null);
- const dnfs=roster.map(d=>tracked.has(d.driverId) && outcomes[d.driverId] ? outcomes[d.driverId].dnf : null);
+ const set=d=>tracked.has(d.driverId) && d.active && outcomes[d.driverId]; // #117: a driver who isn't racing has no settings
+ const wins=roster.map(d=>set(d) ? outcomes[d.driverId].win : null);
+ const dnfs=roster.map(d=>set(d) ? outcomes[d.driverId].dnf : null);
  const cols=validCollisions().map(c=>({a:index[c.a], b:index[c.b], n:c.n})).filter(c=>c.a!=null && c.b!=null);
  const gpIdx=remainingEvents.map((e,i)=>e.type==='gp'?i:-1).filter(i=>i>=0);
- // #56: finish-position weights per driver and slot, worked out once per run instead of per draw
- const W=new Float64Array(n*10);
- roster.forEach((d,i)=>{ for(let slot=0;slot<10;slot++) W[i*10+slot]=(d.posHist[slot]||0)+HIST_SMOOTH; });
+ // #56/#117: weights per driver and finishing place (every place, P1 to last), worked out once per run
+ const W=new Float64Array(n*n), active=roster.map(d=>d.active), dnfRate=new Float64Array(n);
+ roster.forEach((d,i)=>{ const res=windowResults(d); dnfRate[i]=modelDnfRate(res);
+   for(let slot=0;slot<n;slot++) W[i*n+slot]=placeWeight(res, slot+1); });
+ // countback (#117): Grand Prix finishes so far by exact position, per driver (simulated ones are added per season)
+ const fin0=new Int16Array(n*n);
+ roster.forEach((d,i)=>{ d.finishes.forEach((c,p)=>{ if(c && p<n) fin0[i*n+p]=c; }); });
  const nowPts=roster.map(d=>d.now), dec=decidedContext(remainingEvents, L);
  return { roster, n, E, events:remainingEvents, isGp:remainingEvents.map(e=>e.type==='gp'), gpIdx, wins, dnfs, cols, W,
-          dnfRate:roster.map(d=>d.dnfRate), winDrivers:wins.map((w,i)=>w?i:-1).filter(i=>i>=0),
+          dnfRate, active, fin0, rank:roster.map(d=>d.rank), winDrivers:wins.map((w,i)=>w?i:-1).filter(i=>i>=0),
           nowPts, forcedWinner:wins.map(w=>w!=null), dec, decidedNow:titleSettled(nowPts, n, dec.room0) ? L : 0,
           scratch:new Int16Array(Math.max(E,n)), alive:new Int16Array(n), wts:new Float64Array(n) };
 }
@@ -410,20 +481,23 @@ function planSeason(ctx){
 // One whole simulated season: points totals per roster index (and, for tests, each event's order), and the round
 // the title was decided (#86: checked at the end of each round from the points already drawn; no extra random draws,
 // so a seeded run gives exactly the results it gave before).
+// #117: only drivers who raced in the latest round take part (ctx.active); every classified place is drawn, and each
+// Grand Prix place is added to fin (finishes by position, for countback) — the sprint counts for points only.
 function simulateSeason(ctx, keepOrders){
  const plan=planSeason(ctx), totals=ctx.nowPts.slice(), orders=keepOrders?[]:null, alive=ctx.alive, dec=ctx.dec;
+ const n=ctx.n, fin=ctx.fin0.slice(), active=ctx.active;
  let decided=ctx.decidedNow;
  for(let e=0;e<ctx.E;e++){
    const gp=ctx.isGp[e], w=plan.winnerOf[e], pts = gp ? PTS_GP : PTS_SPRINT;
-   let len=0; for(let i=0;i<ctx.n;i++) if(!plan.out[i][e] && i!==w) alive[len++]=i;
+   let len=0; for(let i=0;i<n;i++) if(active[i] && !plan.out[i][e] && i!==w) alive[len++]=i;
    // A driver with a set number of wins wins exactly those GPs: they're never drawn for P1 elsewhere.
    let order;
-   if(gp && w>=0){ totals[w]+=pts[0]; order=sampleOrder(ctx, alive, len, 1, null, totals, pts); if(orders) order.unshift(w); }
-   else order=sampleOrder(ctx, alive, len, 0, gp ? ctx.forcedWinner : null, totals, pts);
+   if(gp && w>=0){ totals[w]+=pts[0]; fin[w*n]++; order=sampleOrder(ctx, alive, len, 1, null, totals, pts, fin); if(orders) order.unshift(w); }
+   else order=sampleOrder(ctx, alive, len, 0, gp ? ctx.forcedWinner : null, totals, pts, gp ? fin : null);
    if(orders) orders.push(order);
-   if(!decided && dec.endRound[e] && titleSettled(totals, ctx.n, dec.roomAfter[e])) decided=dec.endRound[e];
+   if(!decided && dec.endRound[e] && titleSettled(totals, n, dec.roomAfter[e])) decided=dec.endRound[e];
  }
- return {totals, plan, orders, decided: decided || dec.lastRound};
+ return {totals, plan, orders, fin, decided: decided || dec.lastRound};
 }
 
 // The real remaining schedule from the live calendar — each GP, plus a separate "event" for any
@@ -446,6 +520,7 @@ function recompute(round){
  recomputeRemainingEvents();
  buildOutcomeInputs();
  renderDriverPicker();
+ syncWindow();
  updateLede();
  updateReadiness();
  refreshResults(); // #17: keep the last results; they're marked out of date if the round changed
@@ -466,7 +541,7 @@ function updateLede(){
  document.getElementById('lede').textContent =
    `Simulates the rest of the season thousands of times: ${nGP} ${nGP===1?'Grand Prix':'Grands Prix'}`
    + (nSprint ? ` and ${nSprint} sprint${nSprint===1?'':'s'}` : '')
-   + ` left after Round ${L}${totalRounds?(' of '+totalRounds):''}. Results are drawn from where each driver has finished this season, and each driver retires at their own DNF rate, unless you set DNFs, wins or collisions below. Every driver who has raced this season is simulated, so someone you don't track can still score points or win the title. It shows a range of plausible outcomes if current form holds, not a prediction.`;
+   + ` left after Round ${L}${totalRounds?(' of '+totalRounds):''}. Each race is drawn place by place from where each driver has been finishing in their recent races (Form from, below): they're most likely to finish where they usually do or a place or two either side, and they retire about as often as they have been, unless you set DNFs, wins or collisions below. Every driver in the latest round is simulated, so someone you don't track can still score points or win the title, and drivers level on points are separated by countback, as in the real standings. It shows a range of plausible outcomes if current form holds, not a prediction.`;
 }
 
 function updateReadiness(){
@@ -487,33 +562,31 @@ function hideResults(){
  document.getElementById('staleNote').hidden=true;
 }
 
-// issue #30: draw a race order from each driver's own finish-position histogram, not a single pace
-// number — slot by slot (who takes P1, then P2, ...), weighting the still-unplaced drivers by their
-// own probability mass at that exact position and removing the winner before moving to the next slot.
-// A small flat smoothing constant keeps a position from being impossible just because it hasn't
-// happened yet in a small sample, and guarantees the weights never all go to zero.
+// issue #30 / #117: draw a race order place by place (who takes P1, then P2, ...), weighting the still-unplaced
+// drivers by their weight for that place (placeWeight: finishes at that place or better in the data window, a bonus
+// for finishes just behind it, and a small floor, so nothing is impossible and the weights never all go to zero),
+// and removing each pick before the next place. Every place is drawn, so countback and 0-point drivers' order work.
 // startSlot: the first position being filled (1 when P1 is already decided, #14). noWin[i] true: driver i
 // can't be drawn for P1 (they have a set number of wins and this isn't one of those races).
 // #56: draws from the first len entries of alive (reordered in place), adds each placed driver's points
-// straight into totals, and returns the drawn order (top 10 only; everyone else scores 0 anyway).
-const HIST_SMOOTH = 0.5;
-function sampleOrder(ctx, alive, len, startSlot, noWin, totals, pts){
- const W=ctx.W, wts=ctx.wts, order=[];
- const nSlots=Math.min(10-startSlot, len);
- for(let s=0; s<nSlots; s++){
-   const slot=s+startSlot, m=len-s;
+// straight into totals and (Grand Prix only) their place into fin, and returns the drawn order.
+function sampleOrder(ctx, alive, len, startSlot, noWin, totals, pts, fin){
+ const W=ctx.W, wts=ctx.wts, n=ctx.n, order=[];
+ for(let s=0; s<len; s++){
+   const slot=s+startSlot;
    let anyAllowed=true;
    if(slot===0 && noWin){ anyAllowed=false; for(let x=s;x<len;x++) if(!noWin[alive[x]]){ anyAllowed=true; break; } }
    let total=0;
    for(let x=s;x<len;x++){
      const i=alive[x];
-     const wt = slot===0 && noWin && anyAllowed && noWin[i] ? 0 : W[i*10+slot];
+     const wt = slot===0 && noWin && anyAllowed && noWin[i] ? 0 : W[i*n+slot];
      wts[x]=wt; total+=wt;
    }
    let r=rand()*total, pick=len-1;
    for(let x=s;x<len;x++){ if((r-=wts[x])<=0){ pick=x; break; } }
    const i=alive[pick]; alive[pick]=alive[s]; alive[s]=i; // move the pick to the front of what's left
    if(totals && slot<pts.length) totals[i]+=pts[slot];
+   if(fin) fin[i*n+slot]++;
    order.push(i);
  }
  return order;
@@ -523,9 +596,9 @@ function sampleOrder(ctx, alive, len, startSlot, noWin, totals, pts){
 const nGPLeft = ()=>remainingEvents.filter(e=>e.type==='gp').length;
 const trackedRoster = ()=>fullRoster.filter(d=>(selectedDriverIds||[]).includes(d.driverId)).sort(byStanding);
 const getOutcome = id=>outcomes[id] || {dnf:null, win:null};
-// Collisions that can actually happen: two different drivers who are both in this season's roster.
+// Collisions that can actually happen: two different drivers who are both still racing (#117).
 function validCollisions(){
- const ids=new Set(fullRoster.map(d=>d.driverId));
+ const ids=new Set(fullRoster.filter(d=>d.active).map(d=>d.driverId));
  return collisions.filter(c=>c.a && c.b && c.a!==c.b && ids.has(c.a) && ids.has(c.b) && c.n>=1);
 }
 const colsOf = (id, except)=>validCollisions().filter(c=>c!==except && (c.a===id || c.b===id)).reduce((s,c)=>s+c.n,0);
@@ -545,7 +618,8 @@ function colMax(c){
 // Keep every setting inside its limit after the round, the tracked set or another setting changes.
 function clampOutcomes(){
  const next={};
- (selectedDriverIds||[]).forEach(id=>{ if(outcomes[id]) next[id]={...outcomes[id]}; });
+ const racing=new Set(fullRoster.filter(d=>d.active).map(d=>d.driverId)); // #117: a driver who isn't racing has no settings
+ (selectedDriverIds||[]).forEach(id=>{ if(outcomes[id] && racing.has(id)) next[id]={...outcomes[id]}; });
  outcomes=next;
  const nGP=nGPLeft();
  let winsLeft=nGP;
@@ -561,7 +635,7 @@ function clampOutcomes(){
 function settingsKey(){
  const o={};
  Object.keys(outcomes).sort().forEach(id=>{ const x=outcomes[id]; if(x.dnf!=null || x.win!=null) o[id]=[x.dnf,x.win]; });
- return JSON.stringify({L, o, c:validCollisions().map(c=>[c.a,c.b,c.n])});
+ return JSON.stringify({L, o, c:validCollisions().map(c=>[c.a,c.b,c.n]), w:String(windowShown())});
 }
 
 const stepperHTML=(kind,key,label,val)=>`
@@ -575,6 +649,11 @@ function buildOutcomeInputs(){
  const E=remainingEvents.length, nGP=nGPLeft();
  document.getElementById('outcomeGrid').innerHTML=trackedRoster().map(d=>{
    const o=getOutcome(d.driverId);
+   if(!d.active) return `
+   <div class="oc-item">
+     <span class="tag" data-id="${d.driverId}" style="color:${F1Theme.team(F1Common.teamColor(d.teamId))}">${d.code}</span>
+     <span class="oc-out">Not racing (didn't start Round ${L}); keeps ${d.now} pts</span>
+   </div>`;
    return `
    <div class="oc-item">
      <span class="tag" data-id="${d.driverId}" style="color:${F1Theme.team(F1Common.teamColor(d.teamId))}">${d.code}</span>
@@ -583,13 +662,13 @@ function buildOutcomeInputs(){
    </div>`;
  }).join('');
  document.getElementById('outcomeNote').textContent=
-   `DNFs: how many of the ${E} remaining event${E===1?'':'s'} each driver fails to finish (a DNF here means no classified finish). Wins: how many of the ${nGP} remaining ${nGP===1?'Grand Prix':'Grands Prix'} they win. Grey auto = their actual season form: they retire at their real DNF rate and win as often as their results suggest. Press − or + to set an exact number (− below 0 goes back to auto). The events are picked at random in each simulated season.`;
+   `DNFs: how many of the ${E} remaining event${E===1?'':'s'} each driver fails to finish (a DNF here means no classified finish). Wins: how many of the ${nGP} remaining ${nGP===1?'Grand Prix':'Grands Prix'} they win. Grey auto = their recent form (see Form from, below): they retire about as often as they have been and win as often as their results suggest. Press − or + to set an exact number (− below 0 goes back to auto). The events are picked at random in each simulated season.`;
  renderCollisions();
  syncOutcomes();
 }
 function renderCollisions(){
- const tracked=trackedRoster(), trackedIds=new Set(tracked.map(d=>d.driverId));
- const others=[...fullRoster].filter(d=>!trackedIds.has(d.driverId)).sort(byStanding);
+ const tracked=trackedRoster().filter(d=>d.active), trackedIds=new Set(tracked.map(d=>d.driverId)); // #117: only drivers still racing
+ const others=[...fullRoster].filter(d=>d.active && !trackedIds.has(d.driverId)).sort(byStanding);
  const opts=sel=>`<optgroup label="Tracked">${tracked.map(d=>`<option value="${d.driverId}"${d.driverId===sel?' selected':''}>${d.code}</option>`).join('')}</optgroup>`
    + (others.length?`<optgroup label="Others">${others.map(d=>`<option value="${d.driverId}"${d.driverId===sel?' selected':''}>${d.code}</option>`).join('')}</optgroup>`:'');
  document.getElementById('collisionList').innerHTML=collisions.map((c,i)=>`
@@ -638,8 +717,10 @@ document.getElementById('collisionList').addEventListener('change', e=>{
  const c=collisions[+sel.dataset.i]; c[sel.dataset.side]=sel.value;
  clampOutcomes(); onOutcomeChanged();
 });
+document.getElementById('winLess').addEventListener('click', ()=>stepWindow(-1));
+document.getElementById('winMore').addEventListener('click', ()=>stepWindow(1));
 document.getElementById('addCollision').addEventListener('click', ()=>{
- const ids=[...trackedRoster(), ...[...fullRoster].sort(byStanding)].map(d=>d.driverId);
+ const ids=[...trackedRoster(), ...[...fullRoster].sort(byStanding)].filter(d=>d.active).map(d=>d.driverId);
  const uniq=[...new Set(ids)];
  if(uniq.length<2) return;
  collisions.push({a:uniq[0], b:uniq[1], n:1});
@@ -719,6 +800,12 @@ function newRun(ctx, N){
           info:ctx.roster.map(d=>({code:d.code, teamId:d.teamId, rank:d.rank})), startRound:L, lastRound:ctx.dec.lastRound, done:0 };
  // #86: decided[s] = round the title was settled, champion[s] = the champion's index in ids (rank 1, as for the win probability)
 }
+// #117: equal points go to countback, as in the real standings — most Grand Prix wins, then most second places, and
+// so on (fin from simulateSeason); still level, the current standings order.
+function countback(fin, n, a, b){
+ for(let p=0;p<n;p++){ const d=fin[b*n+p]-fin[a*n+p]; if(d) return d; }
+ return 0;
+}
 // Simulates seasons run.done … upto-1 into the run.
 function simulateInto(ctx, run, upto){
  const n=run.n, standing=new Array(n);
@@ -726,7 +813,7 @@ function simulateInto(ctx, run, upto){
    const sim=simulateSeason(ctx), t=sim.totals;
    run.decided[s]=sim.decided;
    for(let i=0;i<n;i++){ standing[i]=i; run.totals[s*n+i]=t[i]; }
-   standing.sort((a,b)=>t[b]-t[a]);
+   standing.sort((a,b)=>t[b]-t[a] || countback(sim.fin, n, a, b) || ctx.rank[a]-ctx.rank[b]);
    for(let r=0;r<n;r++) run.ranks[s*n+standing[r]]=r+1;
    run.champion[s]=standing[0];
  }

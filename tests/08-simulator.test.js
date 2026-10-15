@@ -66,7 +66,7 @@ module.exports = async (t, h) => {
     collisions = [{a:b, b:autoId, n:1}];
     const ctx = buildSimContext();
     const out = { E:ctx.E, nGP:ctx.gpIdx.length, aDnf:[], aWins:[], bDnf:[], bWins:0, cWins:[], cOutInWin:0,
-                  colSame:0, colAll:0, autoOut:0, autoRate:fullRoster[idx(autoId)].dnfRate, autoFree:0, gpNoWinner:0, aWinGps:0 };
+                  colSame:0, colAll:0, autoOut:0, autoRate:ctx.dnfRate[idx(autoId)], autoFree:0, gpNoWinner:0, aWinGps:0 }; // #117: the model's DNF chance
     const T = 3000;
     const cnt = row => row.reduce((a, b) => a + b, 0); // plan.out[i][e] = 1 when driver i doesn't finish event e (#56)
     for(let k = 0; k < T; k++){
@@ -100,8 +100,8 @@ module.exports = async (t, h) => {
   t.check('collisions add to set DNFs (0 DNFs + 1 collision = 1 retirement)', s.bDnf.length === 1 && s.bDnf[0] === 1, JSON.stringify(s.bDnf));
   t.check('a driver on auto DNFs with 1 set win wins exactly 1 GP and never retires from it', s.cWins.length === 1 && s.cWins[0] === 1 && s.cOutInWin === 0, JSON.stringify(s.cWins));
   t.check('both colliding drivers retire from the same Grand Prix', s.colSame === s.T, `${s.colSame} of ${s.T}`);
-  t.check('a driver on auto retires at about their DNF rate', Math.abs(s.autoSim - s.autoRate) < 0.02,
-    `simulated ${s.autoSim.toFixed(3)} vs actual ${s.autoRate.toFixed(3)}`);
+  t.check('a driver on auto retires at about their DNF chance (#117: recent DNFs blended with the grid rate)', Math.abs(s.autoSim - s.autoRate) < 0.02,
+    `simulated ${s.autoSim.toFixed(3)} vs model ${s.autoRate.toFixed(3)}`);
 
   // Limits: wins can't add up to more than the Grands Prix left.
   const lim = await p.evaluate(() => {
