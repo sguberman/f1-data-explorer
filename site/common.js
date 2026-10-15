@@ -45,7 +45,9 @@ const F1Common = (() => {
   // `hsl(H S% L%)` hashed fallback, so each format gets its own valid syntax.
   function withAlpha(color, alpha){
    if(color[0]==='#'){
-     const n=parseInt(color.slice(1),16);
+     let h=color.slice(1);
+     if(h.length===3) h=h.replace(/./g,'$&$&'); // #abc → #aabbcc (#100)
+     const n=parseInt(h,16);
      return `rgba(${n>>16&255},${n>>8&255},${n&255},${alpha})`;
    }
    const m=color.match(/^hsl\(([^)]*)\)$/);
