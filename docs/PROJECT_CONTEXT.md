@@ -275,9 +275,9 @@ those positions are grouped, the triangle sits on that bucket labelled with the 
 **Results by round (#87, position.html, card between the chart and the picker):** a heat strip, a compact
 picture rather than a table of numbers (#27). One row per selected driver (flag + code in the team colour), in
 the chart's "Sort by" order (`sortedRows()`, shared with the ridgeline), and one square per loaded round (round
-numbers on top). Each square is that driver's **Grand Prix** finish on a single-hue ramp mixed in OKLab
-(`HEAT_RAMP`, its own pair per theme: dark navy → pale in light, bright blue → faint in dark; P1 strongest,
-P20 and below faintest). Podiums get a small dot; NC is a cross in `--elim`; a round the driver didn't race is
+numbers on top). Each square is that driver's **Grand Prix** finish, coloured as the owner chose (option C of the
+mockups): **gold, silver and bronze** for P1–P3, a **blue ramp** for P4–P10 (stronger = better) and **faint** for
+P11 and below (no points), its own colours per theme (`HEAT_RAMP`; ramps mixed in OKLab). Podiums get a small dot; NC is a cross in `--elim`; a round the driver didn't race is
 a short dash; rounds after the slider's round are blank with dimmed numbers, so the strip keeps its width while
 sliding. Hover (mouse) or tap a square for driver, round, race and finish; with "Sprints" shown, sprint weekends
 add the sprint finish. The squares stay Grand Prix finishes whatever "Sprints" says (a sprint is a different

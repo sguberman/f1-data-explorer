@@ -334,11 +334,14 @@ function draw(){
 }
 
 // #87: results heat strip. One row per selected driver (same order as the chart), one square per loaded round:
-// the Grand Prix finish, P1 strongest and P20 and below faintest, on a single-hue ramp per theme. NC (no
+// the Grand Prix finish: gold, silver and bronze for the podium, a blue ramp for P4–P10, and faint for P11 and below
+// (the owner's pick, option C), its own colours per theme. NC (no
 // classified position) is a cross in the elim colour, a round the driver didn't race a short dash, and rounds
 // after the slider's round are left blank. Hover or tap a square for the race and finish (plus the sprint
 // finish while "Sprints" is shown). Built from already-loaded data; never fetches.
-const HEAT_RAMP={ light:{hi:'#173a80', lo:'#e3e9f3'}, dark:{hi:'#9dc1ff', lo:'#252e3d'} }, HEAT_WORST=20;
+const HEAT_RAMP={ // podium metals, then P4→P10 and P11→P20 mixed in OKLab
+ light:{metals:['#d9a400','#9aa3ad','#b8682a'], points:['#1d4690','#a9c0e6'], rest:['#dfe6f1','#eceff4']},
+ dark: {metals:['#f2c230','#c3cad3','#d98a4e'], points:['#8db6ff','#34507e'], rest:['#2a3342','#232933']} }, HEAT_WORST=20;
 const hexRGB=h=>[1,3,5].map(i=>parseInt(h.slice(i,i+2),16)/255);
 // Mixed in OKLab so the steps look even.
 function toOklab([r,g,b]){
@@ -352,8 +355,10 @@ function fromOklab([L,A,B]){
  return `rgb(${g(4.0767416621*l-3.3077115913*m+0.2309699292*s)}, ${g(-1.2684380046*l+2.6097574011*m-0.3413193965*s)}, ${g(-0.0041960863*l-0.7034186147*m+1.7076147010*s)})`;
 }
 function heatColor(pos){
- const r=HEAT_RAMP[F1Theme.current()]||HEAT_RAMP.light, a=toOklab(hexRGB(r.hi)), b=toOklab(hexRGB(r.lo));
- const t=(Math.min(Math.max(pos,1),HEAT_WORST)-1)/(HEAT_WORST-1);
+ const r=HEAT_RAMP[F1Theme.current()]||HEAT_RAMP.light, p=Math.min(Math.max(pos,1),HEAT_WORST);
+ if(p<=3) return fromOklab(toOklab(hexRGB(r.metals[p-1]))); // (round trip: every colour comes back as rgb())
+ const [from,to,t] = p<=10 ? [r.points[0], r.points[1], (p-4)/6] : [r.rest[0], r.rest[1], (p-11)/(HEAT_WORST-11)];
+ const a=toOklab(hexRGB(from)), b=toOklab(hexRGB(to));
  return fromOklab(a.map((v,i)=>v+(b[i]-v)*t));
 }
 // A driver's finish in one session: a position, 'NC', or null when they weren't in it.
@@ -382,7 +387,7 @@ function drawHeat(){
  const none=!heatRows.length;
  box.style.display=none?'none':''; document.getElementById('heatEmpty').style.display=none?'block':'none';
  document.getElementById('heatKey').style.display=none?'none':'';
- document.getElementById('heatNote').textContent=none?'':`The stronger the colour, the better the Grand Prix finish (P${HEAT_WORST} and below faintest). `
+ document.getElementById('heatNote').textContent=none?'':`Gold, silver and bronze for a Grand Prix podium; then the stronger the blue, the better the finish, down to P10. P11 and below (no points) are faint. `
    +`NC = not classified. ${L<currentSeasonRounds.length?`Rounds after Round ${L} are left blank. `:''}`
    +(includeSprints?'Hover or tap a square for the race, with the sprint finish on sprint weekends.':'Hover or tap a square for the race; turn on Sprints above to add sprint finishes.');
  if(none){ grid.innerHTML=''; return; }

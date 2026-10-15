@@ -61,10 +61,13 @@ module.exports = async (t, h) => {
     return nc.classList.contains('nc') && getComputedStyle(nc).backgroundImage.includes(rgb(elim)) && !nc.style.background
       && p1.classList.contains('pod') && !p9.classList.contains('pod') && !!p1.style.background;
   }));
-  // light: P1 darkest, getting lighter down to P20 (the ramp is monotonic)
-  const ramp = () => p.evaluate(() => [1, 2, 3, 5, 8, 10, 12, 15, 18, 20].map(n => heatColor(n)));
+  // Option C (owner's pick): gold, silver, bronze for the podium; then P4 darkest, lighter for every worse finish
+  const hue = c => { const [r, g, b] = c.match(/\d+/g).map(Number); return r > b + 60 ? 'warm' : Math.abs(r - b) < 30 ? 'grey' : 'blue'; };
+  const ramp = () => p.evaluate(() => [1, 2, 3, 4, 5, 8, 10, 11, 12, 15, 18, 20].map(n => heatColor(n)));
   let light = await ramp();
-  t.check('light: P1 darkest, lighter for every worse finish', light.every((c, i) => i === 0 || lum(c) > lum(light[i - 1])), light.join(' '));
+  t.check('light: gold, silver, bronze for P1–P3', [light[0], light[1], light[2]].map(hue).join() === 'warm,grey,warm' && light[0] !== light[2], light.slice(0, 3).join(' '));
+  t.check('light: from P4, lighter for every worse finish', light.slice(3).every((c, i, a) => i === 0 || lum(c) > lum(a[i - 1])) && hue(light[3]) === 'blue', light.join(' '));
+  t.check('light: P11 and below are faint (no points)', lum(light[7]) > lum(light[6]) + 20 && lum(light[7]) > 215, light.slice(6, 8).join(' '));
   t.check('P21+ look like P20', await p.evaluate(() => heatColor(22) === heatColor(20)));
 
   // picker
@@ -165,8 +168,10 @@ module.exports = async (t, h) => {
 
   // ---- Themes ----
   p = await h.openPage('position', { theme: 'dark' }); await h.loaded(p);
-  const dark = await p.evaluate(() => [1, 2, 3, 5, 8, 10, 12, 15, 18, 20].map(n => heatColor(n)));
-  t.check('dark: its own ramp, P1 brightest, fainter for every worse finish', dark.every((c, i) => i === 0 || lum(c) < lum(dark[i - 1])) && dark[0] !== light[0], dark.join(' '));
+  const dark = await p.evaluate(() => [1, 2, 3, 4, 5, 8, 10, 11, 12, 15, 18, 20].map(n => heatColor(n)));
+  t.check('dark: its own colours, metals for the podium, then P4 brightest and fainter for every worse finish',
+    dark.slice(3).every((c, i, a) => i === 0 || lum(c) < lum(a[i - 1])) && dark[0] !== light[0] && dark[3] !== light[3]
+    && [dark[0], dark[1], dark[2]].map(hue).join() === 'warm,grey,warm', dark.join(' '));
   const p1 = () => p.$eval('#heatStrip .hsCell[data-v="1"]', c => c.style.background);
   const before = await p1();
   const hits3 = p.apiHits.length;
