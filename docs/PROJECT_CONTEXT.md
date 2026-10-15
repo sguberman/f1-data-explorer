@@ -272,7 +272,7 @@ under it was removed by the owner.)
   round T (later rounds left out), rebuilt on every move: "🏆 With this result, VER is champion." / "…, level on points with
   NOR and ahead on countback." (final round tie) / "🏆 VER is already champion." (clinched before T) / "Title still open:
   everyone above the line can still win." While the title is open, **a red dashed line in the table** sits under the last
-  driver/team who can still win it, its label "Can still win the title ↑ · Out of contention ↓" just above the dashed line: everyone above is in, everyone
+  driver/team who can still win it, "Can still win the title ↑" just above the dashed line and "Out of contention ↓" just below it: everyone above is in, everyone
   below is out (`titleResultText()`'s `contenders`; this replaced a list of names, at the owner's request). When
   everyone can still win there's no line and it says "Title still open: everyone can still win." Rivals who can only
   draw level are named after it ("NOR only by drawing level on points, which would go to countback"; `titleRace()`'s

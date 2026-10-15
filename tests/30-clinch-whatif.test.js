@@ -341,7 +341,10 @@ module.exports = async (t, h) => {
         t.check(`line in the table: ${inIds.length} can still win (independent), the rest can't`, inIds.length > 1 && inIds.length < tbl.length - 1, J(inIds.map(id => CODE[id])));
         t.check('line in the table: exactly one line, everyone above can still win, everyone below is out', tbl.filter(x => x === '|').length === 1
           && J([...above].sort()) === J([...inIds].sort()) && below.every(id => !inIds.includes(id)) && below.length > 0, J({ above, inIds }));
-        t.check('line in the table: its text sits above the dashed line', await lp.$eval('#driverTable tr.outLine span', e => { const c = getComputedStyle(e); return c.borderBottomStyle === 'dashed' && c.borderTopStyle === 'none'; }));
+        t.check('line in the table: "Can still win the title" above the dashed line, "Out of contention" below it', await lp.$eval('#driverTable tr.outLine', tr => {
+          const i = tr.querySelector('.olIn'), o = tr.querySelector('.olOut'), ci = getComputedStyle(i);
+          return /Can still win the title/.test(i.textContent) && /Out of contention/.test(o.textContent) && ci.borderBottomStyle === 'dashed'
+            && i.getBoundingClientRect().bottom <= o.getBoundingClientRect().top + 1; }));
         t.check('line in the table: labelled, and the live line points to it (no list of names)', /Can still win the title/.test(await text(lp, '#driverTable tr.outLine'))
           && await text(lp, '#clinchDrivers') === 'Title still open: everyone above the line can still win.' && !(await lp.$('#clinchDrivers .trName')), await text(lp, '#clinchDrivers'));
       }
