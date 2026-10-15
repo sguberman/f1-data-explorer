@@ -398,7 +398,172 @@ const F1Common = (() => {
          y:{grid:{color:P.grid}, ticks:{color:P.text}, title:{display:true, text:'Projected final points', color:P.text}}}}});
   }
 
-  return { TEAM_COLORS, SEASON_TEAM_COLORS, setSeason, teamColor, SHORT_TEAM_NAMES, shortTeamName, SEASON_META, seasonMeta, YEARS,
+  // ---- #85 (version A): title clinch calculator for the championship pages ----
+  // The most one entry can score in a weekend, by season: a Grand Prix win (plus the fastest-lap point,
+  // 2019–2024) and a sprint win (3-2-1 sprints in 2021). Teams: both cars first and second. This is the
+  // season's real maximum, so "clinched" is only said when it's certain (the knockout line keeps its 25/8).
+  function maxWeekendPoints(year, kind){
+   const fl = year>=2019 && year<=2024 ? 1 : 0, sp = year===2021 ? [3,2,1] : [8,7,6,5,4,3,2,1];
+   return kind==='teams' ? {gp:25+18+fl, sprint:sp[0]+sp[1]} : {gp:25+fl, sprint:sp[0], fl, gpPts:[25,18,15,12,10,8,6,4,2,1], spPts:sp};
+  }
+  // The title race as of `round`, for the whole field (not just the picked entries). Pure: no DOM, no fetch.
+  // opts: {year, calendar} (calendar = F1Data.getCalendar's result, or null to estimate from SEASON_META).
+  // Returns {state, ...}:
+  //   'none'     no results yet
+  //   'decided'  {champion, clinched (round), over (season finished), tieWith (level on points, ahead on countback)}
+  //   'next'     {next, final, lead:[{id, conds:[{id, need}], example}], ...} — someone can clinch at the next race:
+  //              `need` = the fewest points they must outscore that rival by (≤ 0: may lose up to -need to them)
+  //   'later'    {earliest, leader, second, gap} — the first round the title could be decided at all
+  // Margins are strict: one point fewer could leave them level on points, which countback would decide.
+  function titleRace(seasonRounds, round, kind, {year, calendar=null}={}){
+   const rounds = seasonRounds.filter(r=>r.round<=round).sort((a,b)=>a.round-b.round);
+   if(!rounds.length) return {state:'none'};
+   const L = round, cal = calendar && calendar.totalRounds>0 ? calendar : null, meta = seasonMeta(year);
+   const loadedMax = Math.max(...seasonRounds.map(r=>r.round));
+   const N = cal ? Math.max(cal.totalRounds, L) : Math.max(meta.rounds, L);
+   const W = maxWeekendPoints(year, kind);
+   // Sprint weekends: the calendar's; without it, the loaded rounds' plus the season's estimated remaining sprints
+   // placed straight after them (the most points still available at every round, so "clinched" stays safe).
+   const isSprint = {};
+   if(cal) (cal.sprintRounds||[]).forEach(r=>{ isSprint[r]=true; });
+   else {
+     seasonRounds.forEach(r=>{ if(r.sprintResults && r.sprintResults.length) isSprint[r.round]=true; });
+     let left = Math.max(0, meta.sprints - Object.keys(isSprint).length);
+     for(let r=loadedMax+1; r<=N && left>0; r++, left--) isSprint[r]=true;
+   }
+   const per = r => W.gp + (isSprint[r] ? W.sprint : 0);    // most one entry can score in round r
+   const left = k => { let s=0; for(let r=k+1;r<=N;r++) s+=per(r); return s; }; // still available after round k
+   const idOf = res => kind==='teams' ? res.teamId : res.driverId;
+   // Points and Grand Prix finishes (countback) after each round.
+   const pts={}, fin={}, after=[];
+   rounds.forEach(r=>{
+     [...r.raceResults, ...(r.sprintResults||[])].forEach(res=>{ const id=idOf(res); pts[id]=(pts[id]||0)+res.points; });
+     r.raceResults.forEach(res=>{ if(res.position>=1){ const f=fin[idOf(res)]=fin[idOf(res)]||[]; f[res.position-1]=(f[res.position-1]||0)+1; } });
+     after.push({round:r.round, pts:{...pts}, fin:Object.fromEntries(Object.entries(fin).map(([k,v])=>[k,v.slice()]))});
+   });
+   const order = k => standingsOrder(seasonRounds, k, kind);
+   // Is `a` certain to stay ahead of `x` after round k? Only a lead bigger than the points left, or equal to it when
+   // even then countback is already settled: x would have to win every Grand Prix left (teams: finish 1-2) while a
+   // scores nothing, so a must be ahead on wins..10th places with x's extra results added.
+   function safe(snap, a, x, k){
+     const d=(snap.pts[a]||0)-(snap.pts[x]||0), M=left(k);
+     if(d>M) return true;
+     if(d<M) return false;
+     if(M===0) return true; // season over and level: the standings order already applied countback
+     const g = Math.max(0, N-k), A=(snap.fin[a]||[]).slice(), X=(snap.fin[x]||[]).slice();
+     X[0]=(X[0]||0)+g; if(kind==='teams') X[1]=(X[1]||0)+g;
+     for(let i=0;i<10;i++){ const diff=(A[i]||0)-(X[i]||0); if(diff) return diff>0; }
+     return false;
+   }
+   const clinchedAt = k => { const snap=after.find(s=>s.round===k); if(!snap) return null;
+     if(k>=N) return order(k)[0]; // the last round: the standings leader is champion
+     const ids=order(k), a=ids[0]; return ids.slice(1).every(x=>safe(snap,a,x,k)) ? a : null; };
+   for(const s of after){
+     const champ = clinchedAt(s.round);
+     if(champ){
+       const ids=order(L), sec=ids[1], snap=after[after.length-1];
+       const tieWith = s.round>=N && sec && snap.pts[champ]===snap.pts[sec] ? sec : null;
+       return {state:'decided', champion:champ, clinched:s.round, over:L>=N, total:N, final:s.round>=N, tieWith, left:N-s.round};
+     }
+   }
+   // Not decided yet. Who could clinch at the next race, and on what terms?
+   const snap = after[after.length-1], ids = order(L), n = L+1, Mn = left(n), maxNext = per(n);
+   const P = id => snap.pts[id]||0;
+   const alive = ids.filter(id => P(id) + left(L) >= P(ids[0]));
+   const lead = [];
+   alive.forEach(c=>{
+     const conds = ids.filter(x=>x!==c).map(x=>({id:x, need: Mn - (P(c)-P(x)) + 1})).filter(o=>o.need > -maxNext);
+     if(conds.every(o=>o.need<=maxNext)) lead.push({id:c, conds, example: kind==='drivers' ? positionExample(conds, isSprint[n]) : null});
+   });
+   const base = {leader:ids[0], second:ids[1]||null, gap: ids[1] ? P(ids[0])-P(ids[1]) : null, total:N, sprintNext:!!isSprint[n]};
+   if(lead.length) return {state:'next', next:n, final:n>=N, lead, ...base};
+   // Earliest round anyone could clinch: they score the most possible from the next race on, everyone else nothing.
+   // A tie on points counts as possible here, so the round given is never later than the real earliest.
+   let earliest=N;
+   for(let r=n, S=0; r<=N; r++){
+     S+=per(r);
+     if(alive.some(c=>ids.every(x=>x===c || P(c)-P(x)+S >= left(r)))){ earliest=r; break; }
+   }
+   return {state:'later', earliest, ...base};
+
+   // Drivers: a finishing-position example for the clinch — a win (both races on a sprint weekend) with each rival no
+   // higher than the place that keeps the margin. Rivals are assumed to get the fastest-lap point where there is one.
+   function positionExample(conds, sprint){
+     const mine = W.gpPts[0] + (sprint ? W.spPts[0] : 0);
+     const theirs = q => W.gpPts[q-1] + (sprint ? (W.spPts[q-1]||0) : 0) + W.fl; // rival in place q in both
+     const out=[];
+     for(const o of conds){
+       const allow = mine - o.need;              // most the rival may score
+       if(allow < 0) return null;                // a win isn't enough on its own
+       if(theirs(2) <= allow) continue;          // even second place is fine
+       if(sprint){ out.push({id:o.id, maxPts:allow}); continue; }
+       let q=2; while(q<=10 && W.gpPts[q-1] + W.fl > allow) q++;
+       out.push({id:o.id, place: q<=10 ? q : null}); // null: outside the points
+     }
+     return {sprint:!!sprint, rivals:out};
+   }
+  }
+
+  // #85: the "Title race" line under the points chart (both championship pages), written into `el`.
+  function renderTitleRace(el, seasonRounds, round, kind, {year, calendar=null}={}){
+   const tr = titleRace(seasonRounds, round, kind, {year, calendar});
+   el.dataset.state = tr.state;
+   if(tr.state==='none'){ el.hidden=true; el.innerHTML=''; return tr; }
+   el.hidden=false;
+   const info = standingsByRound(seasonRounds.filter(r=>r.round<=round), kind).info;
+   const nm = id => { const i=info[id]||{}; const label = kind==='teams' ? shortTeamName(id, i.teamName) : (i.code||id);
+     return `<span class="trName">${flagHTML(nationalityOf(kind, id))}${label}</span>`; };
+   const names = calendar && calendar.raceNames || {};
+   const raceName = r => { const n=names[r] || (seasonRounds.find(x=>x.round===r)||{}).raceName;
+     const s = n ? String(n).replace(/ Grand Prix.*/i,'').replace(String(year),'').trim() : '';
+     return s && !/^Round \d+$/i.test(s) ? s : ''; };
+   const raceOf = r => raceName(r) ? ` (${raceName(r)})` : '';
+   const pl = (n, w) => `${n} ${w}${n===1?'':'s'}`;
+   const list = a => a.length>1 ? a.slice(0,-1).join(', ')+' and '+a[a.length-1] : a[0]||'';
+   // " by outscoring NOR by 12 or more and PIA by 3 or more, unless LEC outscores VER by 5 or more"
+   const terms = (c, conds) => {
+     const pos = conds.filter(o=>o.need>0), zero = conds.filter(o=>o.need===0), neg = conds.filter(o=>o.need<0);
+     const by=[];
+     if(pos.length) by.push('outscoring '+list(pos.map(o=>`${nm(o.id)} by ${o.need} or more`)));
+     if(zero.length) by.push('scoring at least as many points as '+list(zero.map(o=>nm(o.id))));
+     const unless = neg.map(o=>`${nm(o.id)} outscores ${nm(c)} by ${1-o.need} or more`).join(', or ');
+     return (by.length ? ' by '+list(by) : '') + (unless ? (by.length ? ', unless ' : ' unless ')+unless : '');
+   };
+   let main='', note='';
+   if(tr.state==='decided'){
+     const where = tr.final ? `in the final round${raceOf(tr.clinched)}` : `in round ${tr.clinched}${raceOf(tr.clinched)}`;
+     main = tr.over ? `<b>${nm(tr.champion)} is the ${year} champion</b>: clinched ${where}`
+                    : `<b>${nm(tr.champion)} is champion</b>: clinched ${where}`;
+     if(!tr.over && tr.left>0) main += `, with ${pl(tr.left,'round')} to spare`;
+     main += tr.tieWith ? `, level on points with ${nm(tr.tieWith)} and ahead on countback.` : '.';
+   } else if(tr.state==='next'){
+     const at = `in round ${tr.next}${raceOf(tr.next)}${tr.final?', the final round,':''}`;
+     const [first, ...others] = tr.lead;
+     main = `<b>${nm(first.id)} clinches the title ${at}</b>${terms(first.id, first.conds)}.`;
+     const ex = first.example;
+     if(ex){
+       const what = ex.sprint ? 'Winning the sprint and the Grand Prix' : 'A win';
+       if(!ex.rivals.length) main += ` ${what} would do it, whatever the others do.`;
+       else main += ` For example, ${ex.sprint?'winning both':'a win'} with ${list(ex.rivals.map(r => ex.sprint
+         ? `${nm(r.id)} on ${pl(r.maxPts,'point')} or fewer for the weekend`
+         : r.place ? `${nm(r.id)} P${r.place} or lower` : `${nm(r.id)} outside the points`))}.`;
+     }
+     others.slice(0,2).forEach(o=>{ main += ` ${nm(o.id)} can also clinch it there${terms(o.id, o.conds)}.`; });
+     if(others.length>2) main += ` ${others.length-2} more can still clinch it there.`;
+     note = 'One point less could leave them level on points, which would go to countback.';
+   } else {
+     const gap = tr.gap==null ? '' : tr.gap>0 ? `${nm(tr.leader)} leads ${nm(tr.second)} by ${pl(tr.gap,'point')}. ` : `${nm(tr.leader)} leads ${nm(tr.second)} on countback. `;
+     main = gap + (tr.earliest>=tr.total
+       ? `<b>The title can't be decided before the final round</b> (round ${tr.earliest}${raceName(tr.earliest) ? ', '+raceName(tr.earliest) : ''}).`
+       : `<b>The title can't be decided before round ${tr.earliest}${raceOf(tr.earliest)}</b> at the earliest.`);
+   }
+   const who = kind==='teams' ? 'Every team' : 'Every driver';
+   el.innerHTML = `<div class="trMain"><span class="trLabel">Title race</span> <span class="trText">${main}</span></div>`
+     + `<div class="trNote"><span class="trSub">${who}, after round ${round}.</span>${note ? ' <span class="trTie">'+note+'</span>' : ''}</div>`;
+   return tr;
+  }
+
+  return { TEAM_COLORS, SEASON_TEAM_COLORS, setSeason, maxWeekendPoints, titleRace, renderTitleRace, teamColor, SHORT_TEAM_NAMES, shortTeamName, SEASON_META, seasonMeta, YEARS,
     isNarrow, withAlpha, standingsMoves, moveHTML, driverPickerRowHTML, markActivePreset,
     flagCode, flagHTML, flagSpace, FLAG_ROOM, drawFlag, indexPeople, nationalityOf, numberOf, ridgeFlags, ridgeMarkers, ridgeKeyHTML, standingsOrder, standingsRank, pickerTeamLabelHTML,
     standingsByRound, renderPositionChart, projectionsByRound, renderProjectedPointsChart };

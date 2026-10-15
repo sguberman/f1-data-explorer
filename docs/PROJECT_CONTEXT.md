@@ -31,8 +31,8 @@ Only `site/` is deployed to GitHub Pages (issue #51); everything else in the rep
 ```
 site/                 The website (deployed as the site root, so URLs are unchanged)
   index.html          Landing page: the next race (#89), then a card per page, each with a picture of its main chart.
-  drivers.html        Drivers' championship: cumulative points line chart, projections, knockout line.
-  constructors.html   Constructors' championship: same chart pattern for teams, plus driver contributions (#84).
+  drivers.html        Drivers' championship: cumulative points line chart, projections, knockout line, title race (#85).
+  constructors.html   Constructors' championship: same chart pattern for teams, plus driver contributions (#84) and title race (#85).
   position.html       Race finishing-position ridgeline chart per driver, with sort/show options, and a
                       results heat strip (#87).
   simulator.html      Monte Carlo rest-of-season title simulator with ridgeline result charts.
@@ -70,7 +70,8 @@ across pages lives in shared files instead (issue #44), so a change is made once
   flags and numbers (#18: `flagCode()`, `flagHTML()`, `drawFlag()`, `flagSpace()`, `ridgeFlags()`,
   `indexPeople()` / `nationalityOf()` / `numberOf()`), `ridgeMarkers()` / `ridgeKeyHTML()` (#30),
   `standingsByRound()` / `renderPositionChart()` (the championship-position chart, issue #9),
-  `projectionsByRound()` / `renderProjectedPointsChart()` (projection history, issue #10).
+  `projectionsByRound()` / `renderProjectedPointsChart()` (projection history, issue #10),
+  `maxWeekendPoints()` / `titleRace()` / `renderTitleRace()` (the title clinch calculator, #85).
 - `theme.css`: picker list styles (`.pickerRow`, `.pickerDot`, …), `.flag`, `.pickerNum`, `.ridgeKey`.
 - `flags/`: small SVG flags (from flag-icons, MIT, see `flags/LICENSE.txt`) for the countries the site maps.
   Spain and Mexico are simplified to keep them small. Add a file (and a name in `FLAG_CODES`) for a new country.
@@ -216,6 +217,35 @@ and NOR · 3 wins each"; more than three read "VER, NOR, LEC +2 more", all names
 come from `standingsOrder()`. Tiles three across on desktop, two on phones; a note under them says what each fact
 counts. Rebuilt only when the season or round changes (theme colours are CSS variables); never fetches; no export.
 
+**Title race (#85, version A, both championship pages; `titleRace()` / `renderTitleRace()` in `common.js`):** a compact
+highlighted line in the points card, between the chart (and the phone end legend) and the knockout note, saying in plain
+sentences what the title needs, for the **whole field** (the real standings via `standingsOrder()`, not the picked entries)
+as of the slider's round L, the next race being L+1. Version A of #85 (a version B on the What-If page was built in
+parallel for the owner to compare). States:
+- **decided**: "VER is champion: clinched in round 20 (Qatar), with 3 rounds to spare." After the last round: "VER is the
+  2026 champion: clinched in round 20 (Qatar)" / "…in the final round (Abu Dhabi)", plus ", level on points with NOR and
+  ahead on countback" when it ended level.
+- **can clinch at the next race**: "VER clinches the title in round 21 (Las Vegas) by outscoring NOR by 12 or more and PIA by
+  3 or more." A rival the leader may be outscored by a little reads "…, unless LEC outscores VER by 5 or more"; "scoring at
+  least as many points as NOR" for a margin of 0. Drivers add a finishing-position example: "A win would do it, whatever the
+  others do." / "For example, a win with NOR P4 or lower." (sprint weekends: "winning both with NOR on 21 points or fewer for
+  the weekend"). Constructors are points only. Anyone else who could clinch there gets "NOR can also clinch it there by …"
+  (two at most, then "N more…"). The final round reads "…in round 24 (Abu Dhabi), the final round, …". A note says one point
+  less could leave them level on points, which countback would decide.
+- **can't yet**: "VER leads NOR by 34 points. The title can't be decided before round 19 (Las Vegas) at the earliest." (or
+  "…before the final round (round 24, Abu Dhabi)."): the first round where anyone still in it could clinch by scoring the
+  most possible from the next race on while everyone else scores nothing.
+
+Rules: the points still available are the real calendar's rounds (sprint weekends add a sprint), at the **season's own
+maximum** (`maxWeekendPoints()`): 25 a Grand Prix and 8 a sprint for a driver, 43 and 15 for a team, plus the fastest-lap
+point in 2019–2024 and 3-2-1 sprints in 2021. In 2022–2026 that's exactly the knockout line's 25/8 and 43/15; in older seasons
+the knockout line still counts no fastest-lap point (deliberately unchanged). Without the calendar, the season's estimated
+remaining sprints are put straight after the loaded rounds (the most points still available, so "clinched" stays safe).
+Clinched = every rival is more points behind than are left, or exactly that many when countback is already settled even if
+the rival wins every Grand Prix left (teams: 1-2) while the leader scores nothing. Next-race margins are strict (one point more
+than a tie). The earliest round counts a tie as possible, so it is never later than the real earliest. Rebuilt only when the
+season or round changes (colours are CSS variables); never fetches; no export. "Every driver/team, after round L." under it.
+
 **Gap to leader (#83, both championship pages):** a **Show** dropdown (`#ptsView`, `.ddSelect`, beside the legend; on
 phones on its own line above it) switches the points chart between *Points* (default) and *Gap to leader*: each picked
 entry's points behind the leader (the highest-ranked picked entry at each round, as for the knockout line), actual and
@@ -234,7 +264,7 @@ constructors' page, the same list with the picked teams' drivers in bold). Sprin
 rounds, × or Escape closes it, and moving the slider before the open round closes it. The tooltip title names
 the race, with "Click for the full result" on actual rounds (not on touch screens). Never fetches.
 
-Both championship pages are laid out (issue #10, "Layout A"): points chart → (drivers: **Talking points**, #88) →
+Both championship pages are laid out (issue #10, "Layout A"): points chart (with the title race line, #85) → (drivers: **Talking points**, #88) →
 **Projected final points** card → picker → **Championship position by round** card. Cards above the picker follow the picker
 selection (except Talking points, which covers the whole field); the card below it shows every driver/team.
 - **Projected final points** (issue #10): for the picker selection, what the points chart's projection
@@ -481,7 +511,11 @@ since fonts render differently on different machines.
   result, CSV/PNG of the gap view, URL round-trip, never fetches, phone layout, both pages), results heat strip (#87:
   squares against an independent calculation incl. NC, picker, sort order, slider, hover/tap details with sprints,
   PNG/CSV, both themes' colours and a live theme switch, a 24-round season fitting 390px, never fetches;
-  `HEAT_SHOTS=<folder>` saves card screenshots). The harness
+  `HEAT_SHOTS=<folder>` saves card screenshots), title race (#85 version A, both championship pages: the calculation on
+  constructed seasons — decided, next-race clinch against one and two rivals, a sprint weekend, can't yet, final round,
+  countback ties, fastest-lap seasons — against an independent calculation for drivers and teams at every round; each
+  state's wording, the fake season's earliest round, slider, whole field, theme, season switch, never fetches, both
+  themes and the phone fit; `CLINCH_SHOTS=<folder>` saves card and state screenshots). The harness
   never serves the real `site/data/*.json`: tests pass `snapshots` built from the fake season. The fixture's names mix country names and demonyms, with
   one unknown. Logic is checked against
   independent calculations written in the tests, not against the site's own helpers.

@@ -58,6 +58,7 @@ html.f1-loading #talkingPoints{min-height:120px;}
 <div class="drag-handle" id="dragHandle" title="Drag to change the as-of round"></div>
 </div>
 <div id="endLegend" class="endLegend"></div>
+<div id="titleRace" class="titleRace" hidden></div>
 <div id="sm" style="font-size:12px;color:var(--muted);line-height:1.6;margin:10px 2px 2px;"></div>
 </div>
 <div class="card" id="tpCard" style="margin-bottom:16px;">
@@ -161,14 +162,14 @@ function drawProjPoints(force){
 async function buildFromSelection(detail){
  currentYear = detail.year;
  currentSeasonRounds = detail.seasonRounds;
- if(!currentSeasonRounds.length){ D=[]; if(chart) chart.destroy(); projData=null; drawPositions(); drawProjPoints(true); drawTalkingPoints(0); return; }
+ if(!currentSeasonRounds.length){ D=[]; if(chart) chart.destroy(); projData=null; drawPositions(); drawProjPoints(true); trKey=null; drawTitleRace(0); drawTalkingPoints(0); return; }
  currentCalendar = await F1Data.getCalendar(currentYear);
  const link = F1Share.take(); // #31: a shared link's setup, first season only
  if(link && link.get('pos')==='proj') document.getElementById('posView').value='proj';
  if(link && link.get('pts')==='gap') document.getElementById('ptsView').value='gap';
  if(link && ['team','rank'].includes(link.get('sort'))) document.getElementById('sortSeg').value = pickerSort = link.get('sort');
  // issue #9/#10: whole-season charts, independent of the round slider (need the calendar for the season length)
- projData = F1Common.projectionsByRound(currentSeasonRounds, 'drivers', totalRounds()); projKey=null; tpKey=null;
+ projData = F1Common.projectionsByRound(currentSeasonRounds, 'drivers', totalRounds()); projKey=null; trKey=null; tpKey=null;
  drawPositions();
  selectedDriverIds = null; // reset default whenever the season changes; round changes never touch this
  L = detail.round; // so the default (top 5 "as of now") and the first picker render use the right round
@@ -306,6 +307,17 @@ function recompute(round){
  renderDriverPicker();
  drawProjPoints(); // issue #10: follows the selection; no-op when only the round changed
  drawTalkingPoints(round); // #88: whole field; no-op when only the selection changed
+ drawTitleRace(round); // #85
+}
+
+// #85 (version A): the "Title race" line under the points chart — whole field, as of the slider's round. Rebuilt only
+// when the season or round changes (colours are CSS variables, so a theme change needs nothing); never fetches.
+let trKey=null;
+function drawTitleRace(round){
+ const key=currentYear+':'+round+':'+currentSeasonRounds.length;
+ if(key===trKey) return;
+ trKey=key;
+ F1Common.renderTitleRace(document.getElementById('titleRace'), currentSeasonRounds, round, 'drivers', {year:currentYear, calendar:currentCalendar});
 }
 
 // #88: talking points for the whole field as of the round. Rebuilt only when the season or round changes;
