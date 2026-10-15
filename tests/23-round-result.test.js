@@ -45,6 +45,7 @@ module.exports = async (t, h) => {
   await p.click('#roundResult .rr-sprint'); s = await panel(p);
   const wantS = await expected(p, sr, 'sprint');
   t.check('…Sprint shows the sprint result', JSON.stringify(s.rows.map(r => [r[0], r[1], r[4]])) === JSON.stringify(wantS.order), JSON.stringify(s.rows.slice(0, 2)));
+  await p.waitForFunction(() => /[?&]session=sprint/.test(location.search), null, { timeout: 2000 }).catch(() => {}); // the URL updates just after the click
   t.check('…and goes into the URL', new URL(p.url()).searchParams.get('result') === String(sr) && new URL(p.url()).searchParams.get('session') === 'sprint', p.url());
   const sLink = p.url();
 
@@ -62,7 +63,7 @@ module.exports = async (t, h) => {
   await h.setRound(p, 8); await p.waitForTimeout(60);
   t.check('moving the slider before the open round closes it', (await panel(p)).hidden);
   await tapRound(p, 3); await p.click('#roundResult .rr-close');
-  await p.waitForTimeout(50);
+  await p.waitForFunction(() => !/[?&]result=/.test(location.search), null, { timeout: 2000 }).catch(() => {});
   t.check('× closes it, and it leaves the URL', (await panel(p)).hidden && !new URL(p.url()).searchParams.has('result'), p.url() + ' hidden=' + (await panel(p)).hidden);
   await tapRound(p, 3); await p.keyboard.press('Escape');
   t.check('Escape closes it too', (await panel(p)).hidden);
