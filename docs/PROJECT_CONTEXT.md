@@ -33,7 +33,8 @@ site/                 The website (deployed as the site root, so URLs are unchan
   index.html          Landing page: the next race (#89), then a card per page, each with a picture of its main chart.
   drivers.html        Drivers' championship: cumulative points line chart, projections, knockout line.
   constructors.html   Constructors' championship: same chart pattern for teams, plus driver contributions (#84).
-  position.html       Race finishing-position ridgeline chart per driver, with sort/show options.
+  position.html       Race finishing-position ridgeline chart per driver, with sort/show options, and a
+                      results heat strip (#87).
   simulator.html      Monte Carlo rest-of-season title simulator with ridgeline result charts.
   whatif.html         What-if: drag a finishing order for a round, see both championships after it.
   common.js           F1Common: helpers shared by the chart pages (issue #44 and later).
@@ -169,8 +170,8 @@ Move something into `common.js` only once it's genuinely identical on every page
     else, or if sharing is refused, they download.
   - The CSV is the data behind the chart: points and projection per round with the knockout line (in the gap view, #83:
     the gaps, the leader at each round and the points still available; the files are then named `…-gap-…`), projected
-    totals, positions per round, driver contributions per team (#84), finishing-position counts, simulated shares, and
-    the what-if tables (CSV only).
+    totals, positions per round, driver contributions per team (#84), finishing-position counts, finishes per round
+    (#87), simulated shares, and the what-if tables (CSV only).
   - Files are named `f1-{season}-{chart}-r{round}`.
   - `F1Export.championshipPage()` wires the three charts shared by the drivers and constructors pages.
 
@@ -270,6 +271,21 @@ the curve, every one when tied (#30). The mode is always taken over individual p
 grouped "11+/NC" bucket never wins just for being a group; when the most common finish is below P10 and
 those positions are grouped, the triangle sits on that bucket labelled with the real position(s) ("P13",
 "NC", "P12/P14"). "Most common" sorting (the default) uses the best most-common finish, ties by standings.
+
+**Results by round (#87, position.html, card between the chart and the picker):** a heat strip, a compact
+picture rather than a table of numbers (#27). One row per selected driver (flag + code in the team colour), in
+the chart's "Sort by" order (`sortedRows()`, shared with the ridgeline), and one square per loaded round (round
+numbers on top). Each square is that driver's **Grand Prix** finish on a single-hue ramp mixed in OKLab
+(`HEAT_RAMP`, its own pair per theme: dark navy → pale in light, bright blue → faint in dark; P1 strongest,
+P20 and below faintest). Podiums get a small dot; NC is a cross in `--elim`; a round the driver didn't race is
+a short dash; rounds after the slider's round are blank with dimmed numbers, so the strip keeps its width while
+sliding. Hover (mouse) or tap a square for driver, round, race and finish; with "Sprints" shown, sprint weekends
+add the sprint finish. The squares stay Grand Prix finishes whatever "Sprints" says (a sprint is a different
+event; owner can revisit). Tap again, tap elsewhere or Escape closes it. Columns are `minmax(0,22px)`: ~20px
+squares on desktop, ~11px at 390px with 24 rounds, with no scrolling. Export: the PNG is drawn for the picture
+(`drawHeatPicture`, same marks and key); the CSV has a column per round through the slider's round (position,
+NC, or blank), plus a sprint column after each sprint round while Sprints is shown. Never fetches; redraws on
+picker, sort, slider, Show options, season and theme changes.
 
 **simulator.html** — Simulates the rest of the season for the **whole grid**. Each race order is drawn slot
 by slot from each driver's own finishing-position histogram (GP results only, every classified result —
@@ -431,7 +447,10 @@ since fonts render differently on different machines.
   independent calculation at several rounds, ties, early rounds, follows the slider and season, whole field, never
   fetches, theme switch, both themes and phone fit), gap to leader (#83: gaps and points still available checked
   against an independent calculation, same eliminated entries in both views, slider, tooltip, end labels, round
-  result, CSV/PNG of the gap view, URL round-trip, never fetches, phone layout, both pages). The harness
+  result, CSV/PNG of the gap view, URL round-trip, never fetches, phone layout, both pages), results heat strip (#87:
+  squares against an independent calculation incl. NC, picker, sort order, slider, hover/tap details with sprints,
+  PNG/CSV, both themes' colours and a live theme switch, a 24-round season fitting 390px, never fetches;
+  `HEAT_SHOTS=<folder>` saves card screenshots). The harness
   never serves the real `site/data/*.json`: tests pass `snapshots` built from the fake season. The fixture's names mix country names and demonyms, with
   one unknown. Logic is checked against
   independent calculations written in the tests, not against the site's own helpers.
