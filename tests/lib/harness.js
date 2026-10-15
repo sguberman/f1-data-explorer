@@ -16,12 +16,15 @@ async function close(){ if(browser) await browser.close(); }
 // Opens a page in a fresh context. Options:
 //   theme 'light'|'dark', width (px), fail(url) -> true to answer that f1api.dev request with HTTP 500,
 //   delay (ms) before each f1api.dev response.
+//   now (ms or date string): fixes the page's clock (Date) at that moment (#89); timezone (IANA name) and
+//   locale set the browser's time zone and locale.
 //   snapshots: {year: object} served as site/data/{year}.json (#13). The real season files in site/data/ are
 //   never served, so tests always use the fake season; without this option every season file is a 404 and
 //   pages load live from the (fake) f1api.dev, as before.
 // The returned page has .errors (uncaught page errors), .apiHits (f1api.dev requests made) and .done().
-async function openPage(name, {theme='light', width=1000, fail=()=>false, delay=0, snapshots={}}={}){
-  const ctx = await browser.newContext({ viewport:{width, height:1400} });
+async function openPage(name, {theme='light', width=1000, fail=()=>false, delay=0, snapshots={}, now=null, timezone, locale}={}){
+  const ctx = await browser.newContext({ viewport:{width, height:1400}, ...(timezone ? {timezoneId:timezone} : {}), ...(locale ? {locale} : {}) });
+  if(now !== null) await ctx.clock.setFixedTime(now);
   await ctx.addInitScript(t => { try{ localStorage.setItem('f1-theme', t); }catch(e){} }, theme);
   const apiHits = [], snapshotHits = [];
   await ctx.route('**/*', async route => {

@@ -268,29 +268,55 @@ const F1Data = (() => {
   // each flagged for whether it has a sprint. This is the authoritative source for "how many rounds
   // and sprints does this season have in total", replacing any static guess. Cached for a day: calendars
   // are effectively static but can occasionally get revised (e.g. a postponed/relocated round).
+  // Shape: {totalRounds, sprintRounds, raceNames, raceDates, raceTimes, countries}. #89 added the last three
+  // (round -> 'YYYY-MM-DD' Grand Prix date, round -> 'HH:MM:SSZ' start time in UTC when known, round -> circuit
+  // country), for the homepage's next race. Season files made before #89 lack them; callers must cope.
   const CALENDAR_TTL_MS = 24*60*60*1000;
-  async function getCalendar(year){
+  // f1api.dev's schedule.race: {date:'2026-10-25', time:'20:00:00Z'}; either can be null. Times without a zone
+  // are UTC (as in Ergast/Jolpica).
+  function raceDate(d){ return typeof d==='string' && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : null; }
+  function raceTime(t){
+    const m = typeof t==='string' && t.trim().match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?(Z|[+-]\d{2}:?\d{2})?$/i);
+    if(!m || +m[1]>23 || +m[2]>59) return null;
+    const zone = !m[4] || /z/i.test(m[4]) ? 'Z' : m[4].replace(/^([+-]\d{2})(\d{2})$/, '$1:$2');
+    return `${m[1].padStart(2,'0')}:${m[2]}:${m[3]||'00'}${zone}`;
+  }
+  // opts.dates (#89): the caller needs race dates. A season file made before #89 has none, so then the file's
+  // calendar is skipped; with no file loaded yet, the season file is fetched for its calendar (one request the
+  // browser caches, and the pages need the same file) before falling back to f1api.dev.
+  async function getCalendar(year, opts={}){
+    const usable = c => c && c.totalRounds && (!opts.dates || c.raceDates);
     // #13: a snapshot loaded for this season carries the calendar — no request needed
-    const snap = snapshots[year];
-    if(snap && snap.calendar && snap.calendar.totalRounds) return snap.calendar;
-    const key = `${year}/calendar2`; // bumped from /calendar — invalidates any pre-override cached copy
+    let snap = snapshots[year];
+    if(snap && usable(snap.calendar)) return snap.calendar;
+    const key = `${year}/calendar3`; // bumped from /calendar2 (#89: race dates, times and countries)
     const cached = cacheGet(key);
-    if(cached !== undefined) return cached;
-    let totalRounds=0, sprintRounds=[], raceNames={};
+    if(cached !== undefined && usable(cached)) return cached;
+    if(opts.dates && !snap){
+      snap = await fetchSnapshot(year);
+      if(snap && usable(snap.calendar)){ cacheSet(key, snap.calendar, CALENDAR_TTL_MS); return snap.calendar; }
+    }
+    let totalRounds=0, sprintRounds=[], raceNames={}, raceDates={}, raceTimes={}, countries={}, failed=false;
     try{
       const data = await fetchJSON(`${API}/${year}?limit=30`);
       const races = (data && data.races) || [];
       totalRounds = races.length;
       races.forEach(r=>{
         raceNames[r.round] = r.raceName;
+        const race = (r.schedule && r.schedule.race) || {};
+        const date = raceDate(race.date), time = date && raceTime(race.time);
+        if(date) raceDates[r.round] = date;
+        if(time) raceTimes[r.round] = time;
+        const country = circuitCountry(r);
+        if(country) countries[r.round] = country;
         const apiSaysSprint = !!(r.schedule && r.schedule.sprintRace && r.schedule.sprintRace.date);
         const overrideKey = `${year}:${r.round}`;
         const isSprint = overrideKey in SPRINT_OVERRIDES ? SPRINT_OVERRIDES[overrideKey] : apiSaysSprint;
         if(isSprint) sprintRounds.push(r.round);
       });
-    }catch(e){ /* leave zeros — callers fall back to their own default when totalRounds is 0 */ }
-    const result = { totalRounds, sprintRounds, raceNames };
-    cacheSet(key, result, CALENDAR_TTL_MS);
+    }catch(e){ failed = true; /* leave zeros — callers fall back to their own default when totalRounds is 0 */ }
+    const result = { totalRounds, sprintRounds, raceNames, raceDates, raceTimes, countries };
+    if(!failed) cacheSet(key, result, CALENDAR_TTL_MS); // a failed fetch isn't kept (#22), so the next load retries
     return result;
   }
 

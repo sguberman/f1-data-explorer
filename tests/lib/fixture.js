@@ -17,6 +17,12 @@ const DRIVERS = TEAMS.flatMap(([teamId, teamName], i) => [0,1].map(k => ({
   driverId:`d${i}_${k}`, shortName:`D${String.fromCharCode(65+i)}${k}`, name:`Driver${i}`, surname:`Team${k}`, teamId, teamName,
   number:DRIVER_NUM[2*i+k], nationality:DRIVER_NAT[2*i+k], teamNationality:TEAM_NAT[i] })));
 const COMPLETED = 12, TOTAL = 23, SPRINTS = [2,6,11,14,19,23];
+// #89: each round's Grand Prix date and start time (UTC), as f1api.dev's calendar gives them in schedule.race.
+// Round 22 has no time (date only), and round 21 is a Saturday night race.
+const RACE_DATES = ['03-08','03-15','03-29','04-12','04-26','05-10','05-24','06-07','06-21','07-05','07-19','08-02','08-30','09-06',
+  '09-20','10-04','10-11','10-25','11-01','11-08','11-21','11-29','12-06'].map(d => `2026-${d}`);
+const RACE_TIMES = RACE_DATES.map((d, i) => i+1 === 22 ? null : i+1 === 21 ? '06:00:00Z' : i < 3 ? '05:00:00Z' : '13:00:00Z');
+const dayBefore = d => new Date(Date.parse(d) - 864e5).toISOString().slice(0, 10);
 const GP = [25,18,15,12,10,8,6,4,2,1], SP = [8,7,6,5,4,3,2,1];
 
 // Deterministic finishing order, loosely biased by team strength.
@@ -40,7 +46,7 @@ function api(url){
   // circuit: an object on odd rounds, a one-item array on even ones (the race endpoint does the latter)
   const circuit = r => r % 2 ? {circuitId:`c${r}`, country:CIRCUITS[r-1]} : [{circuitId:`c${r}`, country:CIRCUITS[r-1]}];
   if(p.length === 1) return {status:200, body:{races: Array.from({length:TOTAL}, (_,i) => ({round:i+1, raceName:`Round ${i+1} Grand Prix`, circuit:{country:CIRCUITS[i]},
-    schedule:{sprintRace:{date: SPRINTS.includes(i+1) ? '2026-01-01' : null}}}))}};
+    schedule:{race:{date:RACE_DATES[i], time:RACE_TIMES[i]}, sprintRace:{date: SPRINTS.includes(i+1) ? dayBefore(RACE_DATES[i]) : null, time:null}}}))}};
   const r = +p[1];
   if(p[2] === 'sprint'){
     if(r > COMPLETED || !SPRINTS.includes(r)) return {status:404, body:{}};
@@ -50,4 +56,4 @@ function api(url){
   return {status:200, body:{races:{raceName:`Round ${r} Grand Prix`, circuit:circuit(r), results:results(r, false)}}};
 }
 
-module.exports = { api, COMPLETED, TOTAL, DRIVER_NAT, DRIVER_NUM, TEAM_NAT, CIRCUITS };
+module.exports = { api, COMPLETED, TOTAL, SPRINTS, RACE_DATES, RACE_TIMES, DRIVER_NAT, DRIVER_NUM, TEAM_NAT, CIRCUITS };

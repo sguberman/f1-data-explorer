@@ -30,7 +30,7 @@ Only `site/` is deployed to GitHub Pages (issue #51); everything else in the rep
 
 ```
 site/                 The website (deployed as the site root, so URLs are unchanged)
-  index.html          Landing page: a card per page, each with a picture of its main chart.
+  index.html          Landing page: the next race (#89), then a card per page, each with a picture of its main chart.
   drivers.html        Drivers' championship: cumulative points line chart, projections, knockout line.
   constructors.html   Constructors' championship: same chart pattern for teams.
   position.html       Race finishing-position ridgeline chart per driver, with sort/show options.
@@ -122,7 +122,13 @@ Move something into `common.js` only once it's genuinely identical on every page
   `t` is when it was fetched (kept when re-stamping the TTL). Fetch failures are never cached (issue #22).
   `F1Data.clearCache()` removes every `f1cache:v2:` entry (issue #23); the theme and the
   `f1cache:selectedSeason` key are kept.
-- `F1Data.getCalendar(year)` gives total rounds, race names and sprint rounds for the full season.
+- `F1Data.getCalendar(year, {dates})` gives the full season's calendar: `{totalRounds, sprintRounds, raceNames,
+  raceDates, raceTimes, countries}`, each map keyed by round. #89 added the last three: the Grand Prix date
+  (`'YYYY-MM-DD'`, from f1api.dev's `schedule.race.date`), its start time in UTC (`'HH:MM:SSZ'`, from
+  `schedule.race.time`, only when known; a time without a zone is read as UTC) and the circuit country. Season
+  files made before #89 lack them (past seasons keep them until rebuilt with `--all`). With `{dates:true}` (the
+  homepage) a calendar without `raceDates` is skipped: it fetches the season file if none is loaded, then falls back
+  to f1api.dev. Cached for a day under `{year}/calendar3` (bumped from `calendar2`); a failed fetch isn't cached.
 - `F1Data.cumulative(seasonRounds, throughRound)` returns `{drivers, teams}` with per-round points.
 - **Finishes and NC (#46):** retirement causes aren't tracked (f1api.dev gives none; the old hand-researched
   mechanical/non-mechanical table was removed). A result with a classified position counts as that finish,
@@ -278,8 +284,17 @@ Constructors' Championship, Race Finishing Positions, Title Simulator, What-If R
 picture of that page's main chart on the left (on top on phones): an inline SVG with illustrative shapes, not
 real data (the drivers' picture ends each line with a driver number and code, the constructors' with a
 team-coloured name badge; no team logos, which are trademarks), coloured through CSS variables so it follows the theme (team colours as on the charts, Red Bull's
-navy lightened in dark). The page loads no data. The title and intro sit on a soft checkered-flag banner
+navy lightened in dark). The title and intro sit on a soft checkered-flag banner
 (`.hero`, #78): a CSS conic-gradient in the theme's own `--inset`/`--panel` tones, with a faint text halo for legibility.
+**Next race (#89):** a strip between the banner and the cards: "Next race · Round 18" (or "This weekend" from two
+days before the race), the short race name (no "Formula 1", title sponsor or year) with the circuit's flag, a
+"Sprint weekend" tag, the date and start time in the visitor's time zone (date only when the time isn't known), and a
+countdown by local calendar day: "in 4 days", "Tomorrow", "Today", "Under way" for 4 hours from the start, then the
+next round. After the last race it reads "2026 season · Season complete" with a "Final standings →" link (no
+champion: that would need the full results, which may lag the race). It comes from the newest season's calendar
+(`F1Data.getCalendar(year, {dates:true})`): the season file, or f1api.dev without one, cached for a day. That is the
+only data the homepage loads, and nothing on it fetches on interaction; if the load fails or has no dates, the strip
+stays hidden.
 
 ## Design requirements (owner-approved — keep these)
 
@@ -362,13 +377,13 @@ since fonts render differently on different machines.
 
 - `lib/harness.js` serves `site/` at `http://site.test/`, answers f1api.dev from `lib/fixture.js` (a fake
   2026 season: 22 drivers, 12 of 23 rounds, sprints, unclassified results, one unknown team id), serves Chart.js from
-  `node_modules`, and can simulate f1api.dev failures (`fail`) or slow responses (`delay`).
+  `node_modules`, and can simulate f1api.dev failures (`fail`) or slow responses (`delay`), and can fix the clock, time zone and locale (`now`, `timezone`, `locale`, #89). The fixture's calendar has race dates and times (round 22 date only).
 - Test files (`NN-name.test.js`) export `async (t, h) => { t.check(name, ok, detail) ... }`. Current files:
   smoke (every page, both themes, desktop + phone, no errors), common (#44), knockout (#45/#46),
   status (#23/#48/#49), movement (#47), position (#9), projection (#10),
   simulator (#39 DNF modeling, #42 auto DNFs, #14 wins, #11 collisions, #17 results kept), NC/finish rule shared by the position page and simulator (#46), flags and markers
   (#18/#30; movement also covers #20's tie-breaks), simulator runs (#56: responsive 30,000 run, progress, Cancel), what-if (#48: drag, keys, NC line, sprint weekends,
-  points and countback), homepage (#50: card order, pictures, vertical layout, theme colours; #78: checkered banner), season files (#13: one-file
+  points and countback), homepage (#50: card order, pictures, vertical layout, theme colours; #78: checkered banner), next race (#89: fixed clock — next round, countdown wording, local time zone, sprint tag, short names, season complete, season file vs f1api.dev, old files without dates, failure hidden, both themes, phone fit), season files (#13: one-file
   loads, live check only after the file, complete seasons with no API calls, fallback, Refresh), daily check (#60: one check reused across pages and
   season switches, rechecked after a day or on Refresh, failed checks not kept), navigation (#62: home link and Pages menu on every
   data page, keyboard, season kept between pages, phone layout), layout (#64: every data page has the same page frame —

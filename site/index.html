@@ -20,6 +20,22 @@ h1{font-size:22px;margin:0 0 4px;}
 .hero .sub{margin:0;max-width:560px;}
 .hero h1,.hero .sub{text-shadow:0 0 6px var(--panel),0 0 2px var(--panel),0 0 12px var(--panel);} /* keeps the words clear of the checks */
 @media (max-width:600px){ .hero{padding:22px 18px;background-size:26px 26px;} }
+/* #89: the next Grand Prix, between the banner and the cards; filled from the calendar, hidden until then */
+.nextRace{display:grid;grid-template-columns:1fr auto;grid-template-areas:"kicker count" "name when";align-items:center;gap:4px 16px;
+  background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 16px;margin:0 0 12px;}
+.nextRace[hidden]{display:none;}
+.nr-kicker{grid-area:kicker;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--sub);}
+.nr-name{grid-area:name;font-size:15px;font-weight:600;color:var(--ink);display:flex;align-items:center;flex-wrap:wrap;gap:4px 8px;min-width:0;}
+.nr-name .flag{margin-right:6px;vertical-align:-1px;}
+.nr-tag{font-size:11px;font-weight:600;color:var(--ink2);background:var(--inset);border:1px solid var(--line-strong);border-radius:999px;padding:1px 8px;white-space:nowrap;}
+.nr-count{grid-area:count;justify-self:end;font-size:13px;font-weight:700;color:var(--ink);white-space:nowrap;}
+.nr-when{grid-area:when;justify-self:end;font-size:12.5px;color:var(--muted);white-space:nowrap;}
+.nr-when a{color:var(--ink2);font-weight:600;text-decoration:none;}
+.nr-when a:hover,.nr-when a:focus-visible{text-decoration:underline;}
+@media (max-width:600px){
+  .nextRace{grid-template-areas:"kicker count" "name name" "when when";padding:10px 14px;}
+  .nr-when{justify-self:start;}
+}
 h2{font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--sub);margin:28px 0 10px;}
 .list{display:flex;flex-direction:column;gap:12px;}
 /* #50: one card per row, a picture of the page's main chart on the left (on top on phones) */
@@ -69,6 +85,8 @@ a.card:hover,a.card:focus-visible{border-color:var(--line-strong);box-shadow:0 4
 <p class="sub">Charts, projections and a title simulator for the 2026 Formula 1 season, with earlier seasons back to 2021. Results update live after each race.</p>
 </div>
 
+<section class="nextRace" id="nextRace" aria-label="Next race" hidden></section>
+
 <div class="list">
   <a class="card" href="drivers.html">
     <div class="thumb"><svg class="pv" viewBox="0 0 320 170" role="img" aria-hidden="true" preserveAspectRatio="xMidYMid meet"><line x1="26" x2="254" y1="10.0" y2="10.0" class="pg"/><line x1="26" x2="254" y1="45.0" y2="45.0" class="pg"/><line x1="26" x2="254" y1="80.0" y2="80.0" class="pg"/><line x1="26" x2="254" y1="115.0" y2="115.0" class="pg"/><line x1="26" x2="254" y1="150.0" y2="150.0" class="pg"/><rect x="140.0" y="10" width="114.0" height="140" class="pshade"/><line x1="140.0" x2="140.0" y1="10" y2="150" class="pdiv"/><path d="M140.0,83.3 L150.4,77.6 L160.7,71.8 L171.1,66.1 L181.5,60.4 L191.8,54.7 L202.2,49.0 L212.5,43.2 L222.9,37.5 L233.3,31.8 L243.6,26.1 L254.0,20.4" class="pl c1 faint"/><path d="M26.0,143.4 L36.4,138.6 L46.7,132.0 L57.1,127.2 L67.5,123.3 L77.8,116.6 L88.2,111.9 L98.5,105.3 L108.9,101.3 L119.3,94.7 L129.6,89.9 L140.0,83.3" class="pl c1"/><path d="M140.0,98.4 L150.4,94.0 L160.7,89.7 L171.1,85.3 L181.5,81.0 L191.8,76.7 L202.2,72.3 L212.5,68.0 L222.9,63.6 L233.3,59.3 L243.6,54.9 L254.0,50.6" class="pl c1 faint" stroke-dasharray="5 3"/><path d="M26.0,145.2 L36.4,141.3 L46.7,138.1 L57.1,131.5 L67.5,126.7 L77.8,124.1 L88.2,120.1 L98.5,116.9 L108.9,112.1 L119.3,108.2 L129.6,101.5 L140.0,98.4" class="pl c1" stroke-dasharray="5 3"/><path d="M140.0,100.5 L150.4,96.6 L160.7,92.8 L171.1,88.9 L181.5,85.0 L191.8,81.2 L202.2,77.3 L212.5,73.4 L222.9,69.6 L233.3,65.7 L243.6,61.8 L254.0,58.0" class="pl c2 faint"/><path d="M26.0,146.0 L36.4,139.4 L46.7,136.8 L57.1,133.6 L67.5,127.0 L77.8,123.0 L88.2,119.8 L98.5,115.1 L108.9,111.9 L119.3,109.2 L129.6,105.3 L140.0,100.5" class="pl c2"/><path d="M140.0,102.3 L150.4,98.5 L160.7,94.7 L171.1,90.9 L181.5,87.1 L191.8,83.3 L202.2,79.5 L212.5,75.7 L222.9,71.8 L233.3,68.0 L243.6,64.2 L254.0,60.4" class="pl c3 faint"/><path d="M26.0,146.8 L36.4,144.2 L46.7,139.4 L57.1,135.4 L67.5,132.8 L77.8,128.0 L88.2,121.4 L98.5,118.8 L108.9,112.1 L119.3,109.0 L129.6,106.3 L140.0,102.3" class="pl c3"/><path d="M140.0,111.3 L150.4,107.9 L160.7,104.5 L171.1,101.0 L181.5,97.6 L191.8,94.1 L202.2,90.7 L212.5,87.3 L222.9,83.8 L233.3,80.4 L243.6,76.9 L254.0,73.5" class="pl c2 faint" stroke-dasharray="5 3"/><path d="M26.0,147.4 L36.4,144.2 L46.7,140.2 L57.1,137.6 L67.5,134.4 L77.8,131.2 L88.2,128.6 L98.5,124.6 L108.9,121.9 L119.3,117.2 L129.6,114.0 L140.0,111.3" class="pl c2" stroke-dasharray="5 3"/><path d="M26.0,150.0 L36.4,150.0 L46.7,150.0 L57.1,150.0 L67.5,150.0 L77.8,150.0 L88.2,150.0 L98.5,150.0 L108.9,150.0 L119.3,150.0 L129.6,150.0 L140.0,150.0 L150.4,146.4 L160.7,133.8 L171.1,121.2 L181.5,108.6 L191.8,96.0 L202.2,83.4 L212.5,70.8 L222.9,58.2 L233.3,45.6 L243.6,33.0 L254.0,20.4" class="pk"/><text x="278" y="24.4" class="elbl enum" text-anchor="end">63</text><text x="282" y="24.4" class="elbl ecode c1">RUS</text><text x="278" y="54.6" class="elbl enum" text-anchor="end">12</text><text x="282" y="54.6" class="elbl ecode c1">ANT</text><text x="278" y="68.6" class="elbl enum" text-anchor="end">16</text><text x="282" y="68.6" class="elbl ecode c2">LEC</text><text x="278" y="82.6" class="elbl enum" text-anchor="end">1</text><text x="282" y="82.6" class="elbl ecode c3">NOR</text><text x="278" y="96.6" class="elbl enum" text-anchor="end">44</text><text x="282" y="96.6" class="elbl ecode c2">HAM</text></svg></div>
@@ -102,5 +120,68 @@ a.card:hover,a.card:focus-visible{border-color:var(--line-strong);box-shadow:0 4
   </a>
 </div>
 </main>
+<script src="common.js"></script>
+<script src="data.js"></script>
+<script>
+/* #89: the next Grand Prix — name, flag, date and time in the visitor's time zone, a sprint tag and a countdown —
+   from the newest season's calendar (F1Data.getCalendar: the season file or f1api.dev, cached for a day).
+   That one load is the only data the homepage asks for; if it fails or has no dates, nothing is shown. */
+(() => {
+  const DAY = 864e5, RACE_HOURS = 4; // a race counts as "under way" for 4 hours from its start
+  const esc = t => String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+  // "Formula 1 Heineken Chinese Grand Prix 2026" -> "Chinese Grand Prix": no series prefix, year or title sponsor
+  const SPONSORS = /^(qatar airways|heineken( silver)?|aramco|crypto\.com|lenovo|louis vuitton|msc cruises|pirelli|aws|tag heuer|gulf air|singapore airl\w*|etihad airways|rolex|stc|dell)\s+/i;
+  function shortRaceName(name){
+    let n = String(name || '').replace(/^formula (1|one)\s+/i, '').replace(/\s+\d{4}$/, '').trim();
+    for(let prev = ''; prev !== n;){ prev = n; n = n.replace(SPONSORS, ''); }
+    return n;
+  }
+  const midnight = d => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+
+  // Every round with a date: its start (when the time is known), its local race day, and when it's over.
+  function races(cal){
+    const out = [];
+    for(let r = 1; r <= (cal.totalRounds || 0); r++){
+      const date = cal.raceDates && cal.raceDates[r];
+      if(!date) continue;
+      const [y, m, d] = date.split('-').map(Number), time = cal.raceTimes && cal.raceTimes[r];
+      const start = time ? new Date(`${date}T${time}`) : null;
+      if(start && isNaN(start)) continue;
+      out.push({ round:r, start, day: start ? midnight(start) : new Date(y, m-1, d),
+        end: start ? new Date(+start + RACE_HOURS*36e5) : new Date(y, m-1, d+1) });
+    }
+    return out;
+  }
+
+  // Fills the strip; false when there's nothing to show.
+  function render(el, year, cal, now){
+    const list = races(cal);
+    if(!list.length) return false;
+    const next = list.find(x => x.end > now);
+    if(!next){ // after the last race: say so, and point to the final standings
+      if(list.length < cal.totalRounds) return false; // some rounds have no date: can't tell the season is over
+      el.innerHTML = `<span class="nr-kicker">${year} season</span><span class="nr-name">Season complete</span>
+        <span class="nr-when"><a href="drivers.html">Final standings →</a></span>`;
+      return true;
+    }
+    const days = Math.round((next.day - midnight(now)) / DAY), live = next.start && now >= next.start;
+    const count = live ? 'Under way' : days <= 0 ? 'Today' : days === 1 ? 'Tomorrow' : `in ${days} days`;
+    const when = next.day.toLocaleDateString(undefined, {weekday:'short', month:'short', day:'numeric'})
+      + (next.start ? ' · ' + next.start.toLocaleTimeString(undefined, {hour:'numeric', minute:'2-digit', timeZoneName:'short'}) : '');
+    const sprint = (cal.sprintRounds || []).includes(next.round);
+    const name = cal.raceNames && cal.raceNames[next.round] ? shortRaceName(cal.raceNames[next.round]) : `Round ${next.round}`;
+    el.innerHTML = `<span class="nr-kicker">${live || days <= 2 ? 'This weekend' : 'Next race'} · Round ${next.round}</span>
+      <span class="nr-name"><span>${F1Common.flagHTML(cal.countries && cal.countries[next.round])}${esc(name)}</span>${sprint ? '<span class="nr-tag">Sprint weekend</span>' : ''}</span>
+      <span class="nr-count">${count}</span>
+      <span class="nr-when">${esc(when)}</span>`;
+    return true;
+  }
+
+  const el = document.getElementById('nextRace'), year = F1Common.YEARS[0];
+  F1Data.getCalendar(year, {dates:true})
+    .then(cal => { if(cal && render(el, year, cal, new Date())) el.hidden = false; })
+    .catch(() => {}); // no calendar: show nothing
+})();
+</script>
 </body>
 </html>
