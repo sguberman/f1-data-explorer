@@ -58,6 +58,7 @@ module.exports = async (t, h) => {
   // #70: the other driver pickers' team headings have no flag either; constructor pickers keep theirs (below).
   for(const name of ['position', 'simulator']){
     const p = await h.openPage(name); await h.loaded(p);
+    await p.waitForSelector('.pickerTeamLabel'); // the simulator's picker can render just after the load signal
     const heads = await p.$$eval('.pickerTeamLabel', els => els.map(e => [e.textContent.trim(), !!e.querySelector('img.flag')]));
     t.check(`${name}: driver picker team headings have no flag`, heads.length === 11 && heads.every(([n, f]) => n && !f), JSON.stringify(heads.slice(0,2)));
     await p.done();
