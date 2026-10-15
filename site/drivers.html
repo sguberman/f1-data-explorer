@@ -44,7 +44,15 @@ html.f1-loading #talkingPoints{min-height:120px;}
 <p class="sub">Points for the drivers you pick below (top 5 by default), projected to the end of the season from each driver's last 5 races. Move the slider, or drag the handle on the chart, to see the standings as of any round. Tap a round on the chart for its result.</p>
 <div id="f1controls" class="f1c"></div>
 <div class="card" style="margin-bottom:16px;">
-<div id="lg" style="display:flex;flex-wrap:wrap;gap:8px 20px;margin:0 0 10px;font-size:12px;color:var(--ink2);"></div>
+<div class="ptsHead">
+<div id="lg" class="lg" style="display:flex;flex-wrap:wrap;gap:8px 20px;font-size:12px;color:var(--ink2);"></div>
+<span class="ptsView"><span>Show</span>
+ <select id="ptsView" class="ddSelect" aria-label="Show points or gap to leader">
+  <option value="points">Points</option>
+  <option value="gap">Gap to leader</option>
+ </select>
+</span>
+</div>
 <div style="position:relative;width:100%;height:440px;" id="chartWrap" class="f1-skel">
 <canvas id="c" role="img" aria-label="Line chart of championship points by round for the selected drivers, with a knockout line showing the fewest points needed to still catch the highest-ranked selected driver.">Championship points by round for the selected drivers, with a knockout line showing the fewest points needed to still catch the highest-ranked selected driver.</canvas>
 <div class="drag-handle" id="dragHandle" title="Drag to change the as-of round"></div>
@@ -112,7 +120,10 @@ html.f1-loading #talkingPoints{min-height:120px;}
 const ff=getComputedStyle(document.body).fontFamily;
 Chart.defaults.font.family=ff;Chart.defaults.font.size=11;
 
-let D=[], N=0, L=0, R=[], thr=[], lead=[], P, chart, usingRealCalendar=false;
+let D=[], N=0, L=0, R=[], thr=[], lead=[], room=[], P, chart, usingRealCalendar=false;
+// #83: the points chart's Show dropdown — cumulative points (default) or each driver's gap to the leader.
+const gapView = () => document.getElementById('ptsView').value==='gap';
+document.getElementById('ptsView').addEventListener('change', ()=>{ if(currentSeasonRounds.length) draw(); });
 let currentYear=null, currentSeasonRounds=[], currentCalendar=null, selectedDriverIds=null, pickerSort='team';
 
 // Season length used by the projections — the same N as recompute() uses for the points chart.
@@ -154,6 +165,7 @@ async function buildFromSelection(detail){
  currentCalendar = await F1Data.getCalendar(currentYear);
  const link = F1Share.take(); // #31: a shared link's setup, first season only
  if(link && link.get('pos')==='proj') document.getElementById('posView').value='proj';
+ if(link && link.get('pts')==='gap') document.getElementById('ptsView').value='gap';
  if(link && ['team','rank'].includes(link.get('sort'))) document.getElementById('sortSeg').value = pickerSort = link.get('sort');
  // issue #9/#10: whole-season charts, independent of the round slider (need the calendar for the season length)
  projData = F1Common.projectionsByRound(currentSeasonRounds, 'drivers', totalRounds()); projKey=null; tpKey=null;
@@ -172,6 +184,7 @@ F1Share.register(()=>({
  d: F1Share.sameSet(selectedDriverIds, defaultIds) ? null : (selectedDriverIds||[]).join(','),
  sort: pickerSort==='team' ? null : pickerSort,
  pos: document.getElementById('posView').value==='proj' ? 'proj' : null,
+ pts: gapView() ? 'gap' : null,
 }));
 
 function pickerRowHTML(d, rank, moves){
@@ -284,6 +297,11 @@ function recompute(round){
  lead = Array.from({length:N},(_,i)=>Math.max(0,...D.map(d=>d.full[i])));
  thr=lead.map((v,i)=>Math.max(0,v-rem(i+1)));
  D.forEach(d=>{d.out=-1;for(let i=0;i<N;i++){if(thr[i]>0&&d.full[i]<thr[i]-1e-6){d.out=i;break;}}});
+ // #83: gap view. Each driver's points behind the leader (the same highest-ranked selected driver), and the points
+ // still available after each round: the largest gap that can still be closed. A gap bigger than that is exactly
+ // "below the knockout line" (full < lead - rem), so the eliminated markers are the same in both views.
+ room = Array.from({length:N},(_,i)=>rem(i+1));
+ D.forEach(d=>{ d.gap = d.full.map((v,i)=>lead[i]-v); });
  draw();
  renderDriverPicker();
  drawProjPoints(); // issue #10: follows the selection; no-op when only the round changed
@@ -304,12 +322,15 @@ function drawTalkingPoints(round){
 function draw(){
  if(!D.length){ if(chart){ chart.destroy(); chart=null; } document.getElementById('lg').innerHTML=''; document.getElementById('sm').innerHTML='No drivers selected.'; F1RoundResult.update(); return; }
 P=F1Theme.chart();Chart.defaults.color=P.text;
+// #83: in the gap view every value is points behind the leader, and the knockout line becomes the points still available.
+const gap=gapView(), val=d=>gap?d.gap:d.full, kline=gap?room:thr, kname=gap?'Points still available':'Knockout line';
+const num=v=>gap?(Math.round(v)>0?'+'+Math.round(v):'0'):String(Math.round(v));
 const DC=D.map(d=>({...d,c:F1Theme.team(d.c)}));
 const ds=[];
-DC.forEach(d=>ds.push({kind:'a',driver:d.n,data:d.cum.concat(Array(N-L).fill(null)),borderColor:d.c,borderDash:d.d,borderWidth:2.2,tension:0,pointRadius:0,pointHoverRadius:4,pointBackgroundColor:d.c}));
-DC.forEach(d=>ds.push({kind:'p',driver:d.n,nat:d.nat,c:d.c,fin:d.full[N-1],data:d.full.map((v,i)=>i>=L-1?v:null),borderColor:F1Common.withAlpha(d.c,.45),borderDash:d.d,borderWidth:1.8,tension:0,pointRadius:0,pointHoverRadius:3,pointBackgroundColor:d.c}));
-ds.push({kind:'ka',driver:'Knockout line',data:thr.map((v,i)=>i<L?v:null),borderColor:P.knock,backgroundColor:P.knockFill,fill:'origin',borderWidth:3,tension:0,pointRadius:0,pointHoverRadius:4,pointBackgroundColor:P.knock});
-ds.push({kind:'kp',driver:'Knockout line',data:thr.map((v,i)=>i>=L-1?v:null),borderColor:P.knock,backgroundColor:P.knockFillProj,fill:'origin',borderDash:[6,4],borderWidth:2.5,tension:0,pointRadius:0,pointHoverRadius:3,pointBackgroundColor:P.knock});
+DC.forEach(d=>ds.push({kind:'a',driver:d.n,data:(gap?d.gap.slice(0,L):d.cum).concat(Array(N-L).fill(null)),borderColor:d.c,borderDash:d.d,borderWidth:2.2,tension:0,pointRadius:0,pointHoverRadius:4,pointBackgroundColor:d.c}));
+DC.forEach(d=>ds.push({kind:'p',driver:d.n,nat:d.nat,c:d.c,fin:val(d)[N-1],data:val(d).map((v,i)=>i>=L-1?v:null),borderColor:F1Common.withAlpha(d.c,.45),borderDash:d.d,borderWidth:1.8,tension:0,pointRadius:0,pointHoverRadius:3,pointBackgroundColor:d.c}));
+ds.push({kind:'ka',driver:kname,data:kline.map((v,i)=>i<L?v:null),borderColor:P.knock,backgroundColor:P.knockFill,fill:'origin',borderWidth:3,tension:0,pointRadius:0,pointHoverRadius:4,pointBackgroundColor:P.knock});
+ds.push({kind:'kp',driver:kname,data:kline.map((v,i)=>i>=L-1?v:null),borderColor:P.knock,backgroundColor:P.knockFillProj,fill:'origin',borderDash:[6,4],borderWidth:2.5,tension:0,pointRadius:0,pointHoverRadius:3,pointBackgroundColor:P.knock});
 const shade={id:'shade',beforeDatasetsDraw(ch){
  const {ctx,chartArea:a,scales:{x}}=ch;const x0=x.getPixelForValue(L-1);
  ctx.save();ctx.fillStyle=P.projShade;ctx.fillRect(x0,a.top,a.right-x0,a.bottom-a.top);
@@ -317,7 +338,7 @@ const shade={id:'shade',beforeDatasetsDraw(ch){
  ctx.fillStyle=P.dividerText;ctx.font='11px '+ff;ctx.textAlign='right';ctx.fillText('Actual',x0-8,a.top+13);ctx.textAlign='left';ctx.fillText('Projected',x0+8,a.top+13);ctx.restore();}};
 const marks={id:'marks',afterDatasetsDraw(ch){
  const {ctx,scales:{x,y}}=ch;ctx.save();
- D.forEach(d=>{if(d.out<0)return;const px=x.getPixelForValue(d.out),py=y.getPixelForValue(d.full[d.out]);
+ D.forEach(d=>{if(d.out<0)return;const px=x.getPixelForValue(d.out),py=y.getPixelForValue(val(d)[d.out]);
   ctx.beginPath();ctx.arc(px,py,5.5,0,7);
   if(d.out<L){ctx.fillStyle=P.elim;ctx.fill();ctx.strokeStyle=P.pointRing;ctx.lineWidth=1.5;ctx.stroke();}
   else{ctx.fillStyle=P.pointRing;ctx.fill();ctx.strokeStyle=P.elim;ctx.lineWidth=2;ctx.stroke();}});
@@ -327,22 +348,29 @@ const ends={id:'ends',afterDatasetsDraw(ch){
  const it=[];ch.data.datasets.forEach((s,i)=>{if(s.kind!=='p')return;const p=ch.getDatasetMeta(i).data[N-1];it.push({x:p.x,y:p.y,ly:p.y,s});});
  it.sort((a,b)=>a.y-b.y);for(let i=1;i<it.length;i++)if(it[i].ly-it[i-1].ly<13)it[i].ly=it[i-1].ly+13;
  const {ctx}=ch;ctx.save();ctx.font='11px '+ff;ctx.textAlign='left';ctx.textBaseline='middle';
- it.forEach(o=>{ctx.fillStyle=o.s.c;ctx.fillRect(o.x+7,o.ly-3,6,6);F1Common.drawFlag(ctx,o.s.nat,o.x+17,o.ly);ctx.fillStyle=P.label;ctx.fillText(o.s.driver+' '+Math.round(o.s.fin),o.x+17+fw,o.ly);});ctx.restore();}};
+ it.forEach(o=>{ctx.fillStyle=o.s.c;ctx.fillRect(o.x+7,o.ly-3,6,6);F1Common.drawFlag(ctx,o.s.nat,o.x+17,o.ly);ctx.fillStyle=P.label;ctx.fillText(o.s.driver+' '+num(o.s.fin),o.x+17+fw,o.ly);});ctx.restore();}};
 // Reserve right padding from the widest end label so it's never clipped (none needed on mobile,
 // where the labels move into #endLegend below the chart instead).
 const mc=document.createElement('canvas').getContext('2d');mc.font='11px '+ff;
 const fw=F1Common.flagSpace(ds.filter(s=>s.kind==='p').map(s=>s.nat)); // #18: room for flags in the end labels
-const PR=F1Common.isNarrow()?10:Math.ceil(Math.max(...ds.filter(s=>s.kind==='p').map(s=>mc.measureText(s.driver+' '+Math.round(s.fin)).width)))+fw+17+8;
-const peak=Math.max(1,...D.map(d=>Math.max(...d.full)),...thr);
+const PR=F1Common.isNarrow()?10:Math.ceil(Math.max(...ds.filter(s=>s.kind==='p').map(s=>mc.measureText(s.driver+' '+num(s.fin)).width)))+fw+17+8;
+// Gap view: the knockout line (points still available) starts far below the gaps, so the scale fits the gaps and the
+// line comes into view as the season runs out.
+const peak=gap?Math.max(1,...D.map(d=>Math.max(...d.gap))):Math.max(1,...D.map(d=>Math.max(...d.full)),...thr);
 const yMax=Math.ceil(peak*1.1/50)*50;
 const yStep=yMax<=300?50:yMax<=600?100:yMax<=1200?200:500;
+// Gap view: shade the out zone from the line down to the bottom of the (reversed) axis.
+if(gap) ds.forEach(s=>{ if(s.kind[0]==='k') s.fill={value:yMax}; });
+const cv=document.getElementById('c'); cv.dataset.pointsLabel=cv.dataset.pointsLabel||cv.getAttribute('aria-label');
+cv.setAttribute('aria-label', gap?'Line chart of how many points each selected driver is behind the highest-ranked selected driver after each round, with a line showing the points still available.':cv.dataset.pointsLabel);
 if(chart)chart.destroy();
 chart=new Chart(document.getElementById('c'),{type:'line',data:{labels:R.map((_,i)=>String(i+1)),datasets:ds},plugins:[shade,marks,ends,F1RoundResult.band],
 options:{responsive:true,maintainAspectRatio:false,animation:false,layout:{padding:{right:PR,top:4}},interaction:{mode:'index',intersect:false},
-plugins:{legend:{display:false},tooltip:{filter:i=>i.raw!=null&&((i.dataset.kind==='a'||i.dataset.kind==='ka')||i.dataIndex>L-1),itemSort:(a,b)=>b.raw-a.raw,
-callbacks:{title:t=>{const i=t[0].dataIndex;return 'Round '+(i+1)+(R[i]&&R[i]!=='TBD'?' · '+R[i]:'')+(i>L-1?' (projected)':'');},footer:t=>F1RoundResult.hint(t[0].dataIndex),label:t=>' '+t.dataset.driver+': '+Math.round(t.raw)}}},
+plugins:{legend:{display:false},tooltip:{filter:i=>i.raw!=null&&((i.dataset.kind==='a'||i.dataset.kind==='ka')||i.dataIndex>L-1),itemSort:(a,b)=>gap?a.raw-b.raw:b.raw-a.raw,
+callbacks:{title:t=>{const i=t[0].dataIndex;return 'Round '+(i+1)+(R[i]&&R[i]!=='TBD'?' · '+R[i]:'')+(i>L-1?' (projected)':'');},footer:t=>F1RoundResult.hint(t[0].dataIndex),label:t=>' '+t.dataset.driver+': '+(!gap||t.dataset.kind[0]==='k'?Math.round(t.raw):Math.round(t.raw)>0?Math.round(t.raw)+' behind':'leader')}}},
 scales:{x:{offset:false,grid:{display:false},border:{color:P.axis},title:{display:true,text:'Round',color:P.text}},
-y:{min:0,max:yMax,ticks:{stepSize:yStep},grid:{color:P.grid},border:{display:false},title:{display:true,text:'Cumulative championship points',color:P.text}}}}});
+// Gap view: reversed axis, so the leader runs along the top and drivers drop away below it, as in the points view.
+y:{min:0,max:yMax,reverse:gap,ticks:{stepSize:yStep},grid:{color:P.grid},border:{display:false},title:{display:true,text:gap?'Points behind the leader':'Cumulative championship points',color:P.text}}}}});
 const sw=(c,d,w)=>`<svg width="22" height="8" aria-hidden="true"><line x1="1" y1="4" x2="21" y2="4" stroke="${c}" stroke-width="${w||2.5}" ${d?'stroke-dasharray="5 3"':''}/></svg>`;
 const byTeam={};
 DC.forEach(d=>{ (byTeam[d.teamId] = byTeam[d.teamId]||[]).push(d); });
@@ -351,18 +379,20 @@ document.getElementById('lg').innerHTML=Object.values(byTeam).map(drivers=>{
  const items=drivers.map((d,i)=>`<span style="display:inline-flex;align-items:center;gap:6px;">${sw(d.c,i>0)}${F1Common.flagHTML(d.nat)}${d.n}</span>`).join('');
  return `<span style="display:flex;align-items:center;gap:10px;">${items}</span>`;
 }).join('')
- +`<span style="display:flex;align-items:center;gap:6px;"><span style="font-weight:500;">Knockout line</span>${sw(P.knock,0,3)}</span>`;
+ +`<span style="display:flex;align-items:center;gap:6px;"><span style="font-weight:500;">${kname}</span>${sw(P.knock,0,3)}</span>`;
 // Mobile stand-in for the canvas end-of-line labels — same info (code + final points), ranked.
 const legendSorted=DC.slice().sort((a,b)=>b.full[N-1]-a.full[N-1]);
 document.getElementById('endLegend').innerHTML=legendSorted.map((d,i)=>
- `<div class="endLegendRow"><span class="endLegendRank">${i+1}</span><span class="endLegendDot" style="background:${d.c}"></span><span class="endLegendName">${F1Common.flagHTML(d.nat)}${d.n}</span><span class="endLegendPts">${Math.round(d.full[N-1])}</span></div>`
+ `<div class="endLegendRow"><span class="endLegendRank">${i+1}</span><span class="endLegendDot" style="background:${d.c}"></span><span class="endLegendName">${F1Common.flagHTML(d.nat)}${d.n}</span><span class="endLegendPts">${num(val(d)[N-1])}</span></div>`
 ).join('');
 const lab=d=>`${d.n} (R${d.out+1})`;
 const now=D.filter(d=>d.out>=0&&d.out<L).sort((a,b)=>a.out-b.out),proj=D.filter(d=>d.out>=L).sort((a,b)=>a.out-b.out);
 // issue #16: name the highest-ranked selected entry (the one the knockout line is based on).
 const ko=DC.reduce((b,d)=>d.cum[L-1]>b.cum[L-1]?d:b, DC[0]).n;
-document.getElementById('sm').innerHTML=
- `<b>Knockout line:</b> the fewest points a driver needs to still catch ${ko}, the highest-ranked driver you've selected. After round ${L}, ${ko} has ${Math.round(lead[L-1])} pts with ${Math.round(lead[L-1]-thr[L-1])} still available${usingRealCalendar?'':' (estimated — the real calendar wasn\'t available this load)'}, so the line is at ${Math.round(thr[L-1])} pts. A driver who falls below it can't catch ${ko} even by winning every remaining race while ${ko} scores nothing.`
+const est=usingRealCalendar?'':' (estimated — the real calendar wasn\'t available this load)';
+document.getElementById('sm').innerHTML=(gap
+ ? `<b>Points still available:</b> the biggest gap to ${ko}, the highest-ranked driver you've selected, that can still be closed. After round ${L}, ${Math.round(room[L-1])} pts are still available${est}, so a driver more than that behind ${ko} can't catch them even by winning every remaining race while ${ko} scores nothing.`
+ : `<b>Knockout line:</b> the fewest points a driver needs to still catch ${ko}, the highest-ranked driver you've selected. After round ${L}, ${ko} has ${Math.round(lead[L-1])} pts with ${Math.round(lead[L-1]-thr[L-1])} still available${est}, so the line is at ${Math.round(thr[L-1])} pts. A driver who falls below it can't catch ${ko} even by winning every remaining race while ${ko} scores nothing.`)
  +`<br><span style="color:var(--elim);">●</span> Below the line: ${now.length?now.map(lab).join(', '):'none'} &nbsp; <span style="color:var(--elim);">○</span> Projected to fall below at current form: ${proj.length?proj.map(lab).join(', '):'none'}`;
 positionHandle();
 F1RoundResult.update(); // #29
@@ -400,7 +430,7 @@ function positionHandle(){
 
 F1RoundResult.attach({kind:'drivers', canvas:document.getElementById('c'), after:document.getElementById('chartWrap'), getChart:()=>chart,
  getState:()=>({rounds:currentSeasonRounds, L, selected:selectedDriverIds})}); // #29
-F1Export.championshipPage('drivers', ()=>({D, N, L, R, thr, projChart, posChart})); // #33
+F1Export.championshipPage('drivers', ()=>({D, N, L, R, thr, room, gap:gapView(), projChart, posChart})); // #33, #83
 window.addEventListener('f1selection', e=>buildFromSelection(e.detail));
 window.addEventListener('f1roundchange', e=>{ if(currentSeasonRounds.length) recompute(e.detail.round); });
 window.addEventListener('themechange',()=>{ draw(); drawPositions(); drawProjPoints(true); });

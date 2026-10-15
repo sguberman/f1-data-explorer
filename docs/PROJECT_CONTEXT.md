@@ -142,8 +142,8 @@ Move something into `common.js` only once it's genuinely identical on every page
 
 - **Links (`share.js`, `F1Share`).** The URL always carries `season`. It carries `round` only when the slider
   isn't on the latest round, plus each page's own keys, leaving out anything at its default:
-  - drivers: `d` (ids), `sort`, `pos`
-  - constructors: `t`, `pos`
+  - drivers: `d` (ids), `sort`, `pos`, `pts=gap` (#83)
+  - constructors: `t`, `pos`, `pts=gap`
   - both championship pages: `result` (the open round, #29) and `session=sprint`
   - position: `d`, `sort`, `chart`, `below10`, `sprint`
   - what-if: `gp` and `sprint` orders (`-` marks the not-classified line)
@@ -167,8 +167,10 @@ Move something into `common.js` only once it's genuinely identical on every page
     bottom-right corner (#76).
   - On a touch device that can share files (`navigator.canShare`), PNG and CSV open the share sheet (#75); anywhere
     else, or if sharing is refused, they download.
-  - The CSV is the data behind the chart: points and projection per round with the knockout line, projected
-    totals, positions per round, driver contributions per team (#84), finishing-position counts, simulated shares, and the what-if tables (CSV only).
+  - The CSV is the data behind the chart: points and projection per round with the knockout line (in the gap view, #83:
+    the gaps, the leader at each round and the points still available; the files are then named `…-gap-…`), projected
+    totals, positions per round, driver contributions per team (#84), finishing-position counts, simulated shares, and
+    the what-if tables (CSV only).
   - Files are named `f1-{season}-{chart}-r{round}`.
   - `F1Export.championshipPage()` wires the three charts shared by the drivers and constructors pages.
 
@@ -212,6 +214,16 @@ and **most not classified** Grands Prix (shown when anyone has one). Ties list e
 and NOR · 3 wins each"; more than three read "VER, NOR, LEC +2 more", all names on hover). Standings and tie-breaks
 come from `standingsOrder()`. Tiles three across on desktop, two on phones; a note under them says what each fact
 counts. Rebuilt only when the season or round changes (theme colours are CSS variables); never fetches; no export.
+
+**Gap to leader (#83, both championship pages):** a **Show** dropdown (`#ptsView`, `.ddSelect`, beside the legend; on
+phones on its own line above it) switches the points chart between *Points* (default) and *Gap to leader*: each picked
+entry's points behind the leader (the highest-ranked picked entry at each round, as for the knockout line), actual and
+projected, on a **reversed** y axis ("Points behind the leader", 0 at the top), so the leader runs along the top and
+the others drop away below, the same shape as the points view and the position chart. The knockout line becomes
+**Points still available** (`room`, the largest gap that can still be closed); a gap bigger than that is exactly
+"below the knockout line", so the eliminated markers and the note's lists are the same in both views, and the out zone
+is shaded below the line. The axis fits the gaps, so the line comes into view as the season runs out. Tooltips say
+"leader" / "N behind", end labels and the phone end legend show "+N" (leader 0). Switching only redraws (no fetch).
 
 **Round results (#29, `roundresult.js`, both championship pages):** clicking or tapping a round on the points
 chart (up to the slider's round; projected rounds don't open) opens that round's result in a panel under the
@@ -417,7 +429,9 @@ since fonts render differently on different machines.
   checked against an independent sum and the picker, picker/slider/theme/season, a driver with two teams on constructed
   data, labels never cut off, tooltip, PNG/CSV, never fetches, phone fit), talking points (#88: each fact against an
   independent calculation at several rounds, ties, early rounds, follows the slider and season, whole field, never
-  fetches, theme switch, both themes and phone fit). The harness
+  fetches, theme switch, both themes and phone fit), gap to leader (#83: gaps and points still available checked
+  against an independent calculation, same eliminated entries in both views, slider, tooltip, end labels, round
+  result, CSV/PNG of the gap view, URL round-trip, never fetches, phone layout, both pages). The harness
   never serves the real `site/data/*.json`: tests pass `snapshots` built from the fake season. The fixture's names mix country names and demonyms, with
   one unknown. Logic is checked against
   independent calculations written in the tests, not against the site's own helpers.

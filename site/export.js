@@ -131,14 +131,20 @@ const F1Export = (() => {
   function championshipPage(kind, get){
     const noun = kind === 'teams' ? 'Constructors’' : 'Drivers’', who = kind === 'teams' ? 'Team' : 'Driver';
     const card = id => document.getElementById(id) && document.getElementById(id).closest('.card');
+    // #83: the points chart exports whichever view is shown, Points or Gap to leader (g.gap).
     attach(card('c'), {
-      name: kind === 'teams' ? 'constructors-points' : 'drivers-points',
-      title: () => `${noun} Championship: points by round`,
+      get name(){ return (kind === 'teams' ? 'constructors-' : 'drivers-') + (get().gap ? 'gap' : 'points'); },
+      title: () => `${noun} Championship: ${get().gap ? 'gap to leader' : 'points'} by round`,
       subtitle: () => { const g = get(); return roundText(g.N) + (g.L < g.N ? ' · later rounds projected from the last 5' : ''); },
       canvas: () => document.getElementById('c'),
       legend: () => get().D.map(d => ({ label: d.n, color: F1Theme.team(d.c), dash: d.d && d.d.length ? [5, 3] : null }))
-        .concat([{ label: 'Knockout line', color: F1Theme.chart().knock }]),
+        .concat([{ label: get().gap ? 'Points still available' : 'Knockout line', color: F1Theme.chart().knock }]),
       csv: () => { const g = get(); if(!g.D.length) return null;
+        if(g.gap){ // points behind the leader (the highest-ranked picked entry, named per round) and the points still available
+          const leader = i => g.D.reduce((b, d) => d.full[i] > b.full[i] ? d : b, g.D[0]).n;
+          return [['Round', 'Race', 'Projected', 'Leader', ...g.D.map(d => d.n), 'Points still available'],
+            ...Array.from({ length: g.N }, (_, i) => [i + 1, g.R[i], i < g.L ? 'no' : 'yes', leader(i), ...g.D.map(d => d.gap[i]), g.room[i]])];
+        }
         return [['Round', 'Race', 'Projected', ...g.D.map(d => d.n), 'Knockout line'],
           ...Array.from({ length: g.N }, (_, i) => [i + 1, g.R[i], i < g.L ? 'no' : 'yes', ...g.D.map(d => d.full[i]), g.thr[i]])]; },
     });

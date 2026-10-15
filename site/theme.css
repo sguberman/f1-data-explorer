@@ -115,6 +115,16 @@ html,body{background:var(--bg);color:var(--ink);}
 @media (max-width:600px){
   .endLegend{display:flex;}
 }
+/* #83: the points chart's legend with its "Show" dropdown (Points / Gap to leader) on the right; on phones the
+   dropdown sits on its own line above the legend, so the legend keeps the full width. */
+.ptsHead{display:flex;align-items:flex-start;gap:8px 16px;margin:0 0 10px;}
+.ptsHead > .lg{flex:1 1 auto;min-width:0;}
+.ptsView{flex:none;display:inline-flex;align-items:center;gap:8px;margin-top:-3px;}
+.ptsView > span{font-size:12px;color:var(--sub);}
+@media (max-width:600px){
+  .ptsHead{flex-direction:column-reverse;align-items:stretch;}
+  .ptsView{align-self:flex-end;margin-top:0;}
+}
 
 /* issue #13: display-option checkboxes (replaces a pill row for toggles like Below P10/Mechanical
    DNFs/Sprints) — a row of label+checkbox pairs that wraps naturally at any width. The "Show" label
