@@ -148,6 +148,17 @@ module.exports = async (t, h) => {
   const [ya, yb] = pair(mB);
   st = await status([...S, round(20, orderFor(ya, yb))], cal, 'drivers', 20);
   t.check('one more point clear: champion', st.champion === A && !st.contenders.length, J(st.contenders));
+  // A finish that's enough whatever the others do: S3 after 18 (sprint weekend next, B may outscore A by up to 21).
+  o = await outlook(S3, cal, 'drivers', 18);
+  const m3 = leftAfter(19, 'drivers', cal) - (totals(S3, 18, 'drivers')[A] - totals(S3, 18, 'drivers')[B]) + 1, both = q => GP[q-1] + SP[q-1];
+  let cert = 0; for(let q = 1; q <= 10 && both(q) - (q === 1 ? both(2) : both(1)) >= m3; q++) cert = q;
+  t.check(`certain finish: P${cert} or better in both races is enough whatever the others do`, o.state === 'can' && o.rivals[0].margin === m3 && cert > 1 && J(o.example) === J({certain:cert, both:true}), J([o, m3, cert]));
+  // Earliest round exactly at a possible draw: A 75 clear after round 1 of 10. After round 4 a draw would still be
+  // possible (75 + 3×25 = 6×25), so the earliest is round 5.
+  const one = [{ ...S3[0], raceResults: S3[0].raceResults.map(r => ({ ...r, points: r.driverId === A ? 75 : 0 })), sprintResults: null }];
+  const cal10 = { ...cal, totalRounds: 10, sprintRounds: [] };
+  o = await outlook(one, cal10, 'drivers', 1);
+  t.check('earliest round: a possible draw doesn\'t count (round 5, not 4)', o.state === 'later' && o.round === 5 && earliest(one, 1, 'drivers', cal10) === 5, J(o));
   const maxes = await p.evaluate(() => [[2026,'drivers',false],[2026,'drivers',true],[2026,'teams',true],[2024,'drivers',false],[2024,'teams',true],[2021,'drivers',true],[2021,'teams',true]]
     .map(([y, k, s]) => F1Common.roundMaxPoints(y, k, s)));
   t.check('max points per round: 25 / 33 / 58 (2026), +1 fastest lap until 2024, 3-2-1 sprints in 2021', J(maxes) === J([25, 33, 58, 26, 59, 29, 49]), J(maxes));

@@ -70,7 +70,9 @@ across pages lives in shared files instead (issue #44), so a change is made once
   flags and numbers (#18: `flagCode()`, `flagHTML()`, `drawFlag()`, `flagSpace()`, `ridgeFlags()`,
   `indexPeople()` / `nationalityOf()` / `numberOf()`), `ridgeMarkers()` / `ridgeKeyHTML()` (#30),
   `standingsByRound()` / `renderPositionChart()` (the championship-position chart, issue #9),
-  `projectionsByRound()` / `renderProjectedPointsChart()` (projection history, issue #10).
+  `projectionsByRound()` / `renderProjectedPointsChart()` (projection history, issue #10), and the title clinch
+  maths (#85): `POINTS_GP` / `sprintPoints()` (the what-if points tables), `roundMaxPoints()`, `titleStatus()`,
+  `clinchOutlook()`, `clinchPointerHTML()` and the name helpers `shortRaceName()` / `roundRef()` / `entryName()`.
 - `theme.css`: picker list styles (`.pickerRow`, `.pickerDot`, …), `.flag`, `.pickerNum`, `.ridgeKey`.
 - `flags/`: small SVG flags (from flag-icons, MIT, see `flags/LICENSE.txt`) for the countries the site maps.
   Spain and Mexico are simplified to keep them small. Add a file (and a name in `FLAG_CODES`) for a new country.
@@ -249,6 +251,14 @@ selection (except Talking points, which covers the whole field); the card below 
 - Both cards always cover the whole loaded season and ignore the round slider; driver codes / short team
   names as end labels, solid/dashed teammate convention.
 
+**Title clinch pointer (#85, version B, both championship pages):** one more line at the end of the knockout note
+under the points chart, about the whole field (not the picked entries) and the round after the slider ("next race"):
+"VER can clinch the title in Las Vegas. Try results in What-If →" (link to `whatif.html?season=…`, plus `&round=…` when
+the slider isn't on the latest round, so What-If opens on that race), "The title can't be decided before round 21
+(Mexico City)." (no link), or "🏆 VER clinched the title in round 20 (Las Vegas)." once decided. It follows the slider
+and shows in both Show views and with nothing picked; nothing without a real calendar. Never fetches
+(`F1Common.clinchPointerHTML`; maths under What-If below).
+
 **constructors.html** — Same chart pattern for teams (remaining points per weekend 43 GP + 15 sprint).
 Knockout line based on the highest-ranked selected team. Presets All/None/Top 2/Top 5, default Top 5.
 Between the points chart and Projected final points, a **Driver contributions** card (#84): one horizontal bar
@@ -327,6 +337,32 @@ drivers' and constructors' tables after that round: position, ▲/▼ vs the sta
 before, gained and after, ranked with countback (`F1Common.standingsOrder` on the season with that round
 replaced by your result; later rounds left out). Full names on desktop, codes / short team names on phones.
 Live and lap-by-lap running orders were considered and left out (see #48 for the API research).
+
+**Title clinch calculator (#85, version B — a version A on the championship pages was built in parallel for the owner
+to compare).** Two short lines in a tinted box between the "Your result" heading and the presets say what each
+championship's leader needs at the round being edited, from the standings before it (whole field, `standingsOrder`):
+- can clinch: "VER clinches the drivers’ title here by outscoring NOR by 12 or more and PIA by 3 or more (e.g. VER wins
+  with NOR P5 or lower)". A rival the leader may lose to reads "losing no more than 14 points to …", a margin of 0
+  "scoring at least as many points as …". The drivers' example in brackets is the lowest finish that's enough whatever
+  the others do ("a win guarantees it", "P3 or better in both races guarantees it"), else a win with each rival at
+  their highest place that still works ("… P5 or lower", "out of the points"; "in both" on sprint weekends).
+  Constructors: points only ("Mercedes clinches the constructors’ title here by outscoring McLaren by 20 or more.").
+- not possible here: "The drivers’ title can’t be decided before round 21 (Mexico City) at the earliest" (the first
+  round where the leader could be clear scoring the maximum from this round on while nobody else scores).
+- decided: "🏆 VER has already won the drivers’ title (clinched in round 20 (Las Vegas))."
+Above each result table, a live line follows every drag, key move and preset button (no fetch): "🏆 With this result,
+VER is champion." with a "🏆 Champion" tag on that row (just 🏆 on phones, row tinted), "VER is already champion.",
+"With this result, VER is champion on countback (level on points with NOR)." (only after the final round), or "Title
+still open: VER and NOR can still win" (more than four: "VER, NOR, PIA and 12 others"), adding "(PIA only by drawing
+level on points, which would go to countback)", or "Title still open: NOR can only draw level with VER on points, which
+would go to countback." when that's all that's left.
+Maths (`F1Common`, shared with the championship pages' pointer): a title is decided when nobody's points plus every point
+still available (`roundMaxPoints` per remaining round: drivers 25 + 8 per sprint, teams 43 + 15, plus the fastest-lap
+point until 2024 and 3-2-1 sprints in 2021, so it is never claimed early) reach the leader's; reaching them exactly is a
+possible tie, which counts as open (countback would decide). After the final round the standings order (countback
+included) is final. The calendar gives the season length and sprint weekends (plus any round with sprint results);
+without a real calendar no clinch lines are shown. The knockout line's "points still available" still uses its own
+25/8 and 43/15 (unchanged; the same numbers for 2025 on).
 
 **index.html** — Static landing page (#50): five cards, one per row, in the order Drivers' Championship,
 Constructors' Championship, Race Finishing Positions, Title Simulator, What-If Results. Each card has a
@@ -450,7 +486,11 @@ since fonts render differently on different machines.
   result, CSV/PNG of the gap view, URL round-trip, never fetches, phone layout, both pages), results heat strip (#87:
   squares against an independent calculation incl. NC, picker, sort order, slider, hover/tap details with sprints,
   PNG/CSV, both themes' colours and a live theme switch, a 24-round season fitting 390px, never fetches;
-  `HEAT_SHOTS=<folder>` saves card screenshots). The harness
+  `HEAT_SHOTS=<folder>` saves card screenshots), title clinch (#85 version B: the shared maths on constructed seasons —
+  decided, one and two rivals, a sprint weekend, can't yet, the final round, countback ties — checked against an
+  independent enumeration of finishing results; the What-If condition lines, live champion line and tag appearing and
+  disappearing with keyboard moves and the presets on a near-decided season built with `snapshots`; the pointer on both
+  championship pages with the slider and its link; never fetches, both themes, phone fit). The harness
   never serves the real `site/data/*.json`: tests pass `snapshots` built from the fake season. The fixture's names mix country names and demonyms, with
   one unknown. Logic is checked against
   independent calculations written in the tests, not against the site's own helpers.
