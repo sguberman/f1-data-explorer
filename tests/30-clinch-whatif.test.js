@@ -219,4 +219,138 @@ module.exports = async (t, h) => {
     t.check(`${width}px ${theme}: no page errors`, m.errors.length === 0, m.errors.join('; '));
     await m.done();
   }
+
+  // ==== The "🏆 Title clinch" preset, links that start from it, and the full "can still win" list ====
+  // Constructed seasons (tests/lib/clinch.js, with its own independent calculation): drivers' title only, constructors'
+  // only, both, none, and a sprint weekend where the Grand Prix alone can't do it.
+  const K = require('./lib/clinch');
+  const kit = await K.seasonKit();
+  const [kA, kB, kC, kA2] = kit.ALL; // d0_0 (Mercedes), d1_0 (Ferrari), d2_0 (McLaren), d0_1 (Mercedes)
+  const mk = (n, f) => Array.from({ length: n }, (_, i) => f(i + 1));
+  const SC = {
+    drivers: mk(17, r => kit.round(r, [kA, kB])),
+    teams: mk(17, r => kit.round(r, r % 3 === 0 ? [kA, kA2, kB] : r % 3 === 1 ? [kB, kA2, kA] : [kA2, kB, kA])),
+    both: mk(17, r => kit.round(r, r % 3 === 0 ? [kA, kA2, kB] : [kA, kB])),
+    none: mk(17, r => kit.round(r, [[kA, kB, kC], [kB, kC, kA], [kC, kA, kB]][r % 3])),
+    sprint: mk(18, r => kit.round(r, [1, 3, 4, 5, 7].includes(r) ? [kC, kB, kA] : [kA, kB, kC])),
+  };
+  const lists = pg => pg.$$eval('.wiList', uls => Object.fromEntries(uls.map(u => [u.dataset.session, [...u.children].map(li => li.dataset.id || null)])));
+  // The season with round T from the page's lists (Grand Prix and sprint), built here from the fixture's rows.
+  const fromLists = (rounds, T, o) => { const sess = (ids, table, kind) => { const cut = ids.indexOf(null);
+      return ids.filter(Boolean).map((id, i) => ({ ...kit.row(id), position: i < cut ? i + 1 : null, points: i < cut ? (table[i] || 0) : 0, session: kind })); };
+    return [...rounds.filter(r => r.round < T), { round: T, raceResults: sess(o.gp, K.GP, 'race'), sprintResults: o.sprint ? sess(o.sprint, K.SP, 'sprint') : null }]; };
+  const standingIds = (rounds, L) => K.ranked(rounds, L, 'drivers').order;
+  for(const [name, rounds] of Object.entries(SC)){
+    const L = rounds.length, T = L + 1;
+    const can = { drivers: K.canClinchNext(rounds, L, 'drivers', kit.cal), teams: K.canClinchNext(rounds, L, 'teams', kit.cal) };
+    const want = { none: [], drivers: ['drivers'], teams: ['teams'], both: ['drivers', 'teams'], sprint: ['drivers', 'teams'] }[name];
+    t.check(`clinch preset, "${name}" season: the scenario (independent: who can clinch at round ${T})`, J(['drivers', 'teams'].filter(k => can[k].length)) === J(want), J(can));
+    const pg = await h.openPage('whatif', { snapshots: { 2026: kit.snap(rounds) } }); await h.loaded(pg);
+    const hits0 = pg.apiHits.length;
+    const shown = await pg.$eval('#useClinch', b => !b.hidden);
+    t.check(`"${name}": the "🏆 Title clinch" button ${want.length ? 'shows' : 'is hidden'}`, shown === !!want.length && (!shown || await text(pg, '#useClinch') === '🏆 Title clinch'));
+    const std = await lists(pg);
+    t.check(`"${name}": opened normally, it still starts from the standings order`, J(std.gp) === J([...standingIds(rounds, L), null]) && !new URL(pg.url()).searchParams.has('start'), pg.url());
+    if(shown){
+      await pg.click('#useClinch');
+      const o = await lists(pg), after = fromLists(rounds, T, o);
+      const st = { drivers: K.status(after, T, 'drivers', kit.cal), teams: K.status(after, T, 'teams', kit.cal) };
+      t.check(`"${name}": the preset order clinches ${want.join(' and ')} at round ${T} (standings computed here)`, want.every(k => st[k].champion === can[k][0] && st[k].clinched === T), J(st));
+      t.check(`"${name}": …and the page says so`, (await Promise.all(want.map(async k => /^🏆 With this result, .+ is champion\.$/.test(await text(pg, k === 'teams' ? '#clinchTeams' : '#clinchDrivers'))))).every(Boolean));
+      // Close to the standings order: the clincher first, and everyone the clinch doesn't involve keeps their order.
+      const rivals = new Set();
+      want.forEach(k => { const R = K.ranked(rounds, L, k), c = can[k][0], P = K.leftAfter(T, k, kit.cal), mx = (k === 'teams' ? 43 : 25) + (kit.cal.sprintRounds.includes(T) ? (k === 'teams' ? 15 : 8) : 0);
+        R.order.filter(x => x !== c && P - (R.t[c] - R.t[x]) + 1 > -mx).forEach(x => { if(k === 'drivers') rivals.add(x); else kit.tmpl.filter(r => r.teamId === x).forEach(r => rivals.add(r.driverId)); });
+        if(k === 'drivers') rivals.add(c); else kit.tmpl.filter(r => r.teamId === c).forEach(r => rivals.add(r.driverId)); });
+      const keep = ids => ids.filter(id => id && !rivals.has(id));
+      t.check(`"${name}": everyone else keeps the standings order`, J(keep(o.gp)) === J(keep(standingIds(rounds, L))) && (want.includes('drivers') ? o.gp[0] === can.drivers[0] : kit.row(o.gp[0]).teamId === can.teams[0]), J(o.gp.slice(0, 12)));
+      if(name === 'sprint'){
+        const b = K.ranked(rounds, L, 'drivers'), need = K.leftAfter(T, 'drivers', kit.cal) - (b.t[kA] - b.t[kB]) + 1;
+        t.check(`sprint weekend: ${kit.CODE[kA]} must outscore ${kit.CODE[kB]} by ${need} (> 25), so the sprint is set too`, need > 25 && o.sprint && J(o.sprint) !== J(std.sprint) && o.sprint[0] === kA, J([need, o.sprint && o.sprint.slice(0, 6)]));
+      } else t.check(`"${name}": no sprint at round ${T}, one list`, !o.sprint);
+      await pg.click('#useStandings');
+      t.check(`"${name}": Standings order goes back`, J((await lists(pg)).gp) === J(std.gp));
+    }
+    t.check(`"${name}": the preset never fetches`, pg.apiHits.length === hits0, pg.apiHits.slice(hits0).join(' '));
+    t.check(`"${name}": no page errors`, pg.errors.length === 0, pg.errors.join('; '));
+    await pg.done();
+  }
+
+  // Links: the drivers' page "Try it in What-If →" opens What-If starting from the clinch order (start=clinch), and the
+  // URL round-trips through Share; moving the slider drops it.
+  {
+    const rounds = SC.drivers, L = rounds.length, T = L + 1;
+    const dp = await h.openPage('drivers', { snapshots: { 2026: kit.snap(rounds) } }); await h.loaded(dp);
+    t.check('drivers page link: whatif.html?season=2026&start=clinch', await dp.$eval('#titleRace .trLink', a => a.getAttribute('href')).catch(() => null) === 'whatif.html?season=2026&start=clinch');
+    await dp.click('#titleRace .trLink'); await h.loaded(dp); await dp.waitForTimeout(80);
+    const o = await lists(dp), st = K.status(fromLists(rounds, T, o), T, 'drivers', kit.cal);
+    t.check('…What-If starts from an order that clinches it (standings computed here)', st.champion === kA && st.clinched === T && /^🏆 With this result/.test(await text(dp, '#clinchDrivers')), J(st));
+    t.check('…the URL keeps start=clinch and no order (it is the starting order)', /\/whatif\.html\?season=2026&start=clinch$/.test(dp.url()), dp.url());
+    t.check('…the note says where it started', /^Starts from a finishing order with which \S+ clinches the drivers’ title\./.test(await text(dp, '#orderNote')), await text(dp, '#orderNote'));
+    // Same order as the button gives when What-If is opened normally.
+    const plain = await h.openPage('whatif', { snapshots: { 2026: kit.snap(rounds) } }); await h.loaded(plain);
+    await plain.click('#useClinch');
+    t.check('…the same order as the "🏆 Title clinch" button', J(await lists(plain)) === J(o));
+    await plain.done();
+    // Drag one place: the order goes into the URL beside start=clinch, and Share's link reopens it exactly.
+    const third = o.gp[2];
+    await dp.focus(`.wiList[data-session="gp"] li[data-id="${third}"] .wiGrip`); await dp.keyboard.press('ArrowDown'); await dp.waitForTimeout(80);
+    const moved = await lists(dp), shared = await dp.evaluate(() => F1Share.url());
+    t.check('drag: the order and start=clinch in the URL (and Share\'s link)', new URL(dp.url()).searchParams.get('start') === 'clinch' && new URL(dp.url()).searchParams.get('gp') === moved.gp.map(x => x || '-').join(',') && dp.url().endsWith(shared), shared);
+    const again = await h.openPage('whatif', { snapshots: { 2026: kit.snap(rounds) } }); await again.goto('http://site.test' + shared); await h.loaded(again); await again.waitForTimeout(80);
+    t.check('…opening that link gives the same order and URL', J(await lists(again)) === J(moved) && again.url().endsWith(shared), again.url());
+    await again.click('#useClinch'); await again.waitForTimeout(80);
+    t.check('…and the 🏆 button there goes back to the link\'s start: the order leaves the URL', J(await lists(again)) === J(o) && !new URL(again.url()).searchParams.has('gp') && new URL(again.url()).searchParams.get('start') === 'clinch', again.url());
+    await again.done();
+    // The slider moved back: a normal start again (standings order), start= gone; interactions never fetched.
+    const hitsL = dp.apiHits.length;
+    await h.setRound(dp, L - 1); await dp.waitForTimeout(80);
+    t.check('slider moved: back to the normal start, start=clinch leaves the URL', J((await lists(dp)).gp) === J([...standingIds(rounds, L - 1), null]) && !new URL(dp.url()).searchParams.has('start'), dp.url());
+    t.check('links and slider: no fetches after the page load', dp.apiHits.length === hitsL);
+    t.check('links: no page errors', dp.errors.length === 0, dp.errors.join('; '));
+    await dp.done();
+    // An old link where nobody can clinch any more: the normal start, and start= dropped.
+    const stale = await h.openPage('whatif', { snapshots: { 2026: kit.snap(SC.none) } }); await stale.goto('http://site.test/whatif.html?season=2026&start=clinch'); await h.loaded(stale); await stale.waitForTimeout(80);
+    t.check('start=clinch where no title can be won: normal start, start dropped', J((await lists(stale)).gp) === J([...standingIds(SC.none, 17), null]) && !new URL(stale.url()).searchParams.has('start'), stale.url());
+    await stale.done();
+  }
+
+  // Every potential winner listed: the fake season after round 12, round 13 in standings order (many can still win).
+  {
+    const { api } = require('./lib/fixture');
+    const fx = []; for(let r = 1; r <= 12; r++){ const g = api(`https://f1api.dev/api/2026/${r}/race`).body.races, s = api(`https://f1api.dev/api/2026/${r}/sprint/race`);
+      const norm = (rows, kind) => rows.map(q => ({ ...kit.row(q.driver.driverId), position: Number.isFinite(parseInt(q.position, 10)) ? parseInt(q.position, 10) : null, points: q.points, session: kind }));
+      fx.push({ round: r, raceResults: norm(g.results, 'race'), sprintResults: s.status === 200 ? norm(s.body.races.sprintRaceResults, 'sprint') : null }); }
+    for(const [width, theme] of [[1000, 'light'], [390, 'dark'], [390, 'light'], [1000, 'dark']]){
+      const lp = await h.openPage('whatif', { width, theme }); await h.loaded(lp);
+      const o = await lists(lp), st = K.status(fromLists(fx, 13, o), 13, 'drivers', kit.cal);
+      const names = [st.leader, ...st.contenders.filter(c => !c.tieOnly).map(c => c.id)].map(id => kit.CODE[id]);
+      const want = `Title still open: ${names.slice(0, -1).join(', ')} and ${names[names.length - 1]} can still win.`;
+      const got = await text(lp, '#clinchDrivers');
+      if(width === 1000 && theme === 'light'){
+        t.check(`long list: ${names.length} drivers can still win (independent), more than four`, names.length > 4 && !st.contenders.some(c => c.tieOnly), J(names));
+        t.check('long list: every one named in standings order, no "…others"', got === want && !/others/.test(got), got);
+        t.check('long list: bold names with flags', await lp.$$eval('#clinchDrivers .trName', x => x.length) === names.length && await lp.$$eval('#clinchDrivers .trName img.flag', x => x.length) >= names.length - 2);
+      }
+      const fit = await lp.evaluate(() => { const el = document.getElementById('clinchDrivers'), r = el.getBoundingClientRect(), td = document.getElementById('driverTable').getBoundingClientRect();
+        return { over: el.scrollWidth > el.clientWidth + 1, right: r.right, tableRight: td.right, h: r.height, scroll: document.documentElement.scrollWidth }; });
+      t.check(`long list ${width}px ${theme}: wraps inside the column, no sideways scroll`, !fit.over && fit.right <= fit.tableRight + 1 && fit.scroll <= width && got === want, J(fit));
+      await h.screenshot(lp, `clinch-whatif-longlist-${width}-${theme}.png`);
+      if(SHOTS) await lp.locator('#resultCard').screenshot({ path: path.join(SHOTS, `whatif-longlist-${width}-${theme}.png`) });
+      await lp.done();
+    }
+  }
+
+  // The preset applied, both themes, desktop and phone (the presets row wraps on phones).
+  for(const [width, theme] of [[1000, 'light'], [1000, 'dark'], [390, 'light'], [390, 'dark']]){
+    const m = await h.openPage('whatif', { snapshots: { 2026: kit.snap(SC.sprint) }, width, theme }); await h.loaded(m);
+    await m.click('#useClinch');
+    const fit = await m.evaluate(() => { const bar = document.getElementById('presetBar').getBoundingClientRect(), card = document.getElementById('orderCard').getBoundingClientRect();
+      return { inside: [...document.querySelectorAll('#presetBar > *')].every(b => b.getBoundingClientRect().right <= card.right + 0.5), scroll: document.documentElement.scrollWidth, h: bar.height }; });
+    t.check(`preset ${width}px ${theme}: the presets fit the card, no sideways scroll`, fit.inside && fit.scroll <= width, J(fit));
+    await h.screenshot(m, `clinch-whatif-preset-${width}-${theme}.png`);
+    if(SHOTS){ await m.locator('#orderCard').screenshot({ path: path.join(SHOTS, `whatif-preset-order-${width}-${theme}.png`) }); await m.locator('#resultCard').screenshot({ path: path.join(SHOTS, `whatif-preset-result-${width}-${theme}.png`) }); }
+    t.check(`preset ${width}px ${theme}: no page errors`, m.errors.length === 0, m.errors.join('; '));
+    await m.done();
+  }
 };

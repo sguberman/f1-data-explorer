@@ -21,7 +21,7 @@ h1{font-size:22px;margin:0 0 4px;}
 .hero h1,.hero .sub{text-shadow:0 0 6px var(--panel),0 0 2px var(--panel),0 0 12px var(--panel);} /* keeps the words clear of the checks */
 @media (max-width:600px){ .hero{padding:22px 18px;background-size:26px 26px;} }
 /* #89: the next Grand Prix, between the banner and the cards; filled from the calendar, hidden until then */
-.nextRace{display:grid;grid-template-columns:1fr auto;grid-template-areas:"kicker count" "name when";align-items:center;gap:4px 16px;
+.nextRace{display:grid;grid-template-columns:1fr auto;grid-template-areas:"kicker count" "name when" "loc loc" "clinch clinch";align-items:center;gap:4px 16px;
   background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 16px;margin:0 0 12px;}
 .nextRace[hidden]{display:none;}
 .nr-kicker{grid-area:kicker;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--sub);}
@@ -32,8 +32,16 @@ h1{font-size:22px;margin:0 0 4px;}
 .nr-when{grid-area:when;justify-self:end;font-size:12.5px;color:var(--muted);white-space:nowrap;}
 .nr-when a{color:var(--ink2);font-weight:600;text-decoration:none;}
 .nr-when a:hover,.nr-when a:focus-visible{text-decoration:underline;}
+/* #85: where the race is, and who can clinch a title there */
+.nr-loc{grid-area:loc;font-size:12.5px;color:var(--muted);min-width:0;}
+.nr-clinch{grid-area:clinch;border-top:1px solid var(--line);margin-top:4px;padding-top:8px;display:flex;flex-direction:column;gap:3px;}
+.nr-line{font-size:12.5px;line-height:1.45;color:var(--ink2);}
+.nr-who{font-weight:600;color:var(--ink);white-space:nowrap;}
+.nr-who .flag{margin-right:5px;vertical-align:-1px;}
+.nr-wi{color:var(--ink);font-weight:600;text-decoration:underline;text-underline-offset:2px;white-space:nowrap;}
+.nr-wi:hover,.nr-wi:focus-visible{color:var(--ink2);}
 @media (max-width:600px){
-  .nextRace{grid-template-areas:"kicker count" "name name" "when when";padding:10px 14px;}
+  .nextRace{grid-template-areas:"kicker count" "name name" "loc loc" "when when" "clinch clinch";padding:10px 14px;}
   .nr-when{justify-self:start;}
 }
 h2{font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--sub);margin:28px 0 10px;}
@@ -123,9 +131,13 @@ a.card:hover,a.card:focus-visible{border-color:var(--line-strong);box-shadow:0 4
 <script src="common.js"></script>
 <script src="data.js"></script>
 <script>
-/* #89: the next Grand Prix — name, flag, date and time in the visitor's time zone, a sprint tag and a countdown —
-   from the newest season's calendar (F1Data.getCalendar: the season file or f1api.dev, cached for a day).
-   That one load is the only data the homepage asks for; if it fails or has no dates, nothing is shown. */
+/* #89: the next Grand Prix — name, flag, location (#85), date and time in the visitor's time zone, a sprint tag and a
+   countdown — from the newest season's calendar (F1Data.getCalendar: the season file or f1api.dev, cached for a day);
+   if it fails or has no dates, nothing is shown.
+   #85: the season itself is loaded too (F1Data.loadSeason: the same season file plus the site's once-a-day check for
+   newer rounds), only to say who can clinch a title at that race (F1Common.titleRace, as on the championship pages).
+   The strip doesn't wait for it, and shows no clinch line if it fails. Both loads happen on page load only; nothing
+   on the homepage fetches on interaction. */
 (() => {
   const DAY = 864e5, RACE_HOURS = 4; // a race counts as "under way" for 4 hours from its start
   const esc = t => String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;');
@@ -153,7 +165,7 @@ a.card:hover,a.card:focus-visible{border-color:var(--line-strong);box-shadow:0 4
     return out;
   }
 
-  // Fills the strip; false when there's nothing to show.
+  // Fills the strip: the next race's round, true when the season is over, false when there's nothing to show.
   function render(el, year, cal, now){
     const list = races(cal);
     if(!list.length) return false;
@@ -170,16 +182,51 @@ a.card:hover,a.card:focus-visible{border-color:var(--line-strong);box-shadow:0 4
       + (next.start ? ' · ' + next.start.toLocaleTimeString(undefined, {hour:'numeric', minute:'2-digit', timeZoneName:'short'}) : '');
     const sprint = (cal.sprintRounds || []).includes(next.round);
     const name = cal.raceNames && cal.raceNames[next.round] ? shortRaceName(cal.raceNames[next.round]) : `Round ${next.round}`;
+    // #85: "Marina Bay, Singapore" — the circuit's city when the calendar has it (not repeated when it's the country's name)
+    const country = cal.countries && cal.countries[next.round], city = cal.cities && cal.cities[next.round];
+    const where = city && country && city !== country ? `${city}, ${country}` : country || city || '';
     el.innerHTML = `<span class="nr-kicker">${live || days <= 2 ? 'This weekend' : 'Next race'} · Round ${next.round}</span>
-      <span class="nr-name"><span>${F1Common.flagHTML(cal.countries && cal.countries[next.round])}${esc(name)}</span>${sprint ? '<span class="nr-tag">Sprint weekend</span>' : ''}</span>
+      <span class="nr-name"><span>${F1Common.flagHTML(country)}${esc(name)}</span>${sprint ? '<span class="nr-tag">Sprint weekend</span>' : ''}</span>
       <span class="nr-count">${count}</span>
-      <span class="nr-when">${esc(when)}</span>`;
-    return true;
+      <span class="nr-when">${esc(when)}</span>`
+      + (where ? `<span class="nr-loc">${esc(where)}</span>` : '');
+    return next.round;
+  }
+
+  // #85: "🏆 Max Verstappen can clinch the drivers’ title" (and the constructors’), when the next race can decide it:
+  // the latest loaded round must be the one before it. Full names; the flag before each. Ends with the championship
+  // pages' "Try it in What-If →" link (F1Common.clinchLink), which opens that race starting from a clinching order.
+  function renderClinch(el, year, cal, round, season){
+    if(!season || season.failed || !season.rounds.length) return; // missing results could make it wrong: say nothing
+    const rounds = season.rounds, L = Math.max(...rounds.map(r => r.round));
+    if(L + 1 !== round) return;
+    if(F1Common.setSeason) F1Common.setSeason(year);
+    const row = {}; // each driver's and team's latest result row: name, team name, flags
+    rounds.forEach(r => [...r.raceResults, ...(r.sprintResults || [])].forEach(res => { row[res.driverId] = res; row['team:'+res.teamId] = res; }));
+    const who = (kind, id) => { const r = row[kind==='teams' ? 'team:'+id : id] || {};
+      return kind==='teams' ? `<span class="nr-who">${F1Common.flagHTML(r.teamNationality)}${esc(F1Common.shortTeamName(id, r.teamName))}</span>`
+                            : `<span class="nr-who">${F1Common.flagHTML(r.nationality)}${esc(r.name || id)}</span>`; };
+    const lines = [['drivers', 'drivers’'], ['teams', 'constructors’']].map(([kind, label]) => {
+      const tr = F1Common.titleRace(rounds, L, kind, {year, calendar:cal});
+      if(tr.state !== 'next' || tr.next !== round) return null;
+      return `<div class="nr-line" data-kind="${kind}">🏆 ${tr.lead.map(l => who(kind, l.id)).join(' or ')} can clinch the ${label} title</div>`;
+    }).filter(Boolean);
+    if(!lines.length) return;
+    const link = ` <a class="nr-wi" href="${F1Common.clinchLink(year, L, L)}">Try it in What-If →</a>`;
+    lines[lines.length-1] = lines[lines.length-1].replace(/<\/div>$/, link + '</div>');
+    el.insertAdjacentHTML('beforeend', `<div class="nr-clinch">${lines.join('')}</div>`);
   }
 
   const el = document.getElementById('nextRace'), year = F1Common.YEARS[0];
-  F1Data.getCalendar(year, {dates:true})
-    .then(cal => { if(cal && render(el, year, cal, new Date())) el.hidden = false; })
+  const calendar = F1Data.getCalendar(year, {dates:true});
+  const season = F1Data.loadSeason(year).catch(() => null); // started together: they share the season file's request
+  calendar
+    .then(cal => {
+      const next = cal && render(el, year, cal, new Date());
+      if(!next) return;
+      el.hidden = false;
+      if(next !== true) return season.then(s => renderClinch(el, year, cal, next, s));
+    })
     .catch(() => {}); // no calendar: show nothing
 })();
 </script>

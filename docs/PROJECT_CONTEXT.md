@@ -30,7 +30,8 @@ Only `site/` is deployed to GitHub Pages (issue #51); everything else in the rep
 
 ```
 site/                 The website (deployed as the site root, so URLs are unchanged)
-  index.html          Landing page: the next race (#89), then a card per page, each with a picture of its main chart.
+  index.html          Landing page: the next race (#89; location and title-clinch lines, #85), then a card per page,
+                      each with a picture of its main chart.
   drivers.html        Drivers' championship: cumulative points line chart, projections, knockout line, title race (#85).
   constructors.html   Constructors' championship: same chart pattern for teams, plus driver contributions (#84) and title race (#85).
   position.html       Race finishing-position ridgeline chart per driver, with sort/show options, and a
@@ -95,7 +96,8 @@ Move something into `common.js` only once it's genuinely identical on every page
   "no sprint"), issue #48. `fetchedAt` is the newest fetch time of the data used, issue #49.
 - **Season files (#13):** `site/data/{year}.json` = `{v:1, year, generatedAt, complete, calendar, rounds}`,
   `rounds` in exactly the shape `loadSeason()` returns. `loadSeason()` fetches the file first: one request
-  for the whole season, and `getCalendar()` reuses its calendar. A `complete` season (every calendar round
+  for the whole season, and `getCalendar()` reuses its calendar. Two callers asking for the file at the same time (the
+  homepage's calendar and season, #85) share one request; a later call fetches it again as before. A `complete` season (every calendar round
   present) makes no f1api.dev requests at all; an in-progress one then checks f1api.dev one round at a time
   from the round after the file's last, so new results still appear straight after a race. A missing or
   broken file falls back to the old live walk. Refresh data re-downloads the file (`fresh`). "updated … ago"
@@ -127,7 +129,11 @@ Move something into `common.js` only once it's genuinely identical on every page
   `F1Data.clearCache()` removes every `f1cache:v2:` entry (issue #23); the theme and the
   `f1cache:selectedSeason` key are kept.
 - `F1Data.getCalendar(year, {dates})` gives the full season's calendar: `{totalRounds, sprintRounds, raceNames,
-  raceDates, raceTimes, countries}`, each map keyed by round. #89 added the last three: the Grand Prix date
+  raceDates, raceTimes, countries, cities}`, each map keyed by round. #85 added `cities`: the circuit's city (f1api.dev's
+  `circuit.city`, or `locality` as Ergast names it), only for rounds that have one, for the homepage's location line.
+  Calendars without it (season files and cached calendars made before #85) still work: the homepage shows the country
+  alone. The cache key stays `calendar3`, and the snapshot workflow rebuilds the current season's file (it runs when
+  `data.js` changes). #89 added the last three: the Grand Prix date
   (`'YYYY-MM-DD'`, from f1api.dev's `schedule.race.date`), its start time in UTC (`'HH:MM:SSZ'`, from
   `schedule.race.time`, only when known; a time without a zone is read as UTC) and the circuit country. Season
   files made before #89 lack them (past seasons keep them until rebuilt with `--all`). With `{dates:true}` (the
@@ -149,7 +155,8 @@ Move something into `common.js` only once it's genuinely identical on every page
   - constructors: `t`, `pos`, `pts=gap`
   - both championship pages: `result` (the open round, #29) and `session=sprint`
   - position: `d`, `sort`, `chart`, `below10`, `sprint`
-  - what-if: `gp` and `sprint` orders (`-` marks the not-classified line)
+  - what-if: `gp` and `sprint` orders (`-` marks the not-classified line), and `start=clinch` (#85: start from the
+    "🏆 Title clinch" order; the orders are then left out while they're still that order)
   - simulator: `d`, `sort`, `o` (`id:dnf:win`, `a` = auto), `c` (`a:b:n`), `n` (runs) and `seed`
   
   How it works:
@@ -232,8 +239,9 @@ as of the slider's round L, the next race being L+1. Driver codes / short team n
   the weekend"). Constructors are points only. Anyone else who could clinch there gets "NOR can also clinch it there by …"
   (two at most, then "N more…"). The final round reads "…in round 24 (Abu Dhabi), the final round, …". A note under it says
   "One point less could leave them level on points, which would go to countback." The line ends with **"Try it in What-If →"**,
-  linking to `whatif.html?season=Y` (plus `&round=L` when the slider isn't on the latest round, as #31's links do), which
-  opens What-If on round L+1. The link is shown in this state only: in the others the next race can't decide the title.
+  linking to `whatif.html?season=Y` (plus `&round=L` when the slider isn't on the latest round, as #31's links do) and
+  `&start=clinch` (`F1Common.clinchLink()`), which opens What-If on round L+1 starting from its "🏆 Title clinch" order. The
+  link is shown in this state only: in the others the next race can't decide the title.
 - **can't yet**: "VER leads NOR by 34 points. The title can't be decided before round 19 (Las Vegas) at the earliest." (or
   "…before the final round (round 24, Abu Dhabi)."): the first round where anyone still in it could clinch by scoring the
   most possible from the next race on while everyone else scores nothing.
@@ -259,9 +267,24 @@ under it was removed by the owner.)
   NOR and ahead on countback." (final round tie) / "🏆 VER is already champion." (clinched before T) / "Title still open:
   VER and NOR can still win." (more than four: "…, PIA and 2 others") / "Title still open: NOR can only draw level with VER
   on points, which would go to countback." (a lead equal to the points left with countback still open; `titleRace()`'s
-  `contenders` with `tieOnly`). Each championship on its own, so the constructors' title can be won while the drivers'
-  stays open.
+  `contenders` with `tieOnly`). "Can still win" names **everyone** who still can, in standings order (no "…and N others"
+  cap since the owner asked for the full list; names don't break, the line wraps between them). Each championship on its
+  own, so the constructors' title can be won while the drivers' stays open.
 - A **🏆 Champion** tag (just 🏆 on phones) on the champion's row in its table, shaded row.
+- A **"🏆 Title clinch"** preset after "Start from … Standings order" (the presets row wraps on phones), shown only when
+  someone can win a title at round T (`titleRace()` says 'next' after L). It sets a finishing order that wins it: the
+  clinching driver first (for the constructors' title, that team's drivers next), everyone else in the drivers' standings
+  order except rivals who must drop, each place going to the first driver in that order whose points for the weekend (and
+  their team's) stay within what the clinch allows (from `titleRace()`'s margins). On a sprint weekend the sprint stays in
+  standings order unless the Grand Prix alone can't do it; then the sprint is arranged the same way (or, failing that,
+  with the rivals out of its points). Each candidate is checked with `titleRace()` on the resulting season (decided at T,
+  by the intended champion), so the preset provably clinches. When both titles can be won it prefers one order that wins
+  both, then the drivers' title, then the constructors'. Its tooltip says what it does ("A finishing order with which VER
+  clinches the drivers' title and Mercedes the constructors'"). Computed once per round (`clinchPreset()`), never while
+  dragging; never fetches. Opened with `start=clinch` (every "Try it in What-If →" link) it is the starting order, and the
+  note says "Starts from a finishing order with which …"; for the first round built only, so moving the slider or switching
+  season goes back to the normal start, and a link where nobody can clinch any more starts normally and drops `start`.
+  Opening What-If without it keeps the normal start (actual result, else standings order).
 
 **Gap to leader (#83, both championship pages):** a **Show** dropdown (`#ptsView`, `.ddSelect`, beside the legend; on
 phones on its own line above it) switches the points chart between *Points* (default) and *Gap to leader*: each picked
@@ -414,11 +437,22 @@ navy lightened in dark). The title and intro sit on a soft checkered-flag banner
 days before the race), the short race name (no "Formula 1", title sponsor or year) with the circuit's flag, a
 "Sprint weekend" tag, the date and start time in the visitor's time zone (date only when the time isn't known), and a
 countdown by local calendar day: "in 4 days", "Tomorrow", "Today", "Under way" for 4 hours from the start, then the
-next round. After the last race it reads "2026 season · Season complete" with a "Final standings →" link (no
+next round. Under the name, the **location** (#85): "Marina Bay, Singapore" from the calendar's `cities` and `countries`
+(the country alone when there's no city, or when the city is the country's name, e.g. Monaco).
+**Title clinch (#85):** when someone can win a title at that race, a line per championship under a thin rule:
+"🏆 [flag] Max Verstappen can clinch the drivers’ title" and "🏆 [flag] McLaren can clinch the constructors’ title"
+(full driver names, also on phones, where the line wraps; short team names; "or" between two who both could; always
+"drivers’ title" / "constructors’ title", so the two lines read alike). The last line ends with the championship pages'
+"Try it in What-If →" link (`F1Common.clinchLink()`: `whatif.html?season=Y&start=clinch`, opening that race from the
+clinch order). It needs the standings: the page also loads the season with `F1Data.loadSeason(year)` (the same season
+file, shared with the calendar's request, plus the site's once-a-day check for newer rounds, #60), started together with
+the calendar. The strip doesn't wait for it; the lines are added when it arrives, from `titleRace()` on the latest loaded
+round L, only when the race shown is round L+1 (results for the last race not in yet: no line) and only when the load
+didn't fail (missing results could make it wrong). If it fails, the strip shows without the lines. After the last race it reads "2026 season · Season complete" with a "Final standings →" link (no
 champion: that would need the full results, which may lag the race). It comes from the newest season's calendar
-(`F1Data.getCalendar(year, {dates:true})`): the season file, or f1api.dev without one, cached for a day. That is the
-only data the homepage loads, and nothing on it fetches on interaction; if the load fails or has no dates, the strip
-stays hidden.
+(`F1Data.getCalendar(year, {dates:true})`): the season file, or f1api.dev without one, cached for a day. That and the
+season (for the clinch line) are the only data the homepage loads, both on page load; nothing on it fetches on
+interaction. If the calendar fails or has no dates, the strip stays hidden.
 
 ## Design requirements (owner-approved — keep these)
 
@@ -500,7 +534,8 @@ position projection` to run only matching files). Screenshots of every page go t
 since fonts render differently on different machines.
 
 - `lib/harness.js` serves `site/` at `http://site.test/`, answers f1api.dev from `lib/fixture.js` (a fake
-  2026 season: 22 drivers, 12 of 23 rounds, sprints, unclassified results, one unknown team id), serves Chart.js from
+  2026 season: 22 drivers, 12 of 23 rounds, sprints, unclassified results, one unknown team id; calendar circuits have a
+  `city`, except round 22, and round 8's is its country's name, #85), serves Chart.js from
   `node_modules`, and can simulate f1api.dev failures (`fail`) or slow responses (`delay`), and can fix the clock, time zone and locale (`now`, `timezone`, `locale`, #89). The fixture's calendar has race dates and times (round 22 date only).
 - Test files (`NN-name.test.js`) export `async (t, h) => { t.check(name, ok, detail) ... }`. Current files:
   smoke (every page, both themes, desktop + phone, no errors), common (#44), knockout (#45/#46),
@@ -512,7 +547,7 @@ since fonts render differently on different machines.
   to each bar, Others folding and teammate shades on constructed results, legend, tooltip;
   same-seed results unchanged from `main`; seeded link; CSV/PNG; never fetches; both themes and phone fit), NC/finish rule shared by the position page and simulator (#46), flags and markers
   (#18/#30; movement also covers #20's tie-breaks), simulator runs (#56: responsive 30,000 run, progress, Cancel), what-if (#48: drag, keys, NC line, sprint weekends,
-  points and countback), homepage (#50: card order, pictures, vertical layout, theme colours; #78: checkered banner), next race (#89: fixed clock — next round, countdown wording, local time zone, sprint tag, short names, season complete, season file vs f1api.dev, old files without dates, failure hidden, both themes, phone fit), season files (#13: one-file
+  points and countback), homepage (#50: card order, pictures, vertical layout, theme colours; #78: checkered banner), next race (#89: fixed clock — next round, countdown wording, local time zone, sprint tag, short names, season complete, season file vs f1api.dev, old files without dates, failure hidden, both themes, phone fit; #85: the location with and without a city, and the clinch lines on constructed seasons — drivers' only, constructors' only, both, none — against an independent calculation, the link and following it into What-If, one season-file request and only the daily check from f1api.dev, nothing fetched on interaction, no line when the race shown isn't the round after the latest result, a failed or slow season load leaving the strip in place, both themes and phone fit), season files (#13: one-file
   loads, live check only after the file, complete seasons with no API calls, fallback, Refresh), daily check (#60: one check reused across pages and
   season switches, rechecked after a day or on Refresh, failed checks not kept), navigation (#62: home link and Pages menu on every
   data page, keyboard, season kept between pages, phone layout), layout (#64: every data page has the same page frame —
@@ -539,7 +574,12 @@ since fonts render differently on different machines.
   the box's wording against an independent calculation and the championship pages' line, the live line and champion tag
   appearing and disappearing with keyboard drags on constructed near-decided seasons, the constructors' title won with the
   drivers' open, a level-at-best lead with countback open or settled, a final-round countback tie, a decided season, a
-  replayed sprint round, never fetching, both themes and the phone fit). The harness
+  replayed sprint round, never fetching, both themes and the phone fit; the "🏆 Title clinch" preset shown only when a
+  title can be won, its order clinching per standings computed in the test (drivers' only, constructors' only, both, a
+  sprint weekend that needs the sprint too), everyone else keeping the standings order, the link opening What-If from that
+  order with `start=clinch` round-tripping through the URL and Share, the slider and stale links going back to the normal
+  start; every potential winner listed on the fake season, 22 names wrapping at 390px). `lib/clinch.js` holds the
+  constructed seasons and the independent title calculation shared by the homepage and What-If checks. The harness
   never serves the real `site/data/*.json`: tests pass `snapshots` built from the fake season. The fixture's names mix country names and demonyms, with
   one unknown. Logic is checked against
   independent calculations written in the tests, not against the site's own helpers.

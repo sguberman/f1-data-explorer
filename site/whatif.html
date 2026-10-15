@@ -25,7 +25,7 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
 .note{font-size:11.5px;color:var(--sub);line-height:1.5;margin-top:10px;}
 .cardHead{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;}
 .cardHead h2{flex:1;min-width:160px;}
-.wiPresets{display:flex;align-items:center;gap:8px;flex-wrap:nowrap;margin:-2px 0 12px;}
+.wiPresets{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:-2px 0 12px;}
 .presetLbl{font-size:12px;color:var(--sub);white-space:nowrap;}
 .wiPresets .reset{white-space:nowrap;}
 .wiPresets[hidden]{display:none;}
@@ -91,10 +91,11 @@ tr.champ td{background:var(--inset);}
     <h2 id="orderHeading">Your result</h2>
   </div>
   <div class="titleRace" id="wiTitleRace" hidden aria-live="polite"></div>
-  <!-- heading on its own line; the two presets always sit together on one row below it -->
+  <!-- heading on its own line; the presets on a row below it (wrapping on phones when the clinch preset shows) -->
   <div class="wiPresets" id="presetBar"><span class="presetLbl">Start from</span>
     <button class="reset" id="useActual" type="button" hidden>Actual result</button>
     <button class="reset" id="useStandings" type="button">Standings order</button>
+    <button class="reset" id="useClinch" type="button" hidden>🏆 Title clinch</button>
   </div>
   <div id="emptyMsg" hidden></div>
   <div class="orders" id="orders"></div>
@@ -121,13 +122,19 @@ const sprintPoints = year => year<=2021 ? [3,2,1] : [8,7,6,5,4,3,2,1];
 let year=null, seasonRounds=[], calendar=null, L=0, T=0;
 // orders[session] = [driverId…] with null as the "not classified" divider: everyone after it gets no position.
 let orders={}, sessions=[], roster={};
+// #85: clinch = the "🏆 Title clinch" preset for round T ({orders, kinds, who, what}), or null when no title can be won
+// there. startMode 'clinch' (a "Try it in What-If →" link's start=clinch) makes it the starting order, for the first
+// round built only: moving the slider or changing season goes back to the normal start.
+let clinch=null, startMode=null;
 
 async function buildFromSelection(detail){
  year=detail.year; seasonRounds=detail.seasonRounds;
  calendar = seasonRounds.length ? await F1Data.getCalendar(year) : null;
- setRound(detail.round);
- // #31: a shared link's orders, first season only — used when it lists exactly this round's drivers
+ // #31: a shared link's keys, first season only
  const link = F1Share.take();
+ startMode = link && link.get('start')==='clinch' ? 'clinch' : null; // #85: start from the title-clinch order
+ setRound(detail.round);
+ // #31: the link's orders — used when they list exactly this round's drivers
  if(link && sessions.length){
    let changed=false;
    sessions.forEach(s=>{
@@ -146,6 +153,7 @@ const orderKey = o => (o||[]).map(id=>id===null ? '-' : id).join(',');
 F1Share.register(()=>{
  const out={};
  sessions.forEach(s=>{ out[s] = orderKey(orders[s])===orderKey(defaultOrders[s]) ? null : orderKey(orders[s]); });
+ out.start = startMode==='clinch' && clinch ? 'clinch' : null; // #85: the orders above are then against the clinch order
  return out;
 });
 function setRound(round){
@@ -157,7 +165,7 @@ function setRound(round){
    empty.hidden=false;
    empty.textContent = !seasonRounds.length ? 'No data loaded for this season.'
      : `Round ${L} was the last round of ${year}. Move the slider back to replay a round that's already happened.`;
-   orders={}; sessions=[]; render(); return;
+   orders={}; sessions=[]; clinch=null; render(); return;
  }
  empty.hidden=true;
  // Everyone who has raced up to here, plus anyone in the actual result of round T, with their latest team.
@@ -168,7 +176,9 @@ function setRound(round){
  }));
  const sprint = actual ? !!actual.sprintResults : !!(calendar && calendar.sprintRounds && calendar.sprintRounds.includes(T));
  sessions = sprint ? ['sprint','gp'] : ['gp'];
- resetOrders(actual ? 'actual' : 'standings');
+ clinch = clinchPreset();
+ if(startMode==='clinch' && !clinch) startMode=null; // an old link: nobody can clinch here any more
+ resetOrders(startMode==='clinch' ? 'clinch' : actual ? 'actual' : 'standings');
  defaultOrders = JSON.parse(JSON.stringify(orders)); // #31: the round's starting order isn't put in the URL
 }
 const raceName = r => (calendar && calendar.raceNames && calendar.raceNames[r]) || ('Round '+r);
@@ -180,13 +190,18 @@ function orderFrom(results){
  const rest=ids.filter(id=>!cls.includes(id));
  return [...cls, null, ...rest];
 }
+// Everyone in the roster in the drivers' standings order after round L (anyone new at the end).
+function standingIds(){
+ const standing=F1Common.standingsOrder(seasonRounds, L, 'drivers').filter(id=>roster[id]);
+ return [...standing, ...Object.keys(roster).filter(id=>!standing.includes(id))];
+}
 function resetOrders(mode){
  const act=actualRound();
- const standing=F1Common.standingsOrder(seasonRounds, L, 'drivers').filter(id=>roster[id]);
- const all=[...standing, ...Object.keys(roster).filter(id=>!standing.includes(id))];
+ const all=standingIds();
  orders={};
  sessions.forEach(s=>{
-   if(mode==='actual' && act){
+   if(mode==='clinch' && clinch) orders[s]=clinch.orders[s].slice();
+   else if(mode==='actual' && act){
      orders[s]=orderFrom(s==='gp' ? act.raceResults : act.sprintResults);
    }else orders[s]=[...all, null];
  });
@@ -207,6 +222,11 @@ function whatIfRounds(){
  const before=seasonRounds.filter(r=>r.round<=L);
  const gp=sessionResults('gp');
  return [...before, { round:T, raceName:raceName(T), raceResults:gp, sprintResults: sessions.includes('sprint') ? sessionResults('sprint') : null }];
+}
+// The same for any orders (#85: checks a candidate clinch order without touching the page's own).
+function roundsWith(o){
+ const keep=orders; orders=o;
+ try{ return whatIfRounds(); } finally { orders=keep; }
 }
 function totals(rounds, kind){
  const t={};
@@ -283,6 +303,9 @@ function render(){
  document.getElementById('presetBar').hidden = !has;
  const act=actualRound();
  document.getElementById('useActual').hidden = !has || !act;
+ const cb=document.getElementById('useClinch');
+ cb.hidden = !has || !clinch;
+ cb.title = clinch ? `A finishing order with which ${clinch.what}` : '';
  if(!has){ document.getElementById('wiTitleRace').hidden=true; document.getElementById('orderNote').textContent=''; document.getElementById('orderHeading').textContent='Your result'; return; }
  document.getElementById('orderHeading').textContent = `Your result for Round ${T}: ${raceName(T)}`;
  document.getElementById('resultHeading').textContent = `Championships after Round ${T}`;
@@ -290,7 +313,7 @@ function render(){
    ? `Round ${T} has already happened: it starts from the actual result. Drag the drivers to replay it differently and see what it would have done to both championships.`
    : `Drag the drivers into any finishing order for Round ${T} to see what it would do to both championships.`;
  document.getElementById('orderNote').textContent =
-   `Starts from ${act ? 'the actual result' : 'the drivers’ standings after Round '+L}. Drag a driver by the handle, or focus the handle and use the arrow keys. `
+   `Starts from ${startMode==='clinch' && clinch ? 'a finishing order with which '+clinch.what : act ? 'the actual result' : 'the drivers’ standings after Round '+L}. Drag a driver by the handle, or focus the handle and use the arrow keys. `
    + `Drag the “Not classified” line to set who doesn’t finish (no points). Points: ${PTS_GP.join('-')}`
    + (sessions.includes('sprint') ? `, sprint ${sprintPoints(year).join('-')}` : '')
    + (year<=2024 ? '. The fastest-lap point (until 2024) isn’t included.' : '.');
@@ -315,6 +338,80 @@ function renderClinchResult(kind, rounds){
  el.classList.toggle('won', r.won);
  el.innerHTML=r.html;
  return r.champion;
+}
+
+// ---- #85: the "🏆 Title clinch" preset ----
+// When a title can be won at round T (F1Common.titleRace says 'next' after round L), a finishing order that wins it:
+// the clinching driver first (for the constructors' title, the team's drivers next), everyone else in the drivers'
+// standings order, except rivals who must drop: each place goes to the first driver in that order whose points for the
+// weekend (and their team's) stay within what the clinch allows them. On a sprint weekend the sprint is first left in
+// standings order, and only rearranged when the Grand Prix alone can't do it. Every candidate is checked with
+// titleRace() on the resulting season, so the preset provably clinches. Both titles at once when one order can do it,
+// else the drivers' title (else the constructors'). Computed once per round, never while dragging; never fetches.
+function clinchPreset(){
+ if(!sessions.length) return null;
+ const can = {};
+ ['drivers','teams'].forEach(kind=>{
+   const tr=F1Common.titleRace(seasonRounds, L, kind, {year, calendar});
+   if(tr.state==='next' && tr.next===T) can[kind]=tr;
+ });
+ const kinds=Object.keys(can);
+ if(!kinds.length) return null;
+ const team = id => roster[id].teamId, all=standingIds();
+ const plans = kinds.length>1 ? [['drivers','teams'], ['drivers'], ['teams']] : [kinds];
+ for(const plan of plans){
+   // every combination of clinchers (titleRace's lead lists them in standings order, so the leader is tried first)
+   const picks = plan.reduce((acc, kind)=>acc.flatMap(p=>can[kind].lead.map(l=>({...p, [kind]:l}))), [{}]);
+   for(const pick of picks){
+     const o = clinchOrders(pick, all, team);
+     if(o) return {orders:o, kinds:plan, who:Object.fromEntries(plan.map(k=>[k, pick[k].id])), what:clinchWhat(plan, pick)};
+   }
+ }
+ return null;
+}
+// Orders for the chosen clinchers ({drivers:{id, conds}, teams:{id, conds}}, from titleRace's lead), or null.
+function clinchOrders(pick, all, team){
+ const d=pick.drivers, t=pick.teams;
+ const front=[...(d ? [d.id] : []), ...(t ? all.filter(id=>team(id)===t.id && (!d || id!==d.id)) : [])];
+ const prio=[...front, ...all.filter(id=>!front.includes(id))];
+ const P = s => s==='gp' ? PTS_GP : sprintPoints(year);
+ // sprint: 'keep' the standings order, 'fit' it like the Grand Prix, or keep the rivals 'out' of its points
+ const tries = sessions.includes('sprint') ? ['keep','fit','out'] : ['none'];
+ for(const sp of tries){
+   const acc={d:{}, t:{}}, o={};
+   const add = (id, p) => { acc.d[id]=(acc.d[id]||0)+p; acc.t[team(id)]=(acc.t[team(id)]||0)+p; };
+   if(sp==='keep'){ o.sprint=[...all, null]; all.forEach((id,i)=>add(id, P('sprint')[i]||0)); }
+   // What a clincher will score: its points from a kept sprint plus its places at the front of the rearranged
+   // sessions. Each rival may then score up to that minus the margin titleRace says it needs.
+   const fronted = sp==='fit' || sp==='out' ? ['sprint','gp'] : ['gp'];
+   const mine = (who, kind) => { let s = (kind==='teams' ? acc.t[who] : acc.d[who]) || 0;
+     fronted.forEach(ss=>front.forEach((id,i)=>{ if(kind==='teams' ? team(id)===who : id===who) s+=P(ss)[i]||0; })); return s; };
+   const capD={}, capT={};
+   if(d){ const m=mine(d.id,'drivers'); d.conds.forEach(c=>{ capD[c.id]=m-c.need; }); }
+   if(t){ const m=mine(t.id,'teams'); t.conds.forEach(c=>{ capT[c.id]=m-c.need; }); }
+   const capped = id => id in capD || team(id) in capT;
+   const fits = (id, p) => (acc.d[id]||0)+p <= (id in capD ? capD[id] : Infinity) && (acc.t[team(id)]||0)+p <= (team(id) in capT ? capT[team(id)] : Infinity);
+   const greedy = (s, out0) => { const left=prio.slice(), out=[];
+     for(let i=0; left.length; i++){
+       const p=P(s)[i]||0, k=left.findIndex(id => out0 && p>0 ? !capped(id) : fits(id, p));
+       if(k<0) return null;
+       const id=left.splice(k,1)[0]; out.push(id); add(id, p);
+     }
+     return [...out, null]; };
+   if(sp==='fit' || sp==='out'){ o.sprint=greedy('sprint', sp==='out'); if(!o.sprint) continue; }
+   o.gp=greedy('gp', false); if(!o.gp) continue;
+   const rounds=roundsWith(o);
+   const ok=Object.entries(pick).every(([kind, l])=>{ const tr=F1Common.titleRace(rounds, T, kind, {year, calendar});
+     return tr.state==='decided' && tr.clinched===T && tr.champion===l.id; });
+   if(ok) return o;
+ }
+ return null;
+}
+// "VER clinches the drivers’ title (and Mercedes the constructors’)", for the button's tooltip and the note.
+function clinchWhat(plan, pick){
+ const who = (kind, id) => kind==='teams' ? F1Common.shortTeamName(id, (Object.values(roster).find(r=>r.teamId===id)||{}).teamName) : roster[id].code;
+ const [a, b] = plan;
+ return `${who(a, pick[a].id)} clinches the ${a==='teams'?'constructors’':'drivers’'} title` + (b ? ` and ${who(b, pick[b].id)} the constructors’` : '');
 }
 
 // ---- Drag to reorder (pointer events: mouse, touch and pen), plus arrow keys on a focused handle ----
@@ -372,6 +469,7 @@ document.getElementById('orders').addEventListener('keydown', e=>{
 });
 document.getElementById('useActual').addEventListener('click', ()=>resetOrders('actual'));
 document.getElementById('useStandings').addEventListener('click', ()=>resetOrders('standings'));
+document.getElementById('useClinch').addEventListener('click', ()=>resetOrders('clinch'));
 
 // #33: CSV of the two tables (they're tables, not charts, so no PNG)
 const wiRows = id=>{ const rows=F1Export.tableRows(document.getElementById(id)); if(rows.length) rows[0]=['Position','Places gained', rows[0][2], 'Points before', 'Points gained', 'Points after']; return rows; };
@@ -382,7 +480,7 @@ F1Export.attach(document.getElementById('resultCard'), {
  csv2:()=>wiRows('teamTable'),
 });
 window.addEventListener('f1selection', e=>buildFromSelection(e.detail));
-window.addEventListener('f1roundchange', e=>{ if(seasonRounds.length) setRound(e.detail.round); });
+window.addEventListener('f1roundchange', e=>{ startMode=null; if(seasonRounds.length) setRound(e.detail.round); });
 window.addEventListener('themechange', ()=>{ if(sessions.length) render(); });
 F1Controls.mount('f1controls');
 </script>

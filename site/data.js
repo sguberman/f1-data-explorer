@@ -119,6 +119,13 @@ const F1Data = (() => {
     return (c && c.country) || null;
   }
 
+  // #85: the circuit's city (f1api.dev's circuit.city; `locality` as Ergast/Jolpica name it), for the homepage's next race.
+  function circuitCity(race){
+    const c = Array.isArray(race.circuit) ? race.circuit[0] : race.circuit;
+    const city = c && (c.city || c.locality || (c.location && c.location.locality));
+    return typeof city === 'string' && city.trim() ? city.trim() : null;
+  }
+
   function normalizeResults(resultsArr, kind){
     if(!resultsArr) return [];
     return resultsArr.map(r=>{
@@ -153,15 +160,21 @@ const F1Data = (() => {
   // whole season; a complete season then needs nothing from f1api.dev, and an in-progress one only asks it
   // about rounds after the snapshot. If the file is missing or broken, the season loads live as before.
   const snapshots = {}; // year -> snapshot loaded this page view (its calendar is reused by getCalendar)
-  async function fetchSnapshot(year, fresh){
-    try{
-      const res = await fetch(`data/${year}.json`, fresh ? {cache:'reload'} : {});
-      if(!res.ok) return null;
-      const snap = await res.json();
-      if(!snap || snap.v!==1 || snap.year!==year || !Array.isArray(snap.rounds)) return null;
-      snapshots[year] = snap;
-      return snap;
-    }catch(e){ return null; }
+  const snapshotLoads = {}; // year -> the file's request while it's in flight, so two callers at once share it (#85)
+  function fetchSnapshot(year, fresh){
+    if(!fresh && snapshotLoads[year]) return snapshotLoads[year];
+    const load = (async () => {
+      try{
+        const res = await fetch(`data/${year}.json`, fresh ? {cache:'reload'} : {});
+        if(!res.ok) return null;
+        const snap = await res.json();
+        if(!snap || snap.v!==1 || snap.year!==year || !Array.isArray(snap.rounds)) return null;
+        snapshots[year] = snap;
+        return snap;
+      }catch(e){ return null; }
+    })();
+    if(!fresh){ snapshotLoads[year] = load; load.then(() => { delete snapshotLoads[year]; }); }
+    return load;
   }
 
   // opts: onProgress(round, count); live: true skips the snapshot (the snapshot tool itself uses this);
@@ -268,9 +281,10 @@ const F1Data = (() => {
   // each flagged for whether it has a sprint. This is the authoritative source for "how many rounds
   // and sprints does this season have in total", replacing any static guess. Cached for a day: calendars
   // are effectively static but can occasionally get revised (e.g. a postponed/relocated round).
-  // Shape: {totalRounds, sprintRounds, raceNames, raceDates, raceTimes, countries}. #89 added the last three
-  // (round -> 'YYYY-MM-DD' Grand Prix date, round -> 'HH:MM:SSZ' start time in UTC when known, round -> circuit
-  // country), for the homepage's next race. Season files made before #89 lack them; callers must cope.
+  // Shape: {totalRounds, sprintRounds, raceNames, raceDates, raceTimes, countries, cities}. #89 added raceDates,
+  // raceTimes and countries (round -> 'YYYY-MM-DD' Grand Prix date, round -> 'HH:MM:SSZ' start time in UTC when known,
+  // round -> circuit country), for the homepage's next race; #85 added cities (round -> the circuit's city, when
+  // f1api.dev gives one). Season files made before them lack them; callers must cope.
   const CALENDAR_TTL_MS = 24*60*60*1000;
   // f1api.dev's schedule.race: {date:'2026-10-25', time:'20:00:00Z'}; either can be null. Times without a zone
   // are UTC (as in Ergast/Jolpica).
@@ -296,7 +310,7 @@ const F1Data = (() => {
       snap = await fetchSnapshot(year);
       if(snap && usable(snap.calendar)){ cacheSet(key, snap.calendar, CALENDAR_TTL_MS); return snap.calendar; }
     }
-    let totalRounds=0, sprintRounds=[], raceNames={}, raceDates={}, raceTimes={}, countries={}, failed=false;
+    let totalRounds=0, sprintRounds=[], raceNames={}, raceDates={}, raceTimes={}, countries={}, cities={}, failed=false;
     try{
       const data = await fetchJSON(`${API}/${year}?limit=30`);
       const races = (data && data.races) || [];
@@ -309,13 +323,15 @@ const F1Data = (() => {
         if(time) raceTimes[r.round] = time;
         const country = circuitCountry(r);
         if(country) countries[r.round] = country;
+        const city = circuitCity(r);
+        if(city) cities[r.round] = city;
         const apiSaysSprint = !!(r.schedule && r.schedule.sprintRace && r.schedule.sprintRace.date);
         const overrideKey = `${year}:${r.round}`;
         const isSprint = overrideKey in SPRINT_OVERRIDES ? SPRINT_OVERRIDES[overrideKey] : apiSaysSprint;
         if(isSprint) sprintRounds.push(r.round);
       });
     }catch(e){ failed = true; /* leave zeros — callers fall back to their own default when totalRounds is 0 */ }
-    const result = { totalRounds, sprintRounds, raceNames, raceDates, raceTimes, countries };
+    const result = { totalRounds, sprintRounds, raceNames, raceDates, raceTimes, countries, cities };
     if(!failed) cacheSet(key, result, CALENDAR_TTL_MS); // a failed fetch isn't kept (#22), so the next load retries
     return result;
   }
