@@ -292,7 +292,7 @@ function recompute(round){
 }
 
 function draw(){
- if(!D.length){ if(chart){ chart.destroy(); chart=null; } document.getElementById('lg').innerHTML=''; document.getElementById('sm').innerHTML='No teams selected.'; F1RoundResult.update(); return; }
+ if(!D.length){ if(chart){ chart.destroy(); chart=null; } document.getElementById('lg').innerHTML=''; document.getElementById('sm').innerHTML='No teams selected.'+clinchLine(); F1RoundResult.update(); return; }
  P=F1Theme.chart();Chart.defaults.color=P.text;
  // #83: in the gap view every value is points behind the leader, and the knockout line becomes the points still available.
  const gap=gapView(), val=d=>gap?d.gap:d.full, kline=gap?room:thr, kname=gap?'Points still available':'Knockout line';
@@ -359,9 +359,18 @@ const fw=F1Common.flagSpace(ds.filter(s=>s.kind==='p').map(s=>s.nat)); // #18: r
  document.getElementById('sm').innerHTML=(gap
   ? `<b>Points still available:</b> the biggest gap to ${ko}, the highest-ranked team you've selected, that can still be closed. After round ${L}, ${Math.round(room[L-1])} pts are still available${est}, so a team more than that behind ${ko} can't catch them even with a 1–2 finish in every remaining race while ${ko} scores nothing.`
   : `<b>Knockout line:</b> the fewest points a team needs to still catch ${ko}, the highest-ranked team you've selected. After round ${L}, ${ko} has ${Math.round(lead[L-1])} pts with ${Math.round(lead[L-1]-thr[L-1])} still available${est}, so the line is at ${Math.round(thr[L-1])} pts. A team who falls below it can't catch ${ko} even with a 1–2 finish in every remaining race while ${ko} scores nothing.`)
-  +`<br><span style="color:var(--elim);">●</span> Below the line: ${now.length?now.map(lab).join(', '):'none'} &nbsp; <span style="color:var(--elim);">○</span> Projected to fall below at current form: ${proj.length?proj.map(lab).join(', '):'none'}`;
+  +`<br><span style="color:var(--elim);">●</span> Below the line: ${now.length?now.map(lab).join(', '):'none'} &nbsp; <span style="color:var(--elim);">○</span> Projected to fall below at current form: ${proj.length?proj.map(lab).join(', '):'none'}`+clinchLine();
  positionHandle();
  F1RoundResult.update(); // #29
+}
+
+// #85: one line under the knockout note about the title as a whole (whole field, not the picked teams):
+// who can clinch it at the next race (the round after the slider), with a link to try results in What-If, the
+// earliest round it can be decided, or who clinched it. From loaded data and the calendar only; never fetches.
+function clinchLine(){
+ const maxRound=Math.max(0,...currentSeasonRounds.map(r=>r.round));
+ const html=F1Common.clinchPointerHTML(currentSeasonRounds, currentCalendar, currentYear, 'teams', L, maxRound);
+ return html ? `<br><span id="clinchNote">${html}</span>` : '';
 }
 
 function positionHandle(){

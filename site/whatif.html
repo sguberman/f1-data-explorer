@@ -67,6 +67,15 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
 .reset{background:transparent;color:var(--sub);border:1px solid var(--line);border-radius:6px;padding:6px 11px;font:inherit;font-size:12.5px;cursor:pointer;}
 .reset:hover{border-color:var(--ink2);color:var(--ink);}
 #emptyMsg{font-size:12.5px;color:var(--sub);}
+/* #85: what each leader needs here to clinch (above the lists), and the live title status (above each table) */
+.clinchBox{background:var(--inset);border-radius:8px;padding:8px 10px;margin:-2px 0 12px;font-size:12.5px;line-height:1.45;color:var(--ink2);display:flex;flex-direction:column;gap:4px;}
+.clinchBox[hidden]{display:none;}
+.clinchRes{font-size:12px;line-height:1.45;color:var(--sub);margin:-2px 0 6px;min-height:1.45em;}
+.clinchRes.won{color:var(--ink);font-weight:600;}
+.stTable .nmIn{display:flex;align-items:center;min-width:0;}
+.stTable .nmTxt{min-width:0;overflow:hidden;text-overflow:ellipsis;}
+.champTag{flex:0 0 auto;margin-left:6px;font-size:11px;font-weight:600;line-height:1;padding:3px 7px;border-radius:999px;background:var(--inset);border:1px solid var(--line-strong);color:var(--ink);white-space:nowrap;}
+tr.champ td{background:var(--inset);}
 </style>
 </head>
 <body>
@@ -80,6 +89,7 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
   <div class="cardHead">
     <h2 id="orderHeading">Your result</h2>
   </div>
+  <div class="clinchBox" id="clinchNow" hidden aria-live="polite"><div id="clinchNowDrivers"></div><div id="clinchNowTeams"></div></div>
   <!-- heading on its own line; the two presets always sit together on one row below it -->
   <div class="wiPresets" id="presetBar"><span class="presetLbl">Start from</span>
     <button class="reset" id="useActual" type="button" hidden>Actual result</button>
@@ -93,8 +103,8 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
 <div class="card" id="resultCard">
   <div class="cardHead"><h2 id="resultHeading">Championships after this result</h2></div>
   <div class="tables">
-    <div><div class="orderTitle">Drivers</div><table class="stTable" id="driverTable"></table></div>
-    <div><div class="orderTitle">Constructors</div><table class="stTable" id="teamTable"></table></div>
+    <div><div class="orderTitle">Drivers</div><div class="clinchRes" id="clinchDrivers" aria-live="polite"></div><table class="stTable" id="driverTable"></table></div>
+    <div><div class="orderTitle">Constructors</div><div class="clinchRes" id="clinchTeams" aria-live="polite"></div><table class="stTable" id="teamTable"></table></div>
   </div>
   <div class="note">▲/▼ are places gained or lost against the standings before this round. Ties on points are broken by countback (most wins, then most second places, and so on), the same as the championship-position charts.</div>
 </div>
@@ -105,8 +115,7 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
 // order for the Grand Prix (and the sprint, on a sprint weekend); the page adds those points to the standings
 // as of the slider's round and shows the new championship tables. Everything is computed in the browser from
 // the season already loaded — dragging and the buttons never fetch.
-const PTS_GP=[25,18,15,12,10,8,6,4,2,1];
-const sprintPoints = year => year<=2021 ? [3,2,1] : [8,7,6,5,4,3,2,1];
+const PTS_GP=F1Common.POINTS_GP, sprintPoints=F1Common.sprintPoints; // shared with the clinch maths (#85)
 let year=null, seasonRounds=[], calendar=null, L=0, T=0;
 // orders[session] = [driverId…] with null as the "not classified" divider: everyone after it gets no position.
 let orders={}, sessions=[], roster={};
@@ -247,6 +256,7 @@ function readOrders(){
 function renderTables(){
  const rounds=whatIfRounds(), before=seasonRounds.filter(r=>r.round<=L);
  [['drivers','driverTable'],['teams','teamTable']].forEach(([kind, el])=>{
+   const champ=renderClinchResult(kind, rounds); // #85
    const now=totals(before, kind), next=totals(rounds, kind);
    const prevOrder=F1Common.standingsOrder(before, L, kind), order=F1Common.standingsOrder(rounds, T, kind);
    const info={}; rounds.forEach(r=>[...r.raceResults, ...(r.sprintResults||[])].forEach(res=>{ info[kind==='teams'?res.teamId:res.driverId]=res; }));
@@ -256,8 +266,9 @@ function renderTables(){
      const name = kind==='teams'
        ? `<span class="long">${F1Common.flagHTML(r.teamNationality)}${r.teamName}</span><span class="short">${F1Common.flagHTML(r.teamNationality)}${F1Common.shortTeamName(id, r.teamName)}</span>`
        : `<span class="long">${F1Common.flagHTML(F1Common.nationalityOf('drivers', id))}${r.name}</span><span class="short">${F1Common.flagHTML(F1Common.nationalityOf('drivers', id))}${r.code}</span>`;
-     return `<tr data-id="${id}"><td class="pos">${i+1}</td><td>${F1Common.moveHTML(move)}</td>
-       <td class="nm"><span class="dot" style="background:${color}"></span>${name}</td>
+     const tag = id===champ ? '<span class="champTag" title="Champion with this result">🏆<span class="long"> Champion</span></span>' : '';
+     return `<tr data-id="${id}"${tag?' class="champ"':''}><td class="pos">${i+1}</td><td>${F1Common.moveHTML(move)}</td>
+       <td class="nm"><span class="nmIn"><span class="dot" style="background:${color}"></span><span class="nmTxt">${name}</span>${tag}</span></td>
        <td>${Math.round(now[id]||0)}</td><td class="gain${gain?'':' zero'}">${gain?'+'+Math.round(gain):'–'}</td><td class="tot">${Math.round(next[id]||0)}</td></tr>`;
    }).join('');
    document.getElementById(el).innerHTML = `<tr><th>Pos</th><th></th><th>${kind==='teams'?'Team':'Driver'}</th><th>Before</th><th>+</th><th>After</th></tr>`+rows;
@@ -270,7 +281,7 @@ function render(){
  document.getElementById('presetBar').hidden = !has;
  const act=actualRound();
  document.getElementById('useActual').hidden = !has || !act;
- if(!has){ document.getElementById('orderNote').textContent=''; document.getElementById('orderHeading').textContent='Your result'; return; }
+ if(!has){ document.getElementById('clinchNow').hidden=true; document.getElementById('orderNote').textContent=''; document.getElementById('orderHeading').textContent='Your result'; return; }
  document.getElementById('orderHeading').textContent = `Your result for Round ${T}: ${raceName(T)}`;
  document.getElementById('resultHeading').textContent = `Championships after Round ${T}`;
  document.getElementById('pageSub').textContent = act
@@ -281,7 +292,61 @@ function render(){
    + `Drag the “Not classified” line to set who doesn’t finish (no points). Points: ${PTS_GP.join('-')}`
    + (sessions.includes('sprint') ? `, sprint ${sprintPoints(year).join('-')}` : '')
    + (year<=2024 ? '. The fastest-lap point (until 2024) isn’t included.' : '.');
- renderLists(); renderTables();
+ renderClinchNow(); renderLists(); renderTables();
+}
+
+// ---- #85: title clinch (maths in F1Common.clinchOutlook / titleStatus; whole field, never fetches) ----
+const TITLE = {drivers:'drivers’ title', teams:'constructors’ title'};
+const nameOf = (kind, id) => F1Common.entryName(seasonRounds, kind, id);
+const listText = names => names.length<=1 ? (names[0]||'') : names.slice(0,-1).join(', ')+' and '+names[names.length-1];
+const shortList = names => names.length>4 ? listText([...names.slice(0,3), `${names.length-3} others`]) : listText(names);
+const raceRef = r => F1Common.roundRef(calendar, r, year);
+// Above the lists: what each championship's leader needs at this round to clinch, from the standings before it.
+function clinchNowText(kind){
+ const o=F1Common.clinchOutlook(seasonRounds, calendar, year, kind, L);
+ if(!o) return '';
+ if(o.state==='decided') return `🏆 ${nameOf(kind, o.champion)} has already won the ${TITLE[kind]} (clinched in ${raceRef(o.round)}).`;
+ if(o.state==='later') return `The ${TITLE[kind]} can’t be decided before ${raceRef(o.round)} at the earliest.`;
+ const A=nameOf(kind, o.leader), ahead=o.rivals.filter(r=>r.margin>0), parts=[];
+ if(ahead.length) parts.push('outscoring '+listText(ahead.map(r=>`${nameOf(kind, r.id)} by ${r.margin} or more`)));
+ const level=o.rivals.filter(r=>r.margin===0);
+ if(level.length) parts.push('scoring at least as many points as '+listText(level.map(r=>nameOf(kind, r.id))));
+ o.rivals.filter(r=>r.margin<0).forEach(r=>parts.push(`losing no more than ${-r.margin} points to ${nameOf(kind, r.id)}`));
+ let ex='';
+ const e=o.example;
+ if(e && e.certain) ex = e.certain===1 ? (e.both ? ' (winning both races guarantees it)' : ' (a win guarantees it)')
+   : ` (P${e.certain} or better${e.both?' in both races':''} guarantees it)`;
+ else if(e && e.rivals.length) ex = ` (e.g. ${A} wins${e.both?' both races':''} with `
+   + listText(e.rivals.map(r=>`${nameOf(kind, r.id)} ${r.pos ? 'P'+r.pos+' or lower' : 'out of the points'}`)) + (e.both?' in both':'') + ')';
+ return `${A} clinches the ${TITLE[kind]} here by ${listText(parts)}${ex}.`;
+}
+function renderClinchNow(){
+ const d=clinchNowText('drivers'), t=clinchNowText('teams');
+ document.getElementById('clinchNowDrivers').textContent=d;
+ document.getElementById('clinchNowTeams').textContent=t;
+ document.getElementById('clinchNow').hidden = !d && !t;
+}
+// Above each table: champion with the dragged result, or who can still win. Returns the champion's id (or null).
+function renderClinchResult(kind, rounds){
+ const el=document.getElementById(kind==='teams' ? 'clinchTeams' : 'clinchDrivers');
+ const st=F1Common.titleStatus(rounds, calendar, year, kind, T);
+ el.classList.remove('won');
+ if(!st){ el.textContent=''; return null; }
+ const n = id => nameOf(kind, id);
+ if(st.champion){
+   const before=F1Common.titleStatus(seasonRounds, calendar, year, kind, L);
+   el.classList.add('won');
+   el.textContent = before && before.champion===st.champion ? `🏆 ${n(st.champion)} is already champion.`
+     : st.countback ? `🏆 With this result, ${n(st.champion)} is champion on countback (level on points with ${n(st.order[1])}).`
+     : `🏆 With this result, ${n(st.champion)} is champion.`;
+   return st.champion;
+ }
+ const full=st.contenders.filter(c=>!c.tieOnly).map(c=>n(c.id)), tie=st.contenders.filter(c=>c.tieOnly).map(c=>n(c.id));
+ el.textContent = !full.length
+   ? `Title still open: ${listText(tie)} can only draw level with ${n(st.leader)} on points, which would go to countback.`
+   : `Title still open: ${shortList([n(st.leader), ...full])} can still win`
+     + (tie.length ? ` (${shortList(tie)} only by drawing level on points, which would go to countback).` : '.');
+ return null;
 }
 
 // ---- Drag to reorder (pointer events: mouse, touch and pen), plus arrow keys on a focused handle ----

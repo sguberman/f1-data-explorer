@@ -398,7 +398,119 @@ const F1Common = (() => {
          y:{grid:{color:P.grid}, ticks:{color:P.text}, title:{display:true, text:'Projected final points', color:P.text}}}}});
   }
 
-  return { TEAM_COLORS, SEASON_TEAM_COLORS, setSeason, teamColor, SHORT_TEAM_NAMES, shortTeamName, SEASON_META, seasonMeta, YEARS,
+  // ---- #85: title clinch maths (what-if conditions and live champion, the championship pages' pointer) ----
+  // Points tables (the what-if page scores your order with these). Max points per round, for clinching, also count
+  // the fastest-lap point until 2024 (one per Grand Prix), so a clinch is never claimed too early. Drivers: win both
+  // races; teams: a 1-2 in both. The calendar gives the season length and sprint weekends (plus any round with sprint
+  // results); without a real calendar there are no clinch claims at all.
+  const POINTS_GP=[25,18,15,12,10,8,6,4,2,1];
+  const sprintPoints = year => year<=2021 ? [3,2,1] : [8,7,6,5,4,3,2,1];
+  function roundMaxPoints(year, kind, sprint){
+   const fl = year<=2024 ? 1 : 0, sp=sprintPoints(year), two = kind==='teams';
+   return (two ? POINTS_GP[0]+POINTS_GP[1] : POINTS_GP[0]) + fl + (sprint ? (two ? sp[0]+sp[1] : sp[0]) : 0);
+  }
+  // The season frame for the clinch helpers: total rounds, max points per round and points still available after a
+  // round; null without a calendar.
+  function clinchFrame(seasonRounds, calendar, year, kind){
+   if(!calendar || !(calendar.totalRounds>0)) return null;
+   const sprints=new Set([...(calendar.sprintRounds||[]), ...seasonRounds.filter(r=>r.sprintResults && r.sprintResults.length).map(r=>r.round)]);
+   const total=Math.max(calendar.totalRounds, ...seasonRounds.map(r=>r.round));
+   const max = r => roundMaxPoints(year, kind, sprints.has(r));
+   const left = after => { let s=0; for(let r=after+1;r<=total;r++) s+=max(r); return s; };
+   return {total, max, left, sprint:r=>sprints.has(r)};
+  }
+  const EPS=1e-9;
+  // The title after `round` (the season's rounds up to it; later ones are ignored). Whole field, ranked by
+  // standingsOrder (points, then countback). champion: the leader once nobody can reach their points, or after the
+  // last round the leader (`countback` when level on points). Otherwise contenders: everyone who can still reach the
+  // leader's points, tieOnly when they could only draw level (countback would decide, so it isn't a clinch).
+  function titleStatus(seasonRounds, calendar, year, kind, round){
+   const f=clinchFrame(seasonRounds, calendar, year, kind); if(!f) return null;
+   const upto=seasonRounds.filter(r=>r.round<=round), order=standingsOrder(upto, round, kind);
+   if(!order.length) return null;
+   const pts={}; upto.forEach(r=>[...r.raceResults, ...(r.sprintResults||[])].forEach(res=>{ const id=kind==='teams'?res.teamId:res.driverId; pts[id]=(pts[id]||0)+res.points; }));
+   const leader=order[0], a=pts[leader], left=f.left(round), final=round>=f.total;
+   const contenders=order.slice(1).filter(id=>pts[id]+left>=a-EPS).map(id=>({id, gap:a-pts[id], tieOnly:Math.abs(pts[id]+left-a)<EPS}));
+   const champion = final || !contenders.length ? leader : null;
+   const countback = final && order.length>1 && Math.abs(pts[order[1]]-a)<EPS;
+   return {round, order, pts, leader, left, final, champion, countback, contenders: champion ? [] : contenders};
+  }
+  // What the title needs at the round after `round` (the next race on the championship pages; the round being edited
+  // on the what-if page), from the standings after `round`:
+  //   {state:'decided', champion, round (the round it was decided), countback}
+  //   {state:'can', round, leader, rivals:[{id, margin}], example}: the leader is champion after that round if they
+  //     outscore each rival there by `margin` or more (0 or negative = may lose up to -margin to them). One point less
+  //     leaves that rival able to reach the leader's points (a draw goes to countback, so it doesn't count).
+  //     example (drivers only): {certain:p, both} = finishing Pp or better (in both races on a sprint weekend) is
+  //     enough whatever the others do; else {rivals:[{id, pos}], both} = winning (both races) with each listed rival
+  //     Ppos or lower (pos 0 = out of the points); null when neither works.
+  //   {state:'later', round, leader}: the first round it could be decided, if the leader scores the maximum from the
+  //     next round on and nobody else scores.
+  // null without a calendar or standings.
+  function clinchOutlook(seasonRounds, calendar, year, kind, round){
+   const st=titleStatus(seasonRounds, calendar, year, kind, round);
+   if(!st) return null;
+   if(st.champion){
+     let r=1; while(r<round && !(titleStatus(seasonRounds, calendar, year, kind, r)||{}).champion) r++;
+     return {state:'decided', champion:st.leader, round:r, countback:st.countback};
+   }
+   const f=clinchFrame(seasonRounds, calendar, year, kind), T=round+1, M=f.max(T), PT=f.left(T);
+   const gap2=st.contenders[0].gap; // the closest rival: the one the leader must stay clear of when nobody else scores
+   if(gap2+M > PT+EPS){
+     const rivals=st.contenders.map(c=>({id:c.id, margin:Math.floor(PT-c.gap+EPS)+1})).filter(c=>c.margin>-M);
+     return {state:'can', round:T, leader:st.leader, rivals, example: kind==='drivers' ? clinchExample(year, f.sprint(T), rivals) : null};
+   }
+   let S=M, R=T;
+   while(R<f.total){ R++; S+=f.max(R); if(gap2+S > f.left(R)+EPS) break; }
+   return {state:'later', round:R, leader:st.leader};
+  }
+  // Drivers: a finishing-position example for clinchOutlook's margins (see there). Rivals are assumed to take the best
+  // place left for them.
+  function clinchExample(year, sprint, rivals){
+   const sp=sprintPoints(year), at = p => (POINTS_GP[p-1]||0) + (sprint ? (sp[p-1]||0) : 0);
+   let certain=0;
+   for(let p=1;p<=POINTS_GP.length;p++){ const best=at(p===1?2:1); if(rivals.every(r=>at(p)-best>=r.margin)) certain=p; else break; }
+   if(certain) return {certain, both:sprint};
+   const out=[];
+   for(const r of rivals){
+     let pos=-1;
+     for(let q=2;q<=POINTS_GP.length+1;q++) if(at(1)-at(q)>=r.margin){ pos = at(q) ? q : 0; break; }
+     if(pos<0) return null;
+     if(pos!==2) out.push({id:r.id, pos});
+   }
+   return {rivals:out, both:sprint};
+  }
+  // Race name without "Grand Prix", sponsor or year, for short lines ("Las Vegas").
+  function shortRaceName(calendar, round, year){
+   const n=calendar && calendar.raceNames && calendar.raceNames[round];
+   return (n && n.replace(/ Grand Prix.*/i,'').replace(String(year),'').trim()) || ('Round '+round);
+  }
+  // Display name for clinch lines: driver code, or short team name.
+  function entryName(seasonRounds, kind, id){
+   let res=null; seasonRounds.forEach(r=>[...r.raceResults, ...(r.sprintResults||[])].forEach(x=>{ if((kind==='teams'?x.teamId:x.driverId)===id) res=x; }));
+   return !res ? id : kind==='teams' ? shortTeamName(id, res.teamName) : (res.code || id);
+  }
+  // "round 21 (Las Vegas)", or just "round 21" when the calendar has no proper name for it.
+  function roundRef(calendar, round, year){
+   const n=shortRaceName(calendar, round, year);
+   return /^Round \d+$/i.test(n) ? `round ${round}` : `round ${round} (${n})`;
+  }
+  // The championship pages' one-line pointer under the points chart: who can clinch at the round after the slider
+  // (with a link to try it in What-If), when the title can be decided at the earliest, or who has won it. '' when
+  // there's nothing to say. maxRound: the latest loaded round (the link carries the round only before it, as #31's do).
+  function clinchPointerHTML(seasonRounds, calendar, year, kind, round, maxRound){
+   const o=clinchOutlook(seasonRounds, calendar, year, kind, round);
+   if(!o) return '';
+   const name = id => entryName(seasonRounds, kind, id);
+   const race = r => escAttr(roundRef(calendar, r, year));
+   if(o.state==='decided') return `🏆 ${escAttr(name(o.champion))} clinched the title in ${race(o.round)}${o.countback?', on countback':''}.`;
+   if(o.state==='later') return `The title can't be decided before ${race(o.round)}.`;
+   const href=`whatif.html?season=${year}${round<maxRound?'&round='+round:''}`;
+   return `${escAttr(name(o.leader))} can clinch the title in ${escAttr(shortRaceName(calendar, o.round, year))}. <a class="clinchLink" href="${href}">Try results in What-If →</a>`;
+  }
+
+  return { TEAM_COLORS, SEASON_TEAM_COLORS,
+    POINTS_GP, sprintPoints, roundMaxPoints, titleStatus, clinchOutlook, shortRaceName, roundRef, entryName, clinchPointerHTML, setSeason, teamColor, SHORT_TEAM_NAMES, shortTeamName, SEASON_META, seasonMeta, YEARS,
     isNarrow, withAlpha, standingsMoves, moveHTML, driverPickerRowHTML, markActivePreset,
     flagCode, flagHTML, flagSpace, FLAG_ROOM, drawFlag, indexPeople, nationalityOf, numberOf, ridgeFlags, ridgeMarkers, ridgeKeyHTML, standingsOrder, standingsRank, pickerTeamLabelHTML,
     standingsByRound, renderPositionChart, projectionsByRound, renderProjectedPointsChart };
