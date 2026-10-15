@@ -21,6 +21,16 @@ module.exports = async (t, h) => {
     t.check(`${theme} ${width}px: cards are laid out vertically, one per row`, r.stacked && r.sameLeft);
     t.check(`${theme} ${width}px: no horizontal scroll`, r.scroll <= width);
     t.check(`${theme} ${width}px: picture colours follow the theme`, r.c4.toLowerCase() === (theme === 'dark' ? '#6a86f0' : '#1b2a6b'), r.c4);
+    // #78: the title and intro sit on a soft checkered flag in the theme's own colours, text inside it
+    const hero = await p.evaluate(() => {
+      const h = document.querySelector('.hero'); if(!h) return null;
+      const cs = getComputedStyle(h), box = h.getBoundingClientRect(), sub = h.querySelector('.sub').getBoundingClientRect();
+      const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+      return { holds: !!h.querySelector('h1') && !!h.querySelector('.sub'), bg: cs.backgroundImage,
+        inside: sub.right <= box.right && sub.bottom <= box.bottom, right: box.right, inset: css('--inset'), panel: css('--panel') };
+    });
+    t.check(`${theme} ${width}px: title and intro sit on a checkered banner`, hero && hero.holds && /conic-gradient/.test(hero.bg) && hero.inside && hero.right <= width, JSON.stringify(hero));
+    t.check(`${theme} ${width}px: banner checks use the theme's colours`, hero && /rgb/.test(hero.bg) && hero.inset !== hero.panel);
     t.check(`${theme} ${width}px: no page errors`, p.errors.length === 0, p.errors.join('; '));
     await p.done();
   }

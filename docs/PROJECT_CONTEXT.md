@@ -262,7 +262,8 @@ Constructors' Championship, Race Finishing Positions, Title Simulator, What-If R
 picture of that page's main chart on the left (on top on phones): an inline SVG with illustrative shapes, not
 real data (the drivers' picture ends each line with a driver number and code, the constructors' with a
 team-coloured name badge; no team logos, which are trademarks), coloured through CSS variables so it follows the theme (team colours as on the charts, Red Bull's
-navy lightened in dark). The page loads no data.
+navy lightened in dark). The page loads no data. The title and intro sit on a soft checkered-flag banner
+(`.hero`, #78): a CSS conic-gradient in the theme's own `--inset`/`--panel` tones, with a faint text halo for legibility.
 
 ## Design requirements (owner-approved — keep these)
 
@@ -351,7 +352,7 @@ since fonts render differently on different machines.
   status (#23/#48/#49), movement (#47), position (#9), projection (#10),
   simulator (#39 DNF modeling, #42 auto DNFs, #14 wins, #11 collisions, #17 results kept), NC/finish rule shared by the position page and simulator (#46), flags and markers
   (#18/#30; movement also covers #20's tie-breaks), simulator runs (#56: responsive 30,000 run, progress, Cancel), what-if (#48: drag, keys, NC line, sprint weekends,
-  points and countback), homepage (#50: card order, pictures, vertical layout, theme colours), season files (#13: one-file
+  points and countback), homepage (#50: card order, pictures, vertical layout, theme colours; #78: checkered banner), season files (#13: one-file
   loads, live check only after the file, complete seasons with no API calls, fallback, Refresh), daily check (#60: one check reused across pages and
   season switches, rechecked after a day or on Refresh, failed checks not kept), navigation (#62: home link and Pages menu on every
   data page, keyboard, season kept between pages, phone layout), layout (#64: every data page has the same page frame —
