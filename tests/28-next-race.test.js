@@ -192,16 +192,21 @@ module.exports = async (t, h) => {
   p = await open('2026-10-27T12:00:00Z', { snapshots:{ 2026: kit.snap(SC.both) } }); await settle(p); await p.waitForTimeout(600);
   t.check('next race two rounds after the latest result: no clinch line', /Round 19/.test((await strip(p)).kicker) && (await clinchLines(p)).length === 0);
   await p.done();
-  // The season's newer-round check fails: the card shows without the clinch line, no errors.
+  // The season's newer-round check fails: the card shows without the clinch line, no errors (#111: the line drawn from
+  // the season file is taken away again, since a newer result could be missing).
   p = await open('2026-10-15T12:00:00Z', { snapshots:{ 2026: kit.snap(SC.both) }, fail: u => /\/api\/2026\/18\//.test(u) }); await settle(p); await p.waitForTimeout(1500);
   t.check('season load fails: the card still shows, without a clinch line', !(await strip(p)).hidden && (await clinchLines(p)).length === 0 && /Round 18/.test((await strip(p)).kicker));
   t.check('season load fails: no page errors', p.errors.length === 0, p.errors.join('; '));
   await p.done();
-  // A slow check doesn't hold the card up: it shows first, the line follows.
-  p = await open('2026-10-15T12:00:00Z', { snapshots:{ 2026: kit.snap(SC.both) }, delay: 1500 }); await settle(p);
-  const early = await clinchLines(p), shownEarly = !(await strip(p)).hidden;
-  await waitClinch(p);
-  t.check('slow season load: the card shows straight away, the clinch lines follow', shownEarly && early.length === 0 && (await clinchLines(p)).length === 2, J(early));
+  // #111: a slow check of f1api.dev holds nothing up: the card and its clinch lines come straight from the season file,
+  // and when the check is done (nothing newer) the lines stay as they were, so the cards below don't move.
+  p = await open('2026-10-15T12:00:00Z', { snapshots:{ 2026: kit.snap(SC.both) }, delay: 2500 }); await settle(p); await p.waitForTimeout(150);
+  const early = await clinchLines(p), shownEarly = !(await strip(p)).hidden, top = () => p.evaluate(() => document.querySelector('.list').getBoundingClientRect().top);
+  const cardsTop = await top(), checking = p.apiHits.length;
+  await p.waitForTimeout(3000);
+  t.check('slow check (#111): the card and both clinch lines show straight away, before f1api.dev answers', shownEarly && early.length === 2 && checking > 0, J(early));
+  t.check('…when the check is in, the lines are the same and the cards below haven\'t moved', J(await clinchLines(p)) === J(early) && await top() === cardsTop, `${cardsTop} → ${await top()}`);
+  t.check('slow check: no page errors', p.errors.length === 0, p.errors.join('; '));
   await p.done();
 
   // Both themes, desktop and phone, with both lines and the location.

@@ -178,7 +178,8 @@ const F1Data = (() => {
   }
 
   // opts: onProgress(round, count); live: true skips the snapshot (the snapshot tool itself uses this);
-  // fresh: true asks the browser to re-download the snapshot (Refresh data).
+  // fresh: true asks the browser to re-download the snapshot (Refresh data); onSnapshot(rounds) (#111): called with
+  // a copy of the season file's rounds as soon as the file is in, before f1api.dev is asked about newer rounds.
   async function loadSeason(year, opts={}){
     const { onProgress } = opts;
     const rounds = [];
@@ -189,6 +190,7 @@ const F1Data = (() => {
       snap.rounds.forEach(r=>rounds.push(r));
       noteFetch(snap.generatedAt);
       if(onProgress && rounds.length) onProgress(rounds[rounds.length-1].round, rounds.length);
+      if(opts.onSnapshot) try{ opts.onSnapshot(rounds.slice()); }catch(e){}
       if(snap.complete) return { rounds, failed, fetchedAt, fromSnapshot:true };
       round = rounds.length ? rounds[rounds.length-1].round + 1 : 1; // only newer rounds come from f1api.dev
     }

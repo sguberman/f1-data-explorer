@@ -87,8 +87,9 @@ Move something into `common.js` only once it's genuinely identical on every page
 - Endpoints: `/api/{year}/{round}/race` (results under `results`) and `/api/{year}/{round}/sprint/race`
   (results under **`sprintRaceResults`**, not `results`). A **404 on the sprint endpoint means "no sprint
   this round"** and is cached as a confirmed negative, not treated as a failure (issue #28).
-- `F1Data.loadSeason(year, {onProgress})` walks rounds 1, 2, 3… until the API returns no results, and
-  resolves to `{rounds, failed, fetchedAt}`. Each round becomes `{round, raceName, raceResults,
+- `F1Data.loadSeason(year, {onProgress, onSnapshot})` walks rounds 1, 2, 3… until the API returns no results, and
+  resolves to `{rounds, failed, fetchedAt}` (`onSnapshot(rounds)`, #111: called with the season file's rounds as soon
+  as the file is in, before any f1api.dev check). Each round becomes `{round, raceName, raceResults,
   sprintResults, country}` (`country` = the circuit's, #18); result rows carry `driverId, code, name, teamId,
   teamName, number, nationality, teamNationality, position, points, session`. `position` is the classified
   finishing position, or `null` when not classified (f1api.dev sends null, "-" or "NC").
@@ -448,7 +449,8 @@ Title race (#85, see "Title race on What-If" above): a box above the lists with 
 line above each table and a 🏆 Champion tag on the champion's row as you drag.
 
 **index.html** — Static landing page (#50): five cards, one per row, in the order Drivers' Championship,
-Constructors' Championship, Race Finishing Positions, Title Simulator, What-If Results. Each card has a
+Constructors' Championship, What-If Results (#107: right after the championships), Race Finishing Positions, Title
+Simulator (the Pages menu on the other pages keeps its own order). Each card has a
 picture of that page's main chart on the left (on top on phones): an inline SVG with illustrative shapes, not
 real data (the drivers' picture ends each line with a driver number and code, the constructors' with a
 team-coloured name badge; no team logos, which are trademarks), coloured through CSS variables so it follows the theme (team colours as on the charts, Red Bull's
@@ -467,9 +469,13 @@ next round. Under the name, the **location** (#85): "Marina Bay, Singapore" from
 pages' "Try it in What-If →" link (`F1Common.clinchLink()`: `whatif.html?season=Y&start=clinch`, opening that race from the
 clinch order). It needs the standings: the page also loads the season with `F1Data.loadSeason(year)` (the same season
 file, shared with the calendar's request, plus the site's once-a-day check for newer rounds, #60), started together with
-the calendar. The strip doesn't wait for it; the lines are added when it arrives, from `titleRace()` on the latest loaded
-round L, only when the race shown is round L+1 (results for the last race not in yet: no line) and only when the load
-didn't fail (missing results could make it wrong). If it fails, the strip shows without the lines. After the last race it reads "2026 season · Season complete" with a "Final standings →" link (no
+the calendar. The strip doesn't wait for it. **#111:** the lines are drawn first from the season file alone, as soon as
+it's in (`loadSeason`'s `onSnapshot(rounds)` callback, before f1api.dev is asked about newer rounds, which can take
+seconds on the first visit of the day), and drawn again (replaced) from the checked season when that arrives, so the
+cards below don't jump when the check is slow. Either way they come from `titleRace()` on the latest loaded round L,
+only when the race shown is round L+1 (results for the last race not in yet: no line) and only when the load didn't
+fail (missing results could make it wrong): if the check fails, the lines drawn from the file are taken away and the
+strip shows without them. After the last race it reads "2026 season · Season complete" with a "Final standings →" link (no
 champion: that would need the full results, which may lag the race). It comes from the newest season's calendar
 (`F1Data.getCalendar(year, {dates:true})`): the season file, or f1api.dev without one, cached for a day. That and the
 season (for the clinch line) are the only data the homepage loads, both on page load; nothing on it fetches on
@@ -571,7 +577,7 @@ since fonts render differently on different machines.
   to each bar, Others folding and teammate shades on constructed results, legend, tooltip;
   same-seed results unchanged from `main`; seeded link; CSV/PNG; never fetches; both themes and phone fit), NC/finish rule shared by the position page and simulator (#46), flags and markers
   (#18/#30; movement also covers #20's tie-breaks), simulator runs (#56: responsive 30,000 run, progress, Cancel), what-if (#48: drag, keys, NC line, sprint weekends,
-  points and countback), homepage (#50: card order, pictures, vertical layout, theme colours; #78: checkered banner), next race (#89: fixed clock — next round, countdown wording, local time zone, sprint tag, short names, season complete, season file vs f1api.dev, old files without dates, failure hidden, both themes, phone fit; #85: the location with and without a city, and the clinch lines on constructed seasons — drivers' only, constructors' only, both, none — against an independent calculation, the link and following it into What-If, one season-file request and only the daily check from f1api.dev, nothing fetched on interaction, no line when the race shown isn't the round after the latest result, a failed or slow season load leaving the strip in place, both themes and phone fit), season files (#13: one-file
+  points and countback), homepage (#50/#107: card order, pictures, vertical layout, theme colours; #78: checkered banner), next race (#89, #111: a slow check shows the clinch lines from the season file at once and the cards don't move; fixed clock — next round, countdown wording, local time zone, sprint tag, short names, season complete, season file vs f1api.dev, old files without dates, failure hidden, both themes, phone fit; #85: the location with and without a city, and the clinch lines on constructed seasons — drivers' only, constructors' only, both, none — against an independent calculation, the link and following it into What-If, one season-file request and only the daily check from f1api.dev, nothing fetched on interaction, no line when the race shown isn't the round after the latest result, a failed or slow season load leaving the strip in place, both themes and phone fit), season files (#13: one-file
   loads, live check only after the file, complete seasons with no API calls, fallback, Refresh), daily check (#60: one check reused across pages and
   season switches, rechecked after a day or on Refresh, failed checks not kept), navigation (#62: home link and Pages menu on every
   data page, keyboard, season kept between pages, phone layout), layout (#64: every data page has the same page frame —
