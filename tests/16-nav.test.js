@@ -6,8 +6,8 @@ module.exports = async (t, h) => {
   const fakeFetch = async url => { const r = api(url); return { ok: r.status >= 200 && r.status < 300, status: r.status, json: async () => r.body }; };
   const full = await buildSnapshot(2026, fakeFetch, Date.now());
   const snapshots = { 2026: full, 2025: { ...full, year: 2025, complete: true } };
-  const PAGES = { drivers:"Drivers' Championship", constructors:"Constructors' Championship", position:'Race Finishing Positions',
-    simulator:'Title Simulator', whatif:'What-If Results' };
+  const PAGES = { drivers:"Drivers' Championship", constructors:"Constructors' Championship", whatif:'What-If Results',
+    position:'Race Finishing Positions', simulator:'Title Simulator' }; // #107: the homepage's card order
 
   for(const [name, title] of Object.entries(PAGES)){
     const p = await h.openPage(name, { snapshots }); await h.loaded(p);
@@ -26,6 +26,12 @@ module.exports = async (t, h) => {
     t.check(`${name}: no page errors`, p.errors.length === 0, p.errors.join('; '));
     await p.done();
   }
+
+  // #107: the menu lists the pages in the same order as the homepage's cards.
+  const home = await h.openPage('index', { snapshots });
+  const cards = await home.$$eval('a.card', as => as.map(a => a.getAttribute('href')));
+  await home.done();
+  t.check('the Pages menu has the same order as the homepage cards', JSON.stringify(cards) === JSON.stringify(Object.keys(PAGES).map(n => n + '.html')), cards.join(','));
 
   // Menu behaviour, and the season carried from page to page.
   const p = await h.openPage('drivers', { snapshots }); await h.loaded(p);
