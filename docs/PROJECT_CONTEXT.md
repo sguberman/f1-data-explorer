@@ -45,7 +45,8 @@ site/                 The website (deployed as the site root, so URLs are unchan
   nav.js              Site navigation (#62): home link + Pages menu at the left of .theme-bar (data pages).
   share.js            F1Share (#31): each page's setup in its URL (read once, kept current), Share button.
   export.js           F1Export (#33): "⤓ PNG · CSV" under each chart (composed PNG, CSV of the chart's data).
-  roundresult.js      F1RoundResult (#29): tap a round on a championship points chart for its result.
+  roundresult.js      F1RoundResult (#29): tap a round on a championship points chart (or, #113, the position
+                      chart) for its result.
   talkingpoints.js    F1TalkingPoints (#88): the drivers' page "Talking points" facts (leader, wins, streak, movers, NC).
   theme.css           Shared CSS variables (both themes), controls, pills, dropdowns, legends, pickers.
   flags/              Flag SVGs (#18).
@@ -312,7 +313,12 @@ chart, with the round shaded on the chart. Drivers' page: finishing order (pos, 
 phones — team, points), not classified last as NC, top 10 with "Show all N"; picked drivers in bold (on the
 constructors' page, the same list with the picked teams' drivers in bold). Sprint weekends get a Sprint / Grand Prix switch (weekend order; the Grand Prix shows first); ‹ › (and ←/→) step through
 rounds, × or Escape closes it, and moving the slider before the open round closes it. The tooltip title names
-the race, with "Click for the full result" on actual rounds (not on touch screens). Never fetches.
+the round with its short name (#106: `F1Common.shortGP`, "Round 5 · Singapore GP"; nothing for a name like "Round 5
+Grand Prix"), with "Click for the full result" on actual rounds (not on touch screens). Never fetches.
+`F1RoundResult.create({keys})` (#113) makes another independent panel: the **position-by-round chart** has one
+(`posResult`, panel `#posResult` under `#posWrap`, URL keys `presult` / `psession`, `xIsRound: true` since that chart's x
+values are round numbers). It opens any loaded round, whatever the slider says, since that chart covers the whole
+season; Escape outside a panel closes the one opened last.
 
 Both championship pages are laid out (issue #10, "Layout A"): points chart (with the title race line, #85) → (drivers: **Talking points**, #88) →
 **Projected final points** card → picker → **Championship position by round** card. Cards above the picker follow the picker
@@ -321,11 +327,13 @@ selection (except Talking points, which covers the whole field); the card below 
   (points so far + last-5-participated-rounds average × rounds left) said after each round. Its last value
   equals the end of the points chart's projection line. End labels on wide screens, ranked list (`.endLegend`)
   on narrow ones. Projections are computed once per season (`projData`) and the chart only rebuilds when the
-  selection changes.
+  selection changes. A tooltip per round (#110: hover, or tap on phones) lists each shown entry's projection
+  then, highest first, titled "After round 5 · Singapore GP" (`raceName` option, the page's `raceShort()`).
 - **Championship position by round** (issue #9): every driver/team as a line, P1 at the top, a flat segment
   at each round's position joined to the next round by an angled line; ties broken by countback of Grand
   Prix finishes. A **Show** dropdown switches between *Actual standings* and *Projected final standings*
-  (issue #10: ranked by the projection after each round; ties go to the higher-placed entry).
+  (issue #10: ranked by the projection after each round; ties go to the higher-placed entry). Tapping a round opens
+  its result under the chart (#113, above).
 - Both cards always cover the whole loaded season and ignore the round slider; driver codes / short team
   names as end labels, solid/dashed teammate convention.
 
@@ -585,7 +593,7 @@ since fonts render differently on different machines.
   links (#31: every page's setup round-trips through the URL, defaults left out, bad values ignored, Share copies it, a
   simulator link reproduces the same results) and exports (#33: PNG and CSV contents per chart, never fetches; #75/#76: share sheet on phones with download fallbacks,
   icon in the picture's corner), Jolpica patch (#59: a stripped season patched from a fake Jolpica comes back exactly; mismatches
-  stop the patch), round results (#29: tap a round for its result, sprint switch, arrows, close, NC last, projected
+  stop the patch), round results (#29: tap a round for its result; #113: the same on the position chart, own panel and URL keys, any loaded round; #106/#110: short race names in tooltips and the projected-points tooltip; sprint switch, arrows, close, NC last, projected
   rounds closed, never fetches, URL round-trip, phone fit), driver contributions (#84: per-driver and per-team points
   checked against an independent sum and the picker, picker/slider/theme/season, a driver with two teams on constructed
   data, labels never cut off, tooltip, PNG/CSV, never fetches, phone fit), talking points (#88: each fact against an

@@ -318,7 +318,8 @@ const F1Common = (() => {
   // convention (better-placed driver solid, the other dashed). Returns the new Chart; pass the previous
   // one to replace it. issue #10: with {projected:true, totalRounds} it plots the projected final standings
   // after each round (projectionsByRound) instead of the actual standings.
-  function renderPositionChart(canvas, seasonRounds, kind, prevChart, {projected=false, totalRounds=0}={}){
+  // plugins (#113): extra Chart.js plugins, e.g. the round-result panel's band.
+  function renderPositionChart(canvas, seasonRounds, kind, prevChart, {projected=false, totalRounds=0, plugins=[]}={}){
    if(prevChart) prevChart.destroy();
    if(!seasonRounds.length) return null;
    const {ids, pos, info} = projected ? projectionsByRound(seasonRounds, kind, totalRounds) : standingsByRound(seasonRounds, kind);
@@ -344,7 +345,7 @@ const F1Common = (() => {
      ds.forEach(d=>{ const cy=y.getPixelForValue(d.fin); drawFlag(ctx, d.nat, a.right+6, cy); ctx.fillStyle=d.borderColor; ctx.fillText(d.label, a.right+6+fw, cy); });
      ctx.restore();
    }};
-   return new Chart(canvas, {type:'line', data:{datasets:ds}, plugins:[ends],
+   return new Chart(canvas, {type:'line', data:{datasets:ds}, plugins:[ends, ...plugins],
      options:{responsive:true, maintainAspectRatio:false, animation:false, parsing:false,
        layout:{padding:{right:PR, top:4}}, plugins:{legend:{display:false}, tooltip:{enabled:false}},
        scales:{
@@ -361,7 +362,9 @@ const F1Common = (() => {
   // ids (the page's picker selection). End-of-line labels on wide screens; on narrow screens a ranked list
   // is written into legendEl instead (shown by the .endLegend CSS), like the points chart. `proj` is a
   // projectionsByRound() result, so a page can compute it once per season and redraw cheaply.
-  function renderProjectedPointsChart(canvas, legendEl, proj, kind, ids, prevChart){
+  // #110: a tooltip per round lists every shown entry's projection then, highest first; raceName(round) gives the
+  // round's short name for its title (e.g. shortGP of the calendar's name), or '' for none.
+  function renderProjectedPointsChart(canvas, legendEl, proj, kind, ids, prevChart, {raceName=()=>''}={}){
    if(prevChart) prevChart.destroy();
    legendEl.innerHTML='';
    if(!proj || !proj.ids.length) return null;
@@ -392,7 +395,10 @@ const F1Common = (() => {
      +`<span class="endLegendPts">${Math.round(d.fin)}</span></div>`).join('');
    return new Chart(canvas, {type:'line', data:{datasets:ds}, plugins:[ends],
      options:{responsive:true, maintainAspectRatio:false, animation:false, parsing:false,
-       layout:{padding:{right:PR, top:4}}, plugins:{legend:{display:false}, tooltip:{enabled:false}},
+       layout:{padding:{right:PR, top:4}}, interaction:{mode:'index', intersect:false},
+       plugins:{legend:{display:false}, tooltip:{filter:t=>t.raw && t.raw.y!=null, itemSort:(p,q)=>q.raw.y-p.raw.y,
+         callbacks:{title:t=>{ const r=t[0].raw.x, n=raceName(r); return 'After round '+r+(n?' · '+n:''); },
+           label:t=>' '+t.dataset.name+': '+t.raw.y+' pts', labelColor:t=>({borderColor:t.dataset.borderColor, backgroundColor:t.dataset.borderColor})}}},
        scales:{
          x:{type:'linear', min:1, max:Math.max(M,2), grid:{color:P.grid},
             ticks:{color:P.text, stepSize:1, autoSkip:false, maxRotation:0, callback:v=>(!narrow||v%2===1)?v:''},
