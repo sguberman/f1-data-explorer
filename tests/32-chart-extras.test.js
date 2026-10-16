@@ -16,7 +16,9 @@ module.exports = async (t, h) => {
       const tt = ch.options.plugins.tooltip; window.__tipWas = { enabled: tt.enabled, external: tt.external }; tt.enabled = false; tt.external = () => {}; ch.update('none');
       const b = ch.canvas.getBoundingClientRect(), x = Math.round(ch.scales.x.getPixelForValue(v)), dpr = devicePixelRatio, a = ch.chartArea;
       const px = y => [...ch.ctx.getImageData(x * dpr, y * dpr, 1, 1).data].join();
-      const ref = px(Math.round(a.top + 2)), empty = [];
+      // the background: the commonest pixel down the column (a fixed spot can land on a grid line, as it did on CI)
+      const seen = {}; for(let y = Math.round(a.top) + 2; y < a.bottom - 2; y += 3){ const k = px(y); seen[k] = (seen[k] || 0) + 1; }
+      const ref = Object.keys(seen).sort((m, n) => seen[n] - seen[m])[0], empty = [];
       const offPx = y => [...ch.ctx.getImageData((x - 25) * dpr, y * dpr, 1, 1).data].join();
       for(let y = Math.round(a.top) + 2; y < a.bottom - 2; y += 3) if(px(y) === ref && offPx(y) === ref) empty.push(y);
       window.__emptyBefore = { x, empty, ref };
