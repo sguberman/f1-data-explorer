@@ -450,7 +450,7 @@ line above each table and a 🏆 Champion tag on the champion's row as you drag.
 
 **index.html** — Static landing page (#50): five cards, one per row, in the order Drivers' Championship,
 Constructors' Championship, What-If Results (#107: right after the championships), Race Finishing Positions, Title
-Simulator (the Pages menu on the other pages keeps its own order). Each card has a
+Simulator; the Pages menu on the other pages (`nav.js`) lists them in the same order. Each card has a
 picture of that page's main chart on the left (on top on phones): an inline SVG with illustrative shapes, not
 real data (the drivers' picture ends each line with a driver number and code, the constructors' with a
 team-coloured name badge; no team logos, which are trademarks), coloured through CSS variables so it follows the theme (team colours as on the charts, Red Bull's
@@ -580,7 +580,7 @@ since fonts render differently on different machines.
   points and countback), homepage (#50/#107: card order, pictures, vertical layout, theme colours; #78: checkered banner), next race (#89, #111: a slow check shows the clinch lines from the season file at once and the cards don't move; fixed clock — next round, countdown wording, local time zone, sprint tag, short names, season complete, season file vs f1api.dev, old files without dates, failure hidden, both themes, phone fit; #85: the location with and without a city, and the clinch lines on constructed seasons — drivers' only, constructors' only, both, none — against an independent calculation, the link and following it into What-If, one season-file request and only the daily check from f1api.dev, nothing fetched on interaction, no line when the race shown isn't the round after the latest result, a failed or slow season load leaving the strip in place, both themes and phone fit), season files (#13: one-file
   loads, live check only after the file, complete seasons with no API calls, fallback, Refresh), daily check (#60: one check reused across pages and
   season switches, rechecked after a day or on Refresh, failed checks not kept), navigation (#62: home link and Pages menu on every
-  data page, keyboard, season kept between pages, phone layout), layout (#64: every data page has the same page frame —
+  data page, in the homepage cards' order (#107), keyboard, season kept between pages, phone layout), layout (#64: every data page has the same page frame —
   margins, width, title, intro text, card style), favicon (#68: every page links it; the files are valid), team seasons (#72: Sauber/Alfa Romeo/AlphaTauri names and season colours),
   links (#31: every page's setup round-trips through the URL, defaults left out, bad values ignored, Share copies it, a
   simulator link reproduces the same results) and exports (#33: PNG and CSV contents per chart, never fetches; #75/#76: share sheet on phones with download fallbacks,
