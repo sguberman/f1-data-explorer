@@ -18,21 +18,18 @@ module.exports = async (t, h) => {
       // start from no hover at all (the page may have moved under a still mouse, leaving a round hovered)
       ch.setActiveElements([]); ch.tooltip.setActiveElements([], { x: 0, y: 0 }); ch.update('none');
       const b = ch.canvas.getBoundingClientRect(), x = Math.round(ch.scales.x.getPixelForValue(v)), dpr = devicePixelRatio, a = ch.chartArea;
-      const px = y => [...ch.ctx.getImageData(x * dpr, y * dpr, 1, 1).data].join();
-      // the background: the commonest pixel down the column (a fixed spot can land on a grid line, as it did on CI)
-      const seen = {}; for(let y = Math.round(a.top) + 2; y < a.bottom - 2; y += 3){ const k = px(y); seen[k] = (seen[k] || 0) + 1; }
-      const ref = Object.keys(seen).sort((m, n) => seen[n] - seen[m])[0], empty = [];
-      const offPx = y => [...ch.ctx.getImageData((x - 25) * dpr, y * dpr, 1, 1).data].join();
-      for(let y = Math.round(a.top) + 2; y < a.bottom - 2; y += 3) if(px(y) === ref && offPx(y) === ref) empty.push(y);
-      window.__emptyBefore = { x, empty, ref };
+      // the column at the round and one 25px to its left, every 3px down the plot, before the hover (compared pixel by
+      // pixel with after it: no guess at a background colour, which a grid line in that column can spoil, as on CI)
+      const col = cx => { const out = []; for(let y = Math.round(a.top) + 2; y < a.bottom - 2; y += 3) out.push([...ch.ctx.getImageData(cx * dpr, y * dpr, 1, 1).data].join()); return out; };
+      window.__before = { x, at: col(x), left: col(x - 25) };
       return { x: b.left + ch.scales.x.getPixelForValue(v), y: b.top + (a.top + a.bottom) / 2 }; }, [sel, v]);
     await p.mouse.move(pt.x, pt.y); await p.waitForTimeout(120);
-    const ok = await p.evaluate(sel => { const ch = Chart.getChart(document.querySelector(sel)), { x, empty, ref } = window.__emptyBefore;
-      const px = y => [...ch.ctx.getImageData(x * devicePixelRatio, y * devicePixelRatio, 1, 1).data].join();
-      const off = y => [...ch.ctx.getImageData((x - 25) * devicePixelRatio, y * devicePixelRatio, 1, 1).data].join();
-      const changed = empty.filter(y => px(y) !== ref);
-      const offSame = empty.filter(y => off(y) === ref).length;
-      const res = { ok: empty.length > 10 && changed.length >= empty.length * 0.6 && offSame >= empty.length * 0.6, empty: empty.length, changed: changed.length, offSame,
+    const ok = await p.evaluate(sel => { const ch = Chart.getChart(document.querySelector(sel)), a = ch.chartArea, dpr = devicePixelRatio, { x, at, left } = window.__before;
+      const col = cx => { const out = []; for(let y = Math.round(a.top) + 2; y < a.bottom - 2; y += 3) out.push([...ch.ctx.getImageData(cx * dpr, y * dpr, 1, 1).data].join()); return out; };
+      const at2 = col(x), left2 = col(x - 25);
+      const changed = at.filter((v, i) => v !== at2[i]).length, leftChanged = left.filter((v, i) => v !== left2[i]).length;
+      // the line covers nearly the whole column (dataset lines and hover dots are drawn over it in a few places)
+      const res = { ok: at.length > 10 && changed >= at.length * 0.7 && leftChanged <= at.length * 0.1, samples: at.length, changed, leftChanged,
         active: ch.tooltip.getActiveElements().length, opacity: ch.tooltip.opacity };
       const tt = ch.options.plugins.tooltip; tt.enabled = window.__tipWas.enabled; tt.external = window.__tipWas.external; ch.update('none');
       return res; }, sel);
