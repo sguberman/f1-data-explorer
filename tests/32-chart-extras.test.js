@@ -10,7 +10,10 @@ module.exports = async (t, h) => {
   // right of the hovered round, and its size depends on the fonts, so the comparison column must be on the left).
   let p;
   const hoverLine = async (sel, v) => {
+    // the tooltip box is drawn on the same canvas and its size and place depend on the fonts, so for this check it is
+    // switched to "external" (Chart.js still tracks the hovered round, which is all the line needs, but paints no box)
     const pt = await p.evaluate(([sel, v]) => { const ch = Chart.getChart(document.querySelector(sel)); ch.canvas.scrollIntoView({ block: 'center' });
+      const tt = ch.options.plugins.tooltip; window.__tipWas = { enabled: tt.enabled, external: tt.external }; tt.enabled = false; tt.external = () => {}; ch.update('none');
       const b = ch.canvas.getBoundingClientRect(), x = Math.round(ch.scales.x.getPixelForValue(v)), dpr = devicePixelRatio, a = ch.chartArea;
       const px = y => [...ch.ctx.getImageData(x * dpr, y * dpr, 1, 1).data].join();
       const ref = px(Math.round(a.top + 2)), empty = [];
@@ -23,7 +26,12 @@ module.exports = async (t, h) => {
       const px = y => [...ch.ctx.getImageData(x * devicePixelRatio, y * devicePixelRatio, 1, 1).data].join();
       const off = y => [...ch.ctx.getImageData((x - 25) * devicePixelRatio, y * devicePixelRatio, 1, 1).data].join();
       const changed = empty.filter(y => px(y) !== ref);
-      return empty.length > 10 && changed.length >= empty.length * 0.6 && empty.filter(y => off(y) === ref).length >= empty.length * 0.6; }, sel);
+      const offSame = empty.filter(y => off(y) === ref).length;
+      const res = { ok: empty.length > 10 && changed.length >= empty.length * 0.6 && offSame >= empty.length * 0.6, empty: empty.length, changed: changed.length, offSame,
+        active: ch.tooltip.getActiveElements().length, opacity: ch.tooltip.opacity };
+      const tt = ch.options.plugins.tooltip; tt.enabled = window.__tipWas.enabled; tt.external = window.__tipWas.external; ch.update('none');
+      return res; }, sel);
+    await p.mouse.move(pt.x + 1, pt.y); await p.waitForTimeout(120); // hover again with the normal tooltip back
     return ok;
   };
   for(const page of ['drivers', 'constructors']){
@@ -58,12 +66,14 @@ module.exports = async (t, h) => {
     t.check(`${page}: projected lines have no resting dots, only a hover dot`, await p.evaluate(() => Chart.getChart(document.getElementById('projChart')).data.datasets
       .every(d => d.pointRadius === 0 && d.pointHoverRadius > 0)));
     // a real hover shows it, with a vertical line at that round (F1Common.hoverLine)
-    t.check(`${page}: hovering draws a vertical line at the round`, await hoverLine('#projChart', 5));
+    let hl = await hoverLine('#projChart', 5);
+    t.check(`${page}: hovering draws a vertical line at the round`, hl.ok, JSON.stringify(hl));
     t.check(`${page}: hovering a round shows the tooltip`, await p.evaluate(() => { const tip = Chart.getChart(document.getElementById('projChart')).tooltip;
       return tip.opacity > 0 && tip.title[0] === 'After round 5 · Singapore GP' && tip.body.length > 0; }));
 
     // the points chart gets the same hover line (owner's request); its x values are column indexes (round 3 = 2)
-    t.check(`${page}: the points chart also draws the hover line at the hovered round`, await hoverLine('#c', 2));
+    hl = await hoverLine('#c', 2);
+    t.check(`${page}: the points chart also draws the hover line at the hovered round`, hl.ok, JSON.stringify(hl));
 
     // ---- #113 ----
     const tapPos = async n => {
