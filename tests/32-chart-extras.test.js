@@ -12,8 +12,11 @@ module.exports = async (t, h) => {
   const hoverLine = async (sel, v) => {
     // the tooltip box is drawn on the same canvas and its size and place depend on the fonts, so for this check it is
     // switched to "external" (Chart.js still tracks the hovered round, which is all the line needs, but paints no box)
+    await p.mouse.move(0, 0); await p.waitForTimeout(50);
     const pt = await p.evaluate(([sel, v]) => { const ch = Chart.getChart(document.querySelector(sel)); ch.canvas.scrollIntoView({ block: 'center' });
-      const tt = ch.options.plugins.tooltip; window.__tipWas = { enabled: tt.enabled, external: tt.external }; tt.enabled = false; tt.external = () => {}; ch.update('none');
+      const tt = ch.options.plugins.tooltip; window.__tipWas = { enabled: tt.enabled, external: tt.external }; tt.enabled = false; tt.external = () => {};
+      // start from no hover at all (the page may have moved under a still mouse, leaving a round hovered)
+      ch.setActiveElements([]); ch.tooltip.setActiveElements([], { x: 0, y: 0 }); ch.update('none');
       const b = ch.canvas.getBoundingClientRect(), x = Math.round(ch.scales.x.getPixelForValue(v)), dpr = devicePixelRatio, a = ch.chartArea;
       const px = y => [...ch.ctx.getImageData(x * dpr, y * dpr, 1, 1).data].join();
       // the background: the commonest pixel down the column (a fixed spot can land on a grid line, as it did on CI)
