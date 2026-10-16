@@ -6,20 +6,22 @@
 module.exports = async (t, h) => {
   const J = JSON.stringify;
   // Hovers value v on a chart's x axis and checks a thin vertical line appears there: pixels in that column that were empty
-  // before the hover are drawn on after it, while a column 25px away stays empty.
+  // before the hover are drawn on after it, while a column 25px to the left stays as it was (the tooltip box opens to the
+  // right of the hovered round, and its size depends on the fonts, so the comparison column must be on the left).
   let p;
   const hoverLine = async (sel, v) => {
     const pt = await p.evaluate(([sel, v]) => { const ch = Chart.getChart(document.querySelector(sel)); ch.canvas.scrollIntoView({ block: 'center' });
       const b = ch.canvas.getBoundingClientRect(), x = Math.round(ch.scales.x.getPixelForValue(v)), dpr = devicePixelRatio, a = ch.chartArea;
       const px = y => [...ch.ctx.getImageData(x * dpr, y * dpr, 1, 1).data].join();
       const ref = px(Math.round(a.top + 2)), empty = [];
-      for(let y = Math.round(a.top) + 2; y < a.bottom - 2; y += 3) if(px(y) === ref) empty.push(y);
+      const offPx = y => [...ch.ctx.getImageData((x - 25) * dpr, y * dpr, 1, 1).data].join();
+      for(let y = Math.round(a.top) + 2; y < a.bottom - 2; y += 3) if(px(y) === ref && offPx(y) === ref) empty.push(y);
       window.__emptyBefore = { x, empty, ref };
       return { x: b.left + ch.scales.x.getPixelForValue(v), y: b.top + (a.top + a.bottom) / 2 }; }, [sel, v]);
     await p.mouse.move(pt.x, pt.y); await p.waitForTimeout(120);
     const ok = await p.evaluate(sel => { const ch = Chart.getChart(document.querySelector(sel)), { x, empty, ref } = window.__emptyBefore;
       const px = y => [...ch.ctx.getImageData(x * devicePixelRatio, y * devicePixelRatio, 1, 1).data].join();
-      const off = y => [...ch.ctx.getImageData((x + 25) * devicePixelRatio, y * devicePixelRatio, 1, 1).data].join();
+      const off = y => [...ch.ctx.getImageData((x - 25) * devicePixelRatio, y * devicePixelRatio, 1, 1).data].join();
       const changed = empty.filter(y => px(y) !== ref);
       return empty.length > 10 && changed.length >= empty.length * 0.6 && empty.filter(y => off(y) === ref).length >= empty.length * 0.6; }, sel);
     return ok;
