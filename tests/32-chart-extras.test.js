@@ -33,10 +33,23 @@ module.exports = async (t, h) => {
     });
     t.check(`${page}: projected final points has a tooltip by round (#110)`, t110.enabled && t110.mode === 'index' && t110.title === 'After round 5 · Singapore GP', J(t110));
     t.check(`${page}: …listing every shown ${kind === 'teams' ? 'team' : 'driver'}'s projection then, highest first`, t110.n > 0 && J(t110.labels) === J(t110.want), J(t110));
-    // a real hover shows it
+    // no dots at rest, only on hover (the owner's request: they made the hovered round hard to see)
+    t.check(`${page}: projected lines have no resting dots, only a hover dot`, await p.evaluate(() => Chart.getChart(document.getElementById('projChart')).data.datasets
+      .every(d => d.pointRadius === 0 && d.pointHoverRadius > 0)));
+    // a real hover shows it, with a vertical line at that round: find pixels in round 5's column that are empty before the hover
     const hover = await p.evaluate(() => { const ch = Chart.getChart(document.getElementById('projChart')); ch.canvas.scrollIntoView({ block: 'center' });
-      const b = ch.canvas.getBoundingClientRect(); return { x: b.left + ch.scales.x.getPixelForValue(5), y: b.top + (ch.chartArea.top + ch.chartArea.bottom) / 2 }; });
+      const b = ch.canvas.getBoundingClientRect(), x = Math.round(ch.scales.x.getPixelForValue(5)), dpr = devicePixelRatio, a = ch.chartArea;
+      const px = y => [...ch.ctx.getImageData(x * dpr, y * dpr, 1, 1).data].join();
+      const ref = px(Math.round(a.top + 2)), empty = [];
+      for(let y = Math.round(a.top) + 2; y < a.bottom - 2; y += 3) if(px(y) === ref) empty.push(y);
+      window.__emptyBefore = { x, empty, ref };
+      return { x: b.left + ch.scales.x.getPixelForValue(5), y: b.top + (a.top + a.bottom) / 2 }; });
     await p.mouse.move(hover.x, hover.y); await p.waitForTimeout(120);
+    t.check(`${page}: hovering draws a vertical line at the round`, await p.evaluate(() => { const ch = Chart.getChart(document.getElementById('projChart')), { x, empty, ref } = window.__emptyBefore;
+      const px = y => [...ch.ctx.getImageData(x * devicePixelRatio, y * devicePixelRatio, 1, 1).data].join();
+      const off = y => [...ch.ctx.getImageData((x + 25) * devicePixelRatio, y * devicePixelRatio, 1, 1).data].join();
+      const changed = empty.filter(y => px(y) !== ref);
+      return empty.length > 10 && changed.length >= empty.length * 0.6 && empty.filter(y => off(y) === ref).length >= empty.length * 0.6; }));
     t.check(`${page}: hovering a round shows the tooltip`, await p.evaluate(() => { const tip = Chart.getChart(document.getElementById('projChart')).tooltip;
       return tip.opacity > 0 && tip.title[0] === 'After round 5 · Singapore GP' && tip.body.length > 0; }));
 

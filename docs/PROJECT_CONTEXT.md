@@ -328,7 +328,8 @@ selection (except Talking points, which covers the whole field); the card below 
   equals the end of the points chart's projection line. End labels on wide screens, ranked list (`.endLegend`)
   on narrow ones. Projections are computed once per season (`projData`) and the chart only rebuilds when the
   selection changes. A tooltip per round (#110: hover, or tap on phones) lists each shown entry's projection
-  then, highest first, titled "After round 5 · Singapore GP" (`raceName` option, the page's `raceShort()`).
+  then, highest first, titled "After round 5 · Singapore GP" (`raceName` option, the page's `raceShort()`). No dots at
+  rest (only on the hovered round), and a thin vertical line at that round (`F1Common.hoverLine`, a shared plugin).
 - **Championship position by round** (issue #9): every driver/team as a line, P1 at the top, a flat segment
   at each round's position joined to the next round by an angled line; ties broken by countback of Grand
   Prix finishes. A **Show** dropdown switches between *Actual standings* and *Projected final standings*

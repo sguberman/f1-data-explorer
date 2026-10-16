@@ -362,6 +362,15 @@ const F1Common = (() => {
   // ids (the page's picker selection). End-of-line labels on wide screens; on narrow screens a ranked list
   // is written into legendEl instead (shown by the .endLegend CSS), like the points chart. `proj` is a
   // projectionsByRound() result, so a page can compute it once per season and redraw cheaply.
+  // #110: a thin vertical line at the round under the pointer (or the tapped round) while a tooltip is showing, so it's
+  // clear which round the tooltip is about. Drawn behind the lines; a Chart.js plugin, also usable by other charts.
+  const hoverLine = {id:'hoverLine', beforeDatasetsDraw(ch){
+    const tip = ch.tooltip, act = tip && tip.getActiveElements ? tip.getActiveElements() : [];
+    if(!act.length || !tip.opacity) return;
+    const x = act[0].element.x, a = ch.chartArea, c = ch.ctx;
+    c.save(); c.strokeStyle = F1Theme.chart().label; c.globalAlpha = 0.55; c.lineWidth = 1;
+    c.beginPath(); c.moveTo(Math.round(x)+0.5, a.top); c.lineTo(Math.round(x)+0.5, a.bottom); c.stroke(); c.restore();
+  }};
   // #110: a tooltip per round lists every shown entry's projection then, highest first; raceName(round) gives the
   // round's short name for its title (e.g. shortGP of the calendar's name), or '' for none.
   function renderProjectedPointsChart(canvas, legendEl, proj, kind, ids, prevChart, {raceName=()=>''}={}){
@@ -376,7 +385,8 @@ const F1Common = (() => {
    const ds = shown.map(id=>{
      const c=F1Theme.team(teamColor(proj.info[id].teamId)), fin=proj.pts[id][M-1];
      return {data:proj.pts[id].map((v,i)=>({x:i+1, y:v==null?null:Math.round(v)})), borderColor:c, backgroundColor:c,
-       borderDash:dash[id], borderWidth:2, pointRadius:2.5, tension:0, spanGaps:false, name:label(id), nat:nationalityOf(kind, id), fin};
+       borderDash:dash[id], borderWidth:2, pointRadius:0, pointHoverRadius:4, pointHoverBorderWidth:2, pointHoverBorderColor:P.pointRing, // #110: dots only on hover
+       tension:0, spanGaps:false, name:label(id), nat:nationalityOf(kind, id), fin};
    });
    canvas.parentElement.style.height = (narrow?320:380)+'px';
    const mc=document.createElement('canvas').getContext('2d'); mc.font=font;
@@ -393,7 +403,7 @@ const F1Common = (() => {
    legendEl.innerHTML = ds.map((d,i)=>`<div class="endLegendRow"><span class="endLegendRank">${i+1}</span>`
      +`<span class="endLegendDot" style="background:${d.borderColor}"></span><span class="endLegendName">${flagHTML(d.nat)}${d.name}</span>`
      +`<span class="endLegendPts">${Math.round(d.fin)}</span></div>`).join('');
-   return new Chart(canvas, {type:'line', data:{datasets:ds}, plugins:[ends],
+   return new Chart(canvas, {type:'line', data:{datasets:ds}, plugins:[ends, hoverLine],
      options:{responsive:true, maintainAspectRatio:false, animation:false, parsing:false,
        layout:{padding:{right:PR, top:4}}, interaction:{mode:'index', intersect:false},
        plugins:{legend:{display:false}, tooltip:{filter:t=>t.raw && t.raw.y!=null, itemSort:(p,q)=>q.raw.y-p.raw.y,
@@ -622,7 +632,7 @@ const F1Common = (() => {
   }
 
   return { TEAM_COLORS, SEASON_TEAM_COLORS, setSeason, maxWeekendPoints, titleRace, titleRaceText, renderTitleRace, titleResultText, clinchLink, shortGP, teamColor, SHORT_TEAM_NAMES, shortTeamName, SEASON_META, seasonMeta, YEARS,
-    isNarrow, withAlpha, standingsMoves, moveHTML, driverPickerRowHTML, markActivePreset,
+    isNarrow, withAlpha, hoverLine, standingsMoves, moveHTML, driverPickerRowHTML, markActivePreset,
     flagCode, flagHTML, flagSpace, FLAG_ROOM, drawFlag, indexPeople, nationalityOf, numberOf, ridgeFlags, ridgeMarkers, ridgeKeyHTML, standingsOrder, standingsRank, pickerTeamLabelHTML,
     standingsByRound, renderPositionChart, projectionsByRound, renderProjectedPointsChart };
 })();
