@@ -359,7 +359,7 @@ const fw=F1Common.flagSpace(ds.filter(s=>s.kind==='p').map(s=>s.nat)); // #18: r
  const cv=document.getElementById('c'); cv.dataset.pointsLabel=cv.dataset.pointsLabel||cv.getAttribute('aria-label');
  cv.setAttribute('aria-label', gap?'Line chart of how many points each selected team is behind the highest-ranked selected team after each round, with a line showing the points still available.':cv.dataset.pointsLabel);
  if(chart)chart.destroy();
- chart=new Chart(document.getElementById('c'),{type:'line',data:{labels:R.map((_,i)=>String(i+1)),datasets:ds},plugins:[shade,marks,ends,F1RoundResult.band],
+ chart=new Chart(document.getElementById('c'),{type:'line',data:{labels:R.map((_,i)=>String(i+1)),datasets:ds},plugins:[shade,marks,ends,F1RoundResult.band,F1Common.hoverLine],
  options:{responsive:true,maintainAspectRatio:false,animation:false,layout:{padding:{right:PR,top:4}},interaction:{mode:'index',intersect:false},
  plugins:{legend:{display:false},tooltip:{filter:i=>i.raw!=null&&((i.dataset.kind==='a'||i.dataset.kind==='ka')||i.dataIndex>L-1),itemSort:(a,b)=>gap?a.raw-b.raw:b.raw-a.raw,
  callbacks:{title:t=>{const i=t[0].dataIndex, n=raceShort(i+1);return 'Round '+(i+1)+(n?' · '+n:'')+(i>L-1?' (projected)':'');},footer:t=>F1RoundResult.hint(t[0].dataIndex),label:t=>' '+t.dataset.team+': '+(!gap||t.dataset.kind[0]==='k'?Math.round(t.raw):Math.round(t.raw)>0?Math.round(t.raw)+' behind':'leader')}}},
