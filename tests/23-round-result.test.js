@@ -34,8 +34,9 @@ module.exports = async (t, h) => {
   t.check('drivers you picked are highlighted', JSON.stringify(s.picked.slice().sort()) === JSON.stringify(sel.filter(id => s.rows.some(r => r[0] === id)).sort()) && s.picked.length > 0, JSON.stringify(s.picked));
   t.check('the round is shaded on the chart', await p.evaluate(n => { const ch = Chart.getChart(document.getElementById('c')), x = Math.round(ch.scales.x.getPixelForValue(n - 1)), y = Math.round(ch.chartArea.bottom - 3);
     const d = ch.ctx.getImageData(x * devicePixelRatio, y * devicePixelRatio, 1, 1).data; return d[0] < 250; }, info.nc));
-  t.check('tooltip title names the race; footer says click', await p.evaluate(n => { const ch = Chart.getChart(document.getElementById('c')), cb = ch.options.plugins.tooltip.callbacks;
-    const it = [{ dataIndex: n - 1 }]; return /^Round \d+ · \S/.test(cb.title(it)) && cb.footer(it) === 'Click for the full result' && cb.footer([{ dataIndex: 20 }]) === ''; }, info.nc));
+  // (the fixture's "Round N Grand Prix" names have no short name, #106; 32-chart-extras checks real-style names)
+  t.check('tooltip title gives the round; footer says click', await p.evaluate(n => { const ch = Chart.getChart(document.getElementById('c')), cb = ch.options.plugins.tooltip.callbacks;
+    const it = [{ dataIndex: n - 1 }]; return cb.title(it) === `Round ${n}` && cb.footer(it) === 'Click for the full result' && cb.footer([{ dataIndex: 20 }]) === ''; }, info.nc));
 
   // Sprint weekend: switch sessions.
   const sr = info.sprints[0];

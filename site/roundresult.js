@@ -14,9 +14,15 @@
    F1RoundResult.band      a Chart.js plugin that shades the open round on the chart.
    F1RoundResult.update()  call after every redraw (round, season, picks or theme changed).
    F1RoundResult.hint(i)   tooltip footer for column i ("Click for the full result" on actual rounds).
-   URL (#31): result=<round>, session=sprint. */
+   URL (#31): result=<round>, session=sprint.
+   #113: F1RoundResult.create({keys:{result, session}}) makes another, independent panel (own state, band and URL
+   keys) for a second chart; attach() then also takes id (the panel's id) and xIsRound: true when the chart's x
+   values are round numbers (a linear axis, like the position-by-round chart) rather than column indexes. */
 const F1RoundResult = (() => {
+  let active = null; // the panel opened last: Escape outside the panels closes that one (#113)
+  function make({ keys = { result: 'result', session: 'session' } } = {}){
   let opts = null, panel = null, open = null, session = 'gp', expanded = false, lastYear = null, linkUsed = false;
+  const me = {};
   const TOP = 10;
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
   const coarse = () => matchMedia('(pointer:coarse)').matches;
@@ -71,7 +77,7 @@ const F1RoundResult = (() => {
 
   function show(n, how){
     if(!openable(n)) return;
-    open = n; render(); redrawChart();
+    open = n; active = me; render(); redrawChart();
     if(how === 'tap') panel.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
     F1Share.sync();
   }
@@ -86,13 +92,14 @@ const F1RoundResult = (() => {
     const ch = opts.getChart(); if(!ch || !ch.scales.x) return null;
     const box = ch.canvas.getBoundingClientRect(), x = e.clientX - box.left, y = e.clientY - box.top, a = ch.chartArea;
     if(x < a.left - 8 || x > a.right + 8 || y < a.top || y > ch.scales.x.bottom) return null;
-    return Math.round(ch.scales.x.getValueForPixel(x));
+    const v = Math.round(ch.scales.x.getValueForPixel(x));
+    return opts.xIsRound ? v - 1 : v; // the column index (round - 1)
   }
 
   function attach(o){
     opts = o;
     panel = document.createElement('div');
-    panel.className = 'rr'; panel.id = 'roundResult'; panel.hidden = true; panel.setAttribute('role', 'region');
+    panel.className = 'rr'; panel.id = o.id || 'roundResult'; panel.hidden = true; panel.setAttribute('role', 'region');
     o.after.insertAdjacentElement('afterend', panel);
     o.canvas.addEventListener('click', e => { const i = columnAt(e); if(i != null && openable(i + 1)) show(i + 1, 'tap'); });
     o.canvas.addEventListener('mousemove', e => { const i = columnAt(e); o.canvas.style.cursor = i != null && openable(i + 1) ? 'pointer' : ''; });
@@ -109,16 +116,16 @@ const F1RoundResult = (() => {
     // Escape closes it from inside the panel, or after tapping the chart (focus left on the page, not in a menu).
     document.addEventListener('keydown', e => {
       const a = document.activeElement;
-      if(e.key === 'Escape' && open != null && (panel.contains(a) || a === document.body || a === o.canvas)) close();
+      if(e.key === 'Escape' && open != null && (panel.contains(a) || ((a === document.body || a === o.canvas) && active === me))) close();
     });
     panel.addEventListener('keydown', e => {
       if(e.key === 'ArrowLeft' && !e.target.closest('.rr-seg')) show(open - 1);
       else if(e.key === 'ArrowRight' && !e.target.closest('.rr-seg')) show(open + 1);
     });
     F1Share.register(() => {
-      if(open == null) return { result: null, session: null };
+      if(open == null) return { [keys.result]: null, [keys.session]: null };
       const rd = roundData(open), sprint = session === 'sprint' && rd && rd.sprintResults && rd.sprintResults.length;
-      return { result: String(open), session: sprint ? 'sprint' : null };
+      return { [keys.result]: String(open), [keys.session]: sprint ? 'sprint' : null };
     });
   }
 
@@ -130,8 +137,8 @@ const F1RoundResult = (() => {
       lastYear = year; open = null; session = 'gp';
       if(!linkUsed && st.rounds && st.rounds.length){
         linkUsed = true;
-        const n = parseInt(F1Share.param('result'), 10);
-        if(F1Share.param('session') === 'sprint') session = 'sprint';
+        const n = parseInt(F1Share.param(keys.result), 10);
+        if(F1Share.param(keys.session) === 'sprint') session = 'sprint';
         if(openable(n)) open = n;
       }
     }
@@ -142,7 +149,7 @@ const F1RoundResult = (() => {
 
   const band = { id: 'roundResultBand', beforeDatasetsDraw(ch){
     if(open == null || !panel || panel.hidden) return;
-    const x = ch.scales.x, a = ch.chartArea, i = open - 1;
+    const x = ch.scales.x, a = ch.chartArea, i = opts.xIsRound ? open : open - 1;
     const step = Math.abs(x.getPixelForValue(1) - x.getPixelForValue(0)) || 20;
     const l = Math.max(a.left, x.getPixelForValue(i) - step / 2), r = Math.min(a.right, x.getPixelForValue(i) + step / 2);
     const c = ch.ctx; c.save(); c.fillStyle = F1Theme.chart().pick; c.fillRect(l, a.top, r - l, a.bottom - a.top); c.restore();
@@ -150,5 +157,9 @@ const F1RoundResult = (() => {
 
   const hint = i => !opts || coarse() || !openable(i + 1) ? '' : 'Click for the full result';
 
-  return { attach, update, band, hint, get open(){ return open; } };
+  Object.assign(me, { attach, update, band, hint });
+  Object.defineProperty(me, 'open', { get: () => open }); // a live getter (Object.assign would copy its value once)
+  return me;
+  }
+  return Object.assign(make(), { create: make });
 })();

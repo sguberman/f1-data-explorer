@@ -83,7 +83,7 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
 <canvas id="projChart" role="img" aria-label="Line chart of each selected team's projected final championship points, as projected after each round of the season."></canvas>
 </div>
 <div id="projLegend" class="endLegend"></div>
-<div style="font-size:12px;color:var(--muted);line-height:1.6;margin:8px 2px 2px;">What the projection on the chart above would have said after each round: points so far plus the average of the last 5 rounds each team took part in, for every round left.</div>
+<div style="font-size:12px;color:var(--muted);line-height:1.6;margin:8px 2px 2px;">What the projection on the chart above would have said after each round: points so far plus the average of the last 5 rounds each team took part in, for every round left. Hover over a round, or tap it, to see each projection then.</div>
 </div>
 <div class="card">
 <div style="font-size:12px;color:var(--sub);margin-bottom:10px;">Teams shown</div>
@@ -137,23 +137,33 @@ const POS_NOTES={
  actual:"Position in the constructors' standings after each round, for the whole season so far. Ties on points are broken by countback (most wins, then most second places, and so on).",
  proj:"Projected finishing order after each round, from the same projection as the chart at the top (points so far plus the last-5-round average for every round left). Ties go to the higher-placed team in the standings."
 };
+// #113: tap a round on the position chart for its result, in a panel under that chart (its own URL keys: presult,
+// psession). The chart covers the whole season, so every loaded round can be opened, whatever the slider says.
+const posResult = F1RoundResult.create({keys:{result:'presult', session:'psession'}});
 function drawPositions(){
  const projected = document.getElementById('posView').value==='proj';
  posChart = F1Common.renderPositionChart(document.getElementById('posChart'), currentSeasonRounds, 'teams', posChart,
-   {projected, totalRounds: currentSeasonRounds.length ? totalRounds() : 0});
+   {projected, totalRounds: currentSeasonRounds.length ? totalRounds() : 0, plugins:[posResult.band]});
+ posResult.update();
  document.getElementById('posSub').textContent = currentSeasonRounds.length ? `all teams · through round ${currentSeasonRounds.length}` : '';
- document.getElementById('posNote').textContent = POS_NOTES[projected?'proj':'actual'];
+ document.getElementById('posNote').textContent = POS_NOTES[projected?'proj':'actual'] + ' Tap a round for its result.'; // #113
 }
 document.getElementById('posView').addEventListener('change', drawPositions);
 
 // issue #10: projected final points after each round, for the picker selection. Projections are computed
 // once per season (projData); redrawing only rebuilds the chart, and only when the selection changes.
 let projData=null, projChart=null, projKey=null;
+// #106/#110: a round's short name for tooltips ("Singapore GP"), from the calendar or the loaded results; '' if unknown.
+function raceShort(r){
+ const cal=currentCalendar, rd=currentSeasonRounds.find(x=>x.round===r);
+ const name=(cal && cal.raceNames && cal.raceNames[r]) || (rd && rd.raceName);
+ return name ? F1Common.shortGP(name) : '';
+}
 function drawProjPoints(force){
  const ids=selectedTeamIds||[], key=ids.join(',');
  if(!force && key===projKey) return;
  projKey=key;
- projChart = F1Common.renderProjectedPointsChart(document.getElementById('projChart'), document.getElementById('projLegend'), projData, 'teams', ids, projChart);
+ projChart = F1Common.renderProjectedPointsChart(document.getElementById('projChart'), document.getElementById('projLegend'), projData, 'teams', ids, projChart, {raceName:raceShort});
 }
 
 async function buildFromSelection(detail){
@@ -352,7 +362,7 @@ const fw=F1Common.flagSpace(ds.filter(s=>s.kind==='p').map(s=>s.nat)); // #18: r
  chart=new Chart(document.getElementById('c'),{type:'line',data:{labels:R.map((_,i)=>String(i+1)),datasets:ds},plugins:[shade,marks,ends,F1RoundResult.band],
  options:{responsive:true,maintainAspectRatio:false,animation:false,layout:{padding:{right:PR,top:4}},interaction:{mode:'index',intersect:false},
  plugins:{legend:{display:false},tooltip:{filter:i=>i.raw!=null&&((i.dataset.kind==='a'||i.dataset.kind==='ka')||i.dataIndex>L-1),itemSort:(a,b)=>gap?a.raw-b.raw:b.raw-a.raw,
- callbacks:{title:t=>{const i=t[0].dataIndex;return 'Round '+(i+1)+(R[i]&&R[i]!=='TBD'?' · '+R[i]:'')+(i>L-1?' (projected)':'');},footer:t=>F1RoundResult.hint(t[0].dataIndex),label:t=>' '+t.dataset.team+': '+(!gap||t.dataset.kind[0]==='k'?Math.round(t.raw):Math.round(t.raw)>0?Math.round(t.raw)+' behind':'leader')}}},
+ callbacks:{title:t=>{const i=t[0].dataIndex, n=raceShort(i+1);return 'Round '+(i+1)+(n?' · '+n:'')+(i>L-1?' (projected)':'');},footer:t=>F1RoundResult.hint(t[0].dataIndex),label:t=>' '+t.dataset.team+': '+(!gap||t.dataset.kind[0]==='k'?Math.round(t.raw):Math.round(t.raw)>0?Math.round(t.raw)+' behind':'leader')}}},
  scales:{x:{offset:false,grid:{display:false},border:{color:P.axis},title:{display:true,text:'Round',color:P.text}},
  // Gap view: reversed axis, so the leader runs along the top and teams drop away below it, as in the points view.
  y:{min:0,max:yMax,reverse:gap,ticks:{stepSize:yStep},grid:{color:P.grid},border:{display:false},title:{display:true,text:gap?'Points behind the leader':'Cumulative championship points',color:P.text}}}}});
@@ -544,6 +554,8 @@ F1Export.attach(document.getElementById('contribCard'), {
 });
 F1RoundResult.attach({kind:'teams', canvas:document.getElementById('c'), after:document.getElementById('chartWrap'), getChart:()=>chart,
  getState:()=>({rounds:currentSeasonRounds, L, selected:selectedTeamIds})}); // #29
+posResult.attach({kind:'teams', canvas:document.getElementById('posChart'), after:document.getElementById('posWrap'), getChart:()=>posChart,
+ id:'posResult', xIsRound:true, getState:()=>({rounds:currentSeasonRounds, L:currentSeasonRounds.length, selected:selectedTeamIds})}); // #113
 F1Export.championshipPage('teams', ()=>({D, N, L, R, thr, room, gap:gapView(), projChart, posChart})); // #33, #83
 window.addEventListener('f1selection', e=>buildFromSelection(e.detail));
 window.addEventListener('f1roundchange', e=>{ if(currentSeasonRounds.length) recompute(e.detail.round); });
