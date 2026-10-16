@@ -5,9 +5,28 @@
 // URL keys, presult/psession), for any loaded round whatever the slider says; it never fetches.
 module.exports = async (t, h) => {
   const J = JSON.stringify;
+  // Hovers value v on a chart's x axis and checks a thin vertical line appears there: pixels in that column that were empty
+  // before the hover are drawn on after it, while a column 25px away stays empty.
+  let p;
+  const hoverLine = async (sel, v) => {
+    const pt = await p.evaluate(([sel, v]) => { const ch = Chart.getChart(document.querySelector(sel)); ch.canvas.scrollIntoView({ block: 'center' });
+      const b = ch.canvas.getBoundingClientRect(), x = Math.round(ch.scales.x.getPixelForValue(v)), dpr = devicePixelRatio, a = ch.chartArea;
+      const px = y => [...ch.ctx.getImageData(x * dpr, y * dpr, 1, 1).data].join();
+      const ref = px(Math.round(a.top + 2)), empty = [];
+      for(let y = Math.round(a.top) + 2; y < a.bottom - 2; y += 3) if(px(y) === ref) empty.push(y);
+      window.__emptyBefore = { x, empty, ref };
+      return { x: b.left + ch.scales.x.getPixelForValue(v), y: b.top + (a.top + a.bottom) / 2 }; }, [sel, v]);
+    await p.mouse.move(pt.x, pt.y); await p.waitForTimeout(120);
+    const ok = await p.evaluate(sel => { const ch = Chart.getChart(document.querySelector(sel)), { x, empty, ref } = window.__emptyBefore;
+      const px = y => [...ch.ctx.getImageData(x * devicePixelRatio, y * devicePixelRatio, 1, 1).data].join();
+      const off = y => [...ch.ctx.getImageData((x + 25) * devicePixelRatio, y * devicePixelRatio, 1, 1).data].join();
+      const changed = empty.filter(y => px(y) !== ref);
+      return empty.length > 10 && changed.length >= empty.length * 0.6 && empty.filter(y => off(y) === ref).length >= empty.length * 0.6; }, sel);
+    return ok;
+  };
   for(const page of ['drivers', 'constructors']){
     const kind = page === 'drivers' ? 'drivers' : 'teams';
-    let p = await h.openPage(page, { width: 1000 }); await h.loaded(p);
+    p = await h.openPage(page, { width: 1000 }); await h.loaded(p);
     const hits = p.apiHits.length;
 
     // ---- #106 ----
@@ -36,22 +55,13 @@ module.exports = async (t, h) => {
     // no dots at rest, only on hover (the owner's request: they made the hovered round hard to see)
     t.check(`${page}: projected lines have no resting dots, only a hover dot`, await p.evaluate(() => Chart.getChart(document.getElementById('projChart')).data.datasets
       .every(d => d.pointRadius === 0 && d.pointHoverRadius > 0)));
-    // a real hover shows it, with a vertical line at that round: find pixels in round 5's column that are empty before the hover
-    const hover = await p.evaluate(() => { const ch = Chart.getChart(document.getElementById('projChart')); ch.canvas.scrollIntoView({ block: 'center' });
-      const b = ch.canvas.getBoundingClientRect(), x = Math.round(ch.scales.x.getPixelForValue(5)), dpr = devicePixelRatio, a = ch.chartArea;
-      const px = y => [...ch.ctx.getImageData(x * dpr, y * dpr, 1, 1).data].join();
-      const ref = px(Math.round(a.top + 2)), empty = [];
-      for(let y = Math.round(a.top) + 2; y < a.bottom - 2; y += 3) if(px(y) === ref) empty.push(y);
-      window.__emptyBefore = { x, empty, ref };
-      return { x: b.left + ch.scales.x.getPixelForValue(5), y: b.top + (a.top + a.bottom) / 2 }; });
-    await p.mouse.move(hover.x, hover.y); await p.waitForTimeout(120);
-    t.check(`${page}: hovering draws a vertical line at the round`, await p.evaluate(() => { const ch = Chart.getChart(document.getElementById('projChart')), { x, empty, ref } = window.__emptyBefore;
-      const px = y => [...ch.ctx.getImageData(x * devicePixelRatio, y * devicePixelRatio, 1, 1).data].join();
-      const off = y => [...ch.ctx.getImageData((x + 25) * devicePixelRatio, y * devicePixelRatio, 1, 1).data].join();
-      const changed = empty.filter(y => px(y) !== ref);
-      return empty.length > 10 && changed.length >= empty.length * 0.6 && empty.filter(y => off(y) === ref).length >= empty.length * 0.6; }));
+    // a real hover shows it, with a vertical line at that round (F1Common.hoverLine)
+    t.check(`${page}: hovering draws a vertical line at the round`, await hoverLine('#projChart', 5));
     t.check(`${page}: hovering a round shows the tooltip`, await p.evaluate(() => { const tip = Chart.getChart(document.getElementById('projChart')).tooltip;
       return tip.opacity > 0 && tip.title[0] === 'After round 5 · Singapore GP' && tip.body.length > 0; }));
+
+    // the points chart gets the same hover line (owner's request); its x values are column indexes (round 3 = 2)
+    t.check(`${page}: the points chart also draws the hover line at the hovered round`, await hoverLine('#c', 2));
 
     // ---- #113 ----
     const tapPos = async n => {
