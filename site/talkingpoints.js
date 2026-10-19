@@ -6,7 +6,8 @@
    so it never fetches. Standings and tie-breaks come from F1Common.standingsOrder, like the rest of the site.
 
    F1TalkingPoints.facts(seasonRounds, round)  the facts, as data: [{key, label, ids, n, value, detail}]
-   F1TalkingPoints.render(el, seasonRounds, round)  writes them into el (a list of .tp tiles)
+   F1TalkingPoints.stats(seasonRounds, round, ids)  #109: the same kind of facts for just these drivers (results heat strip)
+   F1TalkingPoints.render(el, seasonRounds, round[, list])  writes them (or `list`) into el (a list of .tp tiles)
 */
 const F1TalkingPoints = (() => {
   const MOVE_SPAN = 5; // "over the last 5 rounds"
@@ -28,7 +29,7 @@ const F1TalkingPoints = (() => {
     if(!upto.length) return [];
     const order = F1Common.standingsOrder(seasonRounds, round, 'drivers'), rank = {};
     order.forEach((id, i) => { rank[id] = i; });
-    const code = {}, pts = {}, wins = {}, nc = {}, gps = {}, roundPts = {};
+    const code = {}, pts = {}, wins = {}, podiums = {}, nc = {}, gps = {}, roundPts = {};
     upto.forEach(r => {
       [...r.raceResults, ...(r.sprintResults || [])].forEach(x => {
         code[x.driverId] = x.code;
@@ -39,6 +40,7 @@ const F1TalkingPoints = (() => {
       r.raceResults.forEach(x => {
         gps[x.driverId] = (gps[x.driverId] || 0) + 1;
         if(x.position === 1) wins[x.driverId] = (wins[x.driverId] || 0) + 1;
+        if(x.position != null && x.position <= 3) podiums[x.driverId] = (podiums[x.driverId] || 0) + 1;
         if(x.position == null) nc[x.driverId] = (nc[x.driverId] || 0) + 1;
       });
     });
@@ -59,6 +61,11 @@ const F1TalkingPoints = (() => {
       out.push({ key:'wins', label:'Most wins', ids:w.ids, n:w.n, value:plural(w.n, 'win') + (w.ids.length > 1 ? ' each' : ''),
         detail:`${plural(Object.keys(wins).length, 'different winner')} in ${plural(gpCount, 'Grand Prix', 'Grands Prix')}` });
     }
+
+    // Most podiums (a Grand Prix finish in the top 3), and how many different drivers have been on one (#102).
+    const pd = best(podiums, rank, 0);
+    if(pd) out.push({ key:'podiums', label:'Most podiums', ids:pd.ids, n:pd.n, value:plural(pd.n, 'podium') + (pd.ids.length > 1 ? ' each' : ''),
+      detail:`${plural(Object.keys(podiums).length, 'different driver')} on the podium` });
 
     // Longest active points streak: rounds in a row, back from this round, with points from the Grand Prix or the
     // sprint. A round the driver wasn't in ends it.
@@ -99,6 +106,54 @@ const F1TalkingPoints = (() => {
     out.forEach(f => { f.codes = f.ids.map(id => code[id]); });
     return out;
   }
+  // Stats for a set of drivers (#109, the results heat strip): most wins, podiums and not classified, and the longest
+  // runs of wins, podiums and rounds with points, in Grand Prix rounds through `round`. A missed round ends a run.
+  // `ids` are in the order the strip shows them; ties are listed in standings order. Zero stats are left out.
+  function stats(seasonRounds, round, ids){
+    const upto = (seasonRounds || []).filter(r => r.round <= round).sort((a, b) => a.round - b.round);
+    if(!upto.length || !ids.length) return [];
+    const order = F1Common.standingsOrder(seasonRounds, round, 'drivers'), rank = {};
+    order.forEach((id, i) => { rank[id] = i; });
+    const code = {}, count = { win:{}, pod:{}, nc:{} }, run = { win:{}, pod:{}, pts:{} };
+    const cur = {};
+    ids.forEach(id => { Object.keys(count).forEach(k => { count[k][id] = 0; }); cur[id] = { win:0, pod:0, pts:0 }; Object.keys(run).forEach(k => { run[k][id] = { n:0, to:0 }; }); });
+    upto.forEach(r => {
+      ids.forEach(id => {
+        const gp = r.raceResults.find(x => x.driverId === id), sp = (r.sprintResults || []).find(x => x.driverId === id);
+        if(gp || sp) code[id] = (gp || sp).code;
+        const pos = gp ? gp.position : undefined;
+        if(pos === 1) count.win[id]++;
+        if(pos != null && pos <= 3) count.pod[id]++;
+        if(gp && pos == null) count.nc[id]++;
+        const hit = { win: pos === 1, pod: pos != null && pos <= 3, pts: ((gp ? gp.points : 0) + (sp ? sp.points : 0)) > 0 };
+        Object.keys(hit).forEach(k => {
+          cur[id][k] = hit[k] ? cur[id][k] + 1 : 0;
+          if(cur[id][k] > run[k][id].n) run[k][id] = { n:cur[id][k], to:r.round };
+        });
+      });
+    });
+    const lastRound = upto[upto.length - 1].round, out = [];
+    const add = (key, label, vals, min, unit) => {
+      const b = best(vals, rank, min);
+      if(b) out.push({ key, label, ids:b.ids, n:b.n, value:plural(b.n, unit[0], unit[1]) + (b.ids.length > 1 ? ' each' : ''), detail:'' });
+      return b;
+    };
+    add('wins', 'Most wins', count.win, 0, ['win']);
+    add('podiums', 'Most podiums', count.pod, 0, ['podium']);
+    add('nc', 'Most not classified', count.nc, 0, ['Grand Prix', 'Grands Prix']);
+    [['winStreak', 'Longest win streak', 'win'], ['podiumStreak', 'Longest podium streak', 'pod'], ['pointsStreak', 'Longest points streak', 'pts']].forEach(([key, label, k]) => {
+      const lens = {}; ids.forEach(id => { lens[id] = run[k][id].n; });
+      const b = add(key, label, lens, 1, ['round']);
+      if(!b) return;
+      const f = out[out.length - 1];
+      if(b.ids.length === 1){
+        const to = run[k][b.ids[0]].to;
+        f.detail = `rounds ${to - b.n + 1}–${to}` + (to === lastRound && cur[b.ids[0]][k] === b.n ? ', still going' : '');
+      }
+    });
+    out.forEach(f => { f.codes = f.ids.map(id => code[id]); });
+    return out;
+  }
   // "VER", "VER and NOR", "VER, NOR and LEC", "VER, NOR, LEC +2 more" — each with its flag.
   function namesHTML(ids, codes){
     const name = (id, i) => `<span class="tpName">${F1Common.flagHTML(F1Common.nationalityOf('drivers', id))}${esc(codes[i])}</span>`;
@@ -107,9 +162,9 @@ const F1TalkingPoints = (() => {
     return parts.length > 1 ? parts.slice(0, -1).join(', ') + ' and ' + parts[parts.length - 1] : parts[0];
   }
 
-  function render(el, seasonRounds, round){
+  function render(el, seasonRounds, round, list){
     if(!el) return;
-    const list = facts(seasonRounds, round);
+    list = list || facts(seasonRounds, round);
     el.innerHTML = list.map(f => `<div class="tp" data-fact="${f.key}" data-ids="${esc(f.ids.join(','))}" data-n="${f.n}">`
       + `<div class="tpLabel">${esc(f.label)}</div>`
       + `<div class="tpValue">${namesHTML(f.ids, f.codes)} <span class="tpSep">·</span> ${f.value}</div>`
@@ -117,5 +172,5 @@ const F1TalkingPoints = (() => {
       + `</div>`).join('');
   }
 
-  return { facts, render };
+  return { facts, stats, render };
 })();

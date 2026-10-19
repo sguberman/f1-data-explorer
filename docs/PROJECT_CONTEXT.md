@@ -222,7 +222,7 @@ Top 5.
 **Talking points (#88, `talkingpoints.js`, drivers' page only):** a card right after the points chart with up to six
 facts about the **whole field** (not the picked drivers) as of the slider's round, each naming its driver(s) by code
 with a flag: the **leader** and the gap to second ("level with …, ahead on countback" when equal on points), **most
-wins** (Grands Prix only) with the number of different winners, the **longest active points streak** (rounds in a row,
+wins** (Grands Prix only) with the number of different winners, **most podiums** (#102; top-3 Grand Prix finishes) with the number of different drivers on the podium, the **longest active points streak** (rounds in a row,
 back from the slider's round, with points from the Grand Prix or the sprint; a round the driver missed ends it; shown
 from 2 rounds), the **biggest climber** and **biggest faller** in the standings over the last 5 rounds (from round 6),
 and **most not classified** Grands Prix (shown when anyone has one). Ties list every driver in standings order ("VER
@@ -365,7 +365,7 @@ grouped "11+/NC" bucket never wins just for being a group; when the most common 
 those positions are grouped, the triangle sits on that bucket labelled with the real position(s) ("P13",
 "NC", "P12/P14"). "Most common" sorting (the default) uses the best most-common finish, ties by standings.
 
-**Results by round (#87, position.html, card between the chart and the picker):** a heat strip, a compact
+**Results by round (#87, position.html, card between the chart and the picker; #109 added stats tiles under the strip):** a heat strip, a compact
 picture rather than a table of numbers (#27). One row per selected driver (flag + code in the team colour), in
 the chart's "Sort by" order (`sortedRows()`, shared with the ridgeline), and one square per loaded round (round
 numbers on top). Each square is that driver's **Grand Prix** finish, coloured as the owner chose (option C of the
@@ -378,7 +378,7 @@ event; owner can revisit). Tap again, tap elsewhere or Escape closes it. Columns
 squares on desktop, ~11px at 390px with 24 rounds, with no scrolling. Export: the PNG is drawn for the picture
 (`drawHeatPicture`, same marks and key); the CSV has a column per round through the slider's round (position,
 NC, or blank), plus a sprint column after each sprint round while Sprints is shown. Never fetches; redraws on
-picker, sort, slider, Show options, season and theme changes.
+picker, sort, slider, Show options, season and theme changes. **Stats (#109, `F1TalkingPoints.stats()`, `#heatStats`)**: the same tiles as the drivers' Talking points, for the drivers shown only, Grand Prix finishes through the slider's round: most wins, most podiums, most not classified, and the longest win, podium and points streaks (a streak of 2+ rounds, ever so far, not just active; points count the sprint too; a missed round ends it). A single holder's streak names its rounds ("rounds 3–6", ", still going" when it runs to the slider's round); ties list everyone. Zero stats are left out; not in the exports.
 
 **simulator.html** — Simulates the rest of the season for **every driver in the latest round** (anyone who didn't
 start round L, e.g. a replaced driver, keeps their points but doesn't race; they get no settings and can't be in a
@@ -602,11 +602,11 @@ since fonts render differently on different machines.
   stop the patch), round results (#29: tap a round for its result; #113: the same on the position chart, own panel and URL keys, any loaded round; #106/#110: short race names in tooltips and the projected-points tooltip; sprint switch, arrows, close, NC last, projected
   rounds closed, never fetches, URL round-trip, phone fit), driver contributions (#84: per-driver and per-team points
   checked against an independent sum and the picker, picker/slider/theme/season, a driver with two teams on constructed
-  data, labels never cut off, tooltip, PNG/CSV, never fetches, phone fit), talking points (#88: each fact against an
+  data, labels never cut off, tooltip, PNG/CSV, never fetches, phone fit), talking points (#88/#102: each fact against an
   independent calculation at several rounds, ties, early rounds, follows the slider and season, whole field, never
   fetches, theme switch, both themes and phone fit), gap to leader (#83: gaps and points still available checked
   against an independent calculation, same eliminated entries in both views, slider, tooltip, end labels, round
-  result, CSV/PNG of the gap view, URL round-trip, never fetches, phone layout, both pages), results heat strip (#87:
+  result, CSV/PNG of the gap view, URL round-trip, never fetches, phone layout, both pages), results heat strip stats (#109: `34-heat-stats`, every stat and streak against an independent calculation at several slider rounds and picker selections, never fetches, phone fit), results heat strip (#87:
   squares against an independent calculation incl. NC, picker, sort order, slider, hover/tap details with sprints,
   PNG/CSV, both themes' colours and a live theme switch, a 24-round season fitting 390px, never fetches;
   `HEAT_SHOTS=<folder>` saves card screenshots), title race (#85, both championship pages: the calculation on
