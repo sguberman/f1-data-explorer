@@ -13,6 +13,13 @@ module.exports = async (t, h) => {
     await h.setRound(p, (await p.evaluate(() => F1Controls.state.round)) - 1); await p.waitForTimeout(100);
     if(theme === 'light' || label === 'phone') await h.screenshot(p, `38-floating-${name}-${theme}-${label}.png`);
     await p.evaluate(() => window.scrollTo(0, 0)); await p.waitForTimeout(150);
+    // the Pages menu opens over the controls, not behind them
+    {
+      const open = await p.evaluate(() => { const b = document.querySelector('#siteNav button, #siteNav [aria-haspopup]'); if(!b) return null; b.click();
+        const m = document.querySelector('#siteNav [role=menu], #siteNav .nav-menu, #siteNav ul'); const r = m.getBoundingClientRect();
+        const el = document.elementFromPoint(r.left + r.width / 2, r.bottom - 4); return { onTop: !!el && m.contains(el), bottom: r.bottom }; });
+      t.check(`${at}: the Pages menu opens over the controls`, open && open.onTop, JSON.stringify(open));
+    }
     t.check(`${at}: expands again at the top`, await p.evaluate(() => !document.getElementById('f1controls').classList.contains('compact')));
     t.check(`${at}: the slider never fetches`, p.apiHits.length === hits, p.apiHits.slice(hits).join(' '));
     t.check(`${at}: no page errors`, p.errors.length === 0, p.errors.join('; '));

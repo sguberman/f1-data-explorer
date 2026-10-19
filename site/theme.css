@@ -20,7 +20,7 @@
 html{-webkit-text-size-adjust:100%;text-size-adjust:100%;}
 html,body{background:var(--bg);color:var(--ink);}
 
-.theme-bar{display:flex;justify-content:flex-end;align-items:center;gap:8px;margin:0 0 14px;min-height:30px;}
+.theme-bar{display:flex;justify-content:flex-end;align-items:center;gap:8px;margin:0 0 14px;min-height:30px;position:relative;z-index:40;} /* #132: above the floating controls (z 30), so the nav and theme menus open over them */
 /* #62: site navigation at the left of the top bar — a link home and a Pages menu styled like the theme menu */
 .site-nav{display:flex;align-items:center;gap:10px;margin-right:auto;min-width:0;}
 .theme-bar .theme-trigger{white-space:nowrap;} /* buttons never wrap onto two lines; the home link gives way instead */
