@@ -219,13 +219,12 @@ legend grouped by short team name, end-of-line labels (replaced by a ranked list
 ≤600px). Picker below the chart: "Sort by" Team/Ranking dropdown, presets All/None/Top 5/Top 10, default
 Top 5.
 
-**Talking points (#88, `talkingpoints.js`, drivers' page only):** a card right after the points chart with up to six
+**Talking points (#88, `talkingpoints.js`, drivers' page only):** a card right under the picker, above the points chart (moved up in #109), with up to six
 facts about the **whole field** (not the picked drivers) as of the slider's round, each naming its driver(s) by code
 with a flag: the **leader** and the gap to second ("level with …, ahead on countback" when equal on points), **most
 wins** (Grands Prix only) with the number of different winners, **most podiums** (#102; top-3 Grand Prix finishes) with the number of different drivers on the podium, the **longest active points streak** (rounds in a row,
 back from the slider's round, with points from the Grand Prix or the sprint; a round the driver missed ends it; shown
-from 2 rounds), the **biggest climber** and **biggest faller** in the standings over the last 5 rounds (from round 6),
-and **most not classified** Grands Prix (shown when anyone has one). Ties list every driver in standings order ("VER
+from 2 rounds), and the **biggest climber** and **biggest faller** in the standings over the last 5 rounds (from round 6). ("Most not classified" was removed from this page in #109; it is on the position page.) Ties list every driver in standings order ("VER
 and NOR · 3 wins each"; more than three read "VER, NOR, LEC +2 more", all names on hover). Standings and tie-breaks
 come from `standingsOrder()`. Tiles three across on desktop, two on phones; a note under them says what each fact
 counts. Rebuilt only when the season or round changes (theme colours are CSS variables); never fetches; no export.
@@ -323,7 +322,7 @@ values are round numbers). It opens any loaded round, whatever the slider says, 
 season; Escape outside a panel closes the one opened last.
 
 Both championship pages are laid out (issue #10, "Layout A", picker moved to the top in #124): **picker** (under the
-season/round controls) → points chart (with the title race line, #85) → (drivers: **Talking points**, #88) →
+season/round controls) → (drivers: **Talking points**, #88) → points chart (with the title race line, #85) →
 **Projected final points** card → **Championship position by round** card. The cards follow the picker selection
 (except Talking points and the position card, which cover the whole field).
 - **Projected final points** (issue #10): for the picker selection, what the points chart's projection
@@ -365,7 +364,7 @@ grouped "11+/NC" bucket never wins just for being a group; when the most common 
 those positions are grouped, the triangle sits on that bucket labelled with the real position(s) ("P13",
 "NC", "P12/P14"). "Most common" sorting (the default) uses the best most-common finish, ties by standings.
 
-**Results by round (#87, position.html, card between the chart and the picker; #109 added stats tiles under the strip):** a heat strip, a compact
+**Results by round (#87, position.html, card under the Talking points card and above the chart):** a heat strip, a compact
 picture rather than a table of numbers (#27). One row per selected driver (flag + code in the team colour), in
 the chart's "Sort by" order (`sortedRows()`, shared with the ridgeline), and one square per loaded round (round
 numbers on top). Each square is that driver's **Grand Prix** finish, coloured as the owner chose (option C of the
@@ -378,7 +377,14 @@ event; owner can revisit). Tap again, tap elsewhere or Escape closes it. Columns
 squares on desktop, ~11px at 390px with 24 rounds, with no scrolling. Export: the PNG is drawn for the picture
 (`drawHeatPicture`, same marks and key); the CSV has a column per round through the slider's round (position,
 NC, or blank), plus a sprint column after each sprint round while Sprints is shown. Never fetches; redraws on
-picker, sort, slider, Show options, season and theme changes. **Stats (#109, `F1TalkingPoints.stats()`, `#heatStats`)**: the same tiles as the drivers' Talking points, for the drivers shown only, Grand Prix finishes through the slider's round: most wins, most podiums, most not classified, and the longest win, podium and points streaks (a streak of 2+ rounds, ever so far, not just active; points count the sprint too; a missed round ends it). A single holder's streak names its rounds ("rounds 3–6", ", still going" when it runs to the slider's round); ties list everyone. Zero stats are left out; not in the exports.
+picker, sort, slider, Show options, season and theme changes. 
+
+**Talking points on the position page (#109, `F1TalkingPoints.stats()`, `#heatStats`):** their own card right under the picker (the
+heat strip card and then the ridgeline chart follow), for **every driver** (not just those shown), Grand Prix finishes through
+the slider's round: most wins, most podiums, most not classified, and the longest win, podium and points streaks (2+ rounds,
+longest so far, not just active; points count the sprint too; a missed round ends it). A single holder's streak names its rounds
+("rounds 3–6", ", still going" when it runs to the slider's round); ties list everyone. Zero stats are left out; not in the exports.
+The drivers' page Talking points card (#88) is likewise right under its picker, above the points chart, and has no "most not classified" tile.
 
 **simulator.html** — Simulates the rest of the season for **every driver in the latest round** (anyone who didn't
 start round L, e.g. a replaced driver, keeps their points but doesn't race; they get no settings and can't be in a
