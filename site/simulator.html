@@ -92,7 +92,7 @@ canvas{max-width:100%;}
 
   <div class="card">
     <div class="row" style="margin-bottom:12px;">
-      <span style="font-size:12px;color:var(--sub);">Drivers tracked</span>
+      <button type="button" class="pickerToggle" id="pickerToggle" aria-expanded="true" aria-controls="driverPicker" title="Show or hide the list"><span class="chev" aria-hidden="true">▾</span>Drivers tracked</button><span id="pickerSummary" class="pickerSummary"></span>
       <span style="flex:1;"></span>
       <span style="font-size:12px;color:var(--sub);">Sort by</span>
       <select id="sortSeg" class="ddSelect" aria-label="Sort drivers tracked">
@@ -105,6 +105,9 @@ canvas{max-width:100%;}
       <button type="button" class="pill" data-preset="none">None</button>
       <button type="button" class="pill" data-preset="5">Top 5</button>
       <button type="button" class="pill" data-preset="10">Top 10</button>
+      <button type="button" class="pill" data-preset="top4" title="The drivers of the top 4 teams in the constructors' standings">Top 4 teams</button>
+      <button type="button" class="pill" data-preset="rest" title="Everyone outside the top 4 teams">Best of the rest</button>
+      <button type="button" class="pill" data-preset="contention" title="The leader and everyone who can still win the title">Title contention</button>
     </div>
     <div id="driverPicker" class="f1-skel"></div>
     <div class="note">The simulation always includes every driver who raced in the latest round (anyone else keeps their points); this only chooses who's shown in the results.</div>
@@ -216,7 +219,8 @@ async function buildFromSelection(detail){
  currentCalendar = await F1Data.getCalendar(currentYear);
  outcomes={}; collisions=[]; lastRun=null; hideResults(); // a new season starts from scratch
  recomputeRoster();
- defaultIds = selectedDriverIds = [...fullRoster].sort(byStanding).slice(0,8).map(d=>d.driverId);
+ defaultIds = F1Common.defaultSelection(driverSets(), [...fullRoster].sort(byStanding).map(d=>d.driverId)); // #104: the title contenders
+ selectedDriverIds = F1Common.loadPickerSelection('drivers', currentYear, fullRoster.map(d=>d.driverId)) || defaultIds; // remembered between pages
  // #31: a shared link's setup (first season only); with a seed it re-runs to the same results
  const link = F1Share.take();
  let linkSeed = null;
@@ -242,6 +246,13 @@ async function buildFromSelection(detail){
  if(link) F1Share.sync(); // #31: the URL reflects the link once it's applied
  if(linkSeed!=null && !document.getElementById('run').disabled) startRun(linkSeed);
 }
+// #104: preset sets for the simulated grid (top 4 teams' drivers, the rest, title contention) as of the slider's round
+const driverSets = () => {
+ const ok = new Set(fullRoster.map(d=>d.driverId)), sets = F1Common.presetSets(currentSeasonRounds, L, 'drivers', {year:currentYear, calendar:currentCalendar});
+ return Object.fromEntries(Object.entries(sets).map(([k,v])=>[k, v.filter(id=>ok.has(id))]));
+};
+const saveSelection = () => F1Common.savePickerSelection('drivers', currentYear, selectedDriverIds, defaultIds);
+F1Common.initPickerToggle(); // #124
 // #31: what goes in the URL. The seed (with the run's size and round) only while the results shown match the
 // settings, so the link re-runs to what's on screen.
 let defaultIds=[];
@@ -764,9 +775,11 @@ function renderDriverPicker(){
    cb.addEventListener('change', ()=>{
      const id=cb.dataset.id;
      selectedDriverIds = cb.checked ? [...(selectedDriverIds||[]), id] : (selectedDriverIds||[]).filter(x=>x!==id);
+     saveSelection();
      onSelectionChanged();
    });
  });
+ F1Common.updatePickerSummary(selectedDriverIds, fullRoster.length, 'drivers'); // #124
  updatePresetActive();
 }
 
@@ -774,7 +787,7 @@ function renderDriverPicker(){
 // it's clear what's picked — not highlighted at all if the selection was built by hand-checking boxes.
 function updatePresetActive(){
  const ranked=[...fullRoster].sort(byStanding).map(d=>d.driverId);
- const sets = { all: fullRoster.map(d=>d.driverId), none: [], 5: ranked.slice(0,5), 10: ranked.slice(0,10) };
+ const sets = { all: fullRoster.map(d=>d.driverId), none: [], 5: ranked.slice(0,5), 10: ranked.slice(0,10), ...driverSets() };
  F1Common.markActivePreset(sets, selectedDriverIds);
 }
 document.getElementById('sortSeg').addEventListener('change', e=>{
@@ -785,7 +798,8 @@ document.getElementById('presetRow').addEventListener('click', e=>{
  const btn=e.target.closest('button[data-preset]'); if(!btn) return;
  const ranked=[...fullRoster].sort(byStanding).map(d=>d.driverId);
  const p=btn.dataset.preset;
- selectedDriverIds = p==='all' ? fullRoster.map(d=>d.driverId) : p==='none' ? [] : ranked.slice(0,+p);
+ selectedDriverIds = p==='all' ? fullRoster.map(d=>d.driverId) : p==='none' ? [] : driverSets()[p] || ranked.slice(0,+p);
+ saveSelection();
  onSelectionChanged();
 });
 

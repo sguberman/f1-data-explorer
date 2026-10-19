@@ -86,12 +86,15 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
 <div style="font-size:12px;color:var(--muted);line-height:1.6;margin:8px 2px 2px;">What the projection on the chart above would have said after each round: points so far plus the average of the last 5 rounds each team took part in, for every round left. Hover over a round, or tap it, to see each projection then.</div>
 </div>
 <div class="card">
-<div style="font-size:12px;color:var(--sub);margin-bottom:10px;">Teams shown</div>
+<div style="margin-bottom:10px;"><button type="button" class="pickerToggle" id="pickerToggle" aria-expanded="true" aria-controls="teamPicker" title="Show or hide the list"><span class="chev" aria-hidden="true">▾</span>Teams shown</button><span id="pickerSummary" class="pickerSummary"></span></div>
 <div class="btnrow" id="presetRow" style="margin-bottom:10px;">
  <button type="button" class="pill" data-preset="all">All</button>
  <button type="button" class="pill" data-preset="none">None</button>
  <button type="button" class="pill" data-preset="2">Top 2</button>
  <button type="button" class="pill" data-preset="5">Top 5</button>
+ <button type="button" class="pill" data-preset="top4" title="The top 4 teams in the constructors' standings">Top 4 teams</button>
+ <button type="button" class="pill" data-preset="rest" title="Everyone outside the top 4 teams">Best of the rest</button>
+ <button type="button" class="pill" data-preset="contention" title="The leader and every team that can still win the title">Title contention</button>
 </div>
 <div id="teamPicker" class="f1-skel"></div>
 </div>
@@ -179,12 +182,17 @@ async function buildFromSelection(detail){
  drawPositions();
  selectedTeamIds = null; // reset default whenever the season changes; round changes never touch this
  L = detail.round;
- defaultIds = selectedTeamIds = rankedTeamIds().slice(0,5);
+ defaultIds = F1Common.defaultSelection(teamSets(L), rankedTeamIds(), 5); // #104: the title contenders
+ selectedTeamIds = F1Common.loadPickerSelection('teams', currentYear, Object.keys(F1Data.cumulative(currentSeasonRounds, currentSeasonRounds.length).teams)) || defaultIds; // remembered between pages
  const linked = link && F1Share.ids(link.get('t'), Object.keys(F1Data.cumulative(currentSeasonRounds, currentSeasonRounds.length).teams));
  if(linked) selectedTeamIds = linked;
  recompute(detail.round);
  if(link) F1Share.sync(); // #31: the URL reflects the link once it's applied
 }
+// #104: preset sets as of round `round` (top 4 teams, the rest, title contention)
+const teamSets = round => F1Common.presetSets(currentSeasonRounds, round, 'teams', {year:currentYear, calendar:currentCalendar});
+const saveSelection = () => F1Common.savePickerSelection('teams', currentYear, selectedTeamIds, defaultIds);
+F1Common.initPickerToggle(); // #124
 // #31: what goes in the URL (anything at its default is left out)
 let defaultIds=[];
 F1Share.register(()=>({
@@ -224,9 +232,11 @@ function renderTeamPicker(){
    cb.addEventListener('change', ()=>{
      const id=cb.dataset.id;
      selectedTeamIds = cb.checked ? [...selectedTeamIds, id] : selectedTeamIds.filter(x=>x!==id);
+     saveSelection();
      recompute(L);
    });
  });
+ F1Common.updatePickerSummary(selectedTeamIds, roster.length, 'teams'); // #124
  updatePresetActive();
 }
 
@@ -235,7 +245,7 @@ function renderTeamPicker(){
 function updatePresetActive(){
  const cum = F1Data.cumulative(currentSeasonRounds, L);
  const ranked = rankedTeamIds();
- const sets = { all: Object.keys(cum.teams), none: [], 2: ranked.slice(0,2), 5: ranked.slice(0,5) };
+ const sets = { all: Object.keys(cum.teams), none: [], 2: ranked.slice(0,2), 5: ranked.slice(0,5), ...teamSets(L) };
  F1Common.markActivePreset(sets, selectedTeamIds);
 }
 
@@ -244,7 +254,8 @@ document.getElementById('presetRow').addEventListener('click', e=>{
  const cum = F1Data.cumulative(currentSeasonRounds, L); // ranking as of the CURRENT round
  const ranked = rankedTeamIds();
  const p = btn.dataset.preset;
- selectedTeamIds = p==='all' ? Object.keys(cum.teams) : p==='none' ? [] : ranked.slice(0,+p);
+ selectedTeamIds = p==='all' ? Object.keys(cum.teams) : p==='none' ? [] : teamSets(L)[p] || ranked.slice(0,+p);
+ saveSelection();
  recompute(L);
 });
 

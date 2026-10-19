@@ -46,7 +46,7 @@ module.exports = async (t, h) => {
   let p = await h.openPage('position'); await h.loaded(p);
   const hits = p.apiHits.length;
   let s = await strip(p), exp = await expected(p, 12);
-  t.check('a row per selected driver (top 8 by default)', s.order.length === 8 && JSON.stringify(s.order.slice().sort()) === JSON.stringify(Object.keys(exp).sort()), s.order.join());
+  t.check('a row per selected driver (top 5 by default: too many contenders this early)', s.order.length === 5 && JSON.stringify(s.order.slice().sort()) === JSON.stringify(Object.keys(exp).sort()), s.order.join());
   t.check('a square per loaded round, a column header per round', Object.values(s.rows).every(r => r.length === 12)
     && await p.$$eval('#heatStrip .hsRound', e => e.map(x => x.textContent).join()) === '1,2,3,4,5,6,7,8,9,10,11,12');
   t.check('each square is the Grand Prix finish (position or NC), matching an independent calc', s.order.every(id => JSON.stringify(s.rows[id]) === JSON.stringify(exp[id])), JSON.stringify(s.rows[s.order[0]]));

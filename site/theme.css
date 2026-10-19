@@ -226,3 +226,14 @@ html.f1-loading .f1-skel::after{content:"";position:absolute;inset:0;z-index:6;b
 .trLinkLine{margin-top:3px;}
 .trLink{color:var(--ink);font-weight:600;text-decoration:underline;text-underline-offset:2px;white-space:nowrap;}
 .trLink:hover{color:var(--ink2);}
+
+/* #124: the picker card's list folds away; the toggle is the card's label */
+.pickerToggle{display:inline-flex;align-items:center;gap:5px;background:none;border:none;padding:2px 0;font:inherit;font-size:12px;color:var(--sub);cursor:pointer;}
+.pickerToggle:hover{color:var(--ink);}
+.pickerToggle:focus-visible{outline:2px solid var(--line-strong);outline-offset:2px;border-radius:4px;}
+.pickerToggle .chev{display:inline-block;transition:transform .12s;}
+.pickerCollapsed .pickerToggle .chev{transform:rotate(-90deg);}
+.pickerSummary{display:none;font-size:12px;color:var(--muted);}
+.pickerCollapsed .pickerSummary{display:inline;margin-left:6px;}
+.pickerCollapsed .pickerSummary::before{content:"· ";}
+.pickerCollapsed #driverPicker,.pickerCollapsed #teamPicker{display:none;}

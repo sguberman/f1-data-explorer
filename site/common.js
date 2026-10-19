@@ -248,6 +248,63 @@ const F1Common = (() => {
    document.querySelectorAll('#presetRow button[data-preset]').forEach(b=>b.classList.toggle('active', b.dataset.preset===matched));
   }
 
+  // #104: the picker presets, as ids in standings order for `kind` ('drivers' or 'teams'), as of `round`:
+  //   top4        the top 4 constructors (their drivers on the drivers' pages)
+  //   rest        everyone else ("best of the rest")
+  //   contention  the leader and everyone who can still win the title (titleRace()'s contenders, so it always
+  //               matches the Title race box); just the champion once it is decided
+  function presetSets(seasonRounds, round, kind, {year, calendar=null}={}){
+   const order = standingsOrder(seasonRounds, round, kind);
+   const top4 = new Set(standingsOrder(seasonRounds, round, 'teams').slice(0,4));
+   const drivers = kind==='drivers' ? F1Data.cumulative(seasonRounds, round).drivers : null;
+   const teamOf = id => drivers ? (drivers[id]||{}).teamId : id;
+   const tr = titleRace(seasonRounds, round, kind, {year, calendar});
+   const cont = new Set(tr.state==='decided' ? [tr.champion] : tr.state==='none' ? [] : [tr.leader, ...tr.contenders.map(c=>c.id)]);
+   return { top4: order.filter(id=>top4.has(teamOf(id))), rest: order.filter(id=>!top4.has(teamOf(id))),
+            contention: order.filter(id=>cont.has(id)) };
+  }
+  // The selection a page starts with: the title contenders, or the top 5 when fewer than two are left or more than
+  // `max` are (early in a season nearly everyone is still in it, and a chart of the whole field is unreadable) (#104).
+  function defaultSelection(sets, order, max=10){
+   const n = sets.contention.length;
+   return n>=2 && n<=max ? sets.contention : order.slice(0,5);
+  }
+
+  // #104: the picked drivers / teams are remembered between pages, like the season. Stored for one season as
+  // {year, drivers:[ids]|null, teams:[ids]|null}; null = still the default, so it keeps following the contenders.
+  const SELECTION_KEY = 'f1cache:pickerSelection';
+  function readSelection(){ try{ return JSON.parse(localStorage.getItem(SELECTION_KEY))||{}; }catch(e){ return {}; } }
+  function loadPickerSelection(kind, year, valid){
+   const o = readSelection();
+   if(o.year!==year || !Array.isArray(o[kind])) return null;
+   const ok = new Set(valid), ids = o[kind].filter(id=>ok.has(id));
+   return ids.length || !o[kind].length ? ids : null;
+  }
+  function savePickerSelection(kind, year, ids, defaults){
+   try{
+     let o = readSelection(); if(o.year!==year) o = {year};
+     o[kind] = F1Share.sameSet(ids, defaults) ? null : [...(ids||[])];
+     localStorage.setItem(SELECTION_KEY, JSON.stringify(o));
+   }catch(e){}
+  }
+
+  // #124: the picker card folds away (the list only; the sort and presets stay). The state is kept between pages.
+  const FOLD_KEY = 'f1cache:pickerCollapsed';
+  function initPickerToggle(){
+   const btn = document.getElementById('pickerToggle'); if(!btn) return;
+   const card = btn.closest('.card');
+   const set = on => { card.classList.toggle('pickerCollapsed', on); btn.setAttribute('aria-expanded', String(!on)); };
+   try{ set(localStorage.getItem(FOLD_KEY)==='1'); }catch(e){ set(false); }
+   btn.addEventListener('click', ()=>{
+     const on = !card.classList.contains('pickerCollapsed'); set(on);
+     try{ localStorage.setItem(FOLD_KEY, on ? '1' : '0'); }catch(e){}
+   });
+  }
+  // The one-line count shown while the list is folded away: "5 of 22 drivers".
+  function updatePickerSummary(selected, total, noun){
+   const el = document.getElementById('pickerSummary'); if(el) el.textContent = `${(selected||[]).length} of ${total} ${noun}`;
+  }
+
   // issue #9: championship position after every round, for every driver ('drivers') or team ('teams').
   // Ranked by points; ties broken by countback of Grand Prix finishes (most wins, then most second
   // places, ...), which is how the real standings separate equal points. Entries that haven't appeared
@@ -632,7 +689,7 @@ const F1Common = (() => {
   }
 
   return { TEAM_COLORS, SEASON_TEAM_COLORS, setSeason, maxWeekendPoints, titleRace, titleRaceText, renderTitleRace, titleResultText, clinchLink, shortGP, teamColor, SHORT_TEAM_NAMES, shortTeamName, SEASON_META, seasonMeta, YEARS,
-    isNarrow, withAlpha, hoverLine, standingsMoves, moveHTML, driverPickerRowHTML, markActivePreset,
+    isNarrow, withAlpha, hoverLine, standingsMoves, moveHTML, driverPickerRowHTML, markActivePreset, presetSets, defaultSelection, loadPickerSelection, savePickerSelection, initPickerToggle, updatePickerSummary,
     flagCode, flagHTML, flagSpace, FLAG_ROOM, drawFlag, indexPeople, nationalityOf, numberOf, ridgeFlags, ridgeMarkers, ridgeKeyHTML, standingsOrder, standingsRank, pickerTeamLabelHTML,
     standingsByRound, renderPositionChart, projectionsByRound, renderProjectedPointsChart };
 })();

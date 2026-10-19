@@ -200,6 +200,8 @@ falls back to the newest season):
   **no network calls and no selection reset** (issue #24). `F1Controls.setRound(n)` syncs the slider when a
   page's on-chart drag handle moves.
 
+**Slider round kept between pages (#105):** the slider's round is remembered in `f1cache:selectedRound` = `{year, round}` while it isn't on the latest round (nothing is kept on the latest, so it keeps following the season). A page opens on it for the same season if it still exists; a season change, a link with a season but no round (= latest) or a shared link's round overrides it; Refresh data keeps it.
+
 The status line reads "12 rounds loaded · updated 5 min ago · Refresh data" (issue #49: relative age of the
 newest data, exact time on hover, ticks every minute without fetching). **Refresh data** clears the whole
 cache and reloads the season (issue #23). If a load fails, an error message with **Retry** appears under
@@ -517,6 +519,8 @@ interaction. If the calendar fails or has no dates, the strip stays hidden.
 - Charts: driver codes (VER, NOR…) on chart labels; **short team names** (`shortTeamName()`) in chart
   legends and end labels; **full names** in pickers (driver full name + small muted code tag; full official
   team names).
+- **Picker presets and default (#104):** All / None / Top N plus **Top 4 teams** (the drivers of the top 4 constructors; the 4 teams on the constructors page), **Best of the rest** (everyone else) and **Title contention** (the leader and everyone who can still win, from `titleRace()`'s contenders, so it matches the Title race box; just the champion once decided). Sets come from `F1Common.presetSets()` as of the slider's round. The **default selection** on all four picker pages is the title contenders (`defaultSelection()`), falling back to the top 5 when fewer than 2 or more than 10 (teams: 5) are in it, e.g. early in a season. Picks are **remembered between pages** (`f1cache:pickerSelection` = `{year, drivers, teams}`; drivers, position and simulator share the drivers' list; `null` = still the default; a link's `d`/`t` and a season change override it).
+- **Folding the picker (#124):** the "Drivers shown / tracked / Teams shown" label is a toggle (`#pickerToggle`) that hides the list and shows "N of M drivers"; the sort and presets stay. Shared between pages (`f1cache:pickerCollapsed`).
 - Pickers sit **below** the chart. Rows: checkbox, (rank), team-color dot, flag, number, name, movement, points.
   Order, ranks, ▲/▼ and presets follow the standings with ties broken by countback (`standingsOrder()`, #20). Movement
   (issue #47) is a green ▲n / red ▼n for places gained/lost in the standings since the previous round
@@ -548,8 +552,6 @@ interaction. If the calendar fails or has no dates, the strip stays hidden.
 
 ## Known bugs and rough edges
 
-- position.html and simulator.html default to the **top 8**, which no longer matches any preset, so no
-  preset is highlighted on first load (owner was told; no decision yet).
 - The simulator's race model uses **GP results only** (#117: its last N starts by default), while position.html
   includes sprints and the whole season by default, so the two pages' "form" can differ.
 - The season list and per-season round/sprint estimates come from the hardcoded `SEASON_META` in `common.js`.
@@ -592,6 +594,7 @@ since fonts render differently on different machines.
   season switches, rechecked after a day or on Refresh, failed checks not kept), navigation (#62: home link and Pages menu on every
   data page, in the homepage cards' order (#107), keyboard, season kept between pages, phone layout), layout (#64: every data page has the same page frame —
   margins, width, title, intro text, card style), favicon (#68: every page links it; the files are valid), team seasons (#72: Sauber/Alfa Romeo/AlphaTauri names and season colours),
+  pickers and slider (#104/#105/#124: presets, contenders as the default, picks and the slider's round kept between pages, folding the picker, against `lib/clinch.js`'s title calculation on a constructed season),
   links (#31: every page's setup round-trips through the URL, defaults left out, bad values ignored, Share copies it, a
   simulator link reproduces the same results) and exports (#33: PNG and CSV contents per chart, never fetches; #75/#76: share sheet on phones with download fallbacks,
   icon in the picture's corner), Jolpica patch (#59: a stripped season patched from a fake Jolpica comes back exactly; mismatches
