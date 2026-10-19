@@ -34,10 +34,10 @@ module.exports = async (t, h) => {
 
   // Positions page: CSV counts are the chart's counts.
   p = await h.openPage('position', { theme: 'dark' }); await h.loaded(p);
-  f = await grab(p, '.exp-csv'); rows = csvRows(f.data);
+  f = await grab(p, '.card:has(#ridgeCanvas) .exp-csv'); rows = csvRows(f.data);
   const counts = await p.evaluate(() => ridgeChart.data.datasets.filter(d => !d._baseline).map(d => [d._code, ...d._counts, d._starts].join()));
   t.check('position: CSV is the finishing-position counts per driver', rows.slice(1).map(r => r.join()).join('|') === counts.join('|') && rows[0][0] === 'Driver' && rows[0].slice(-1)[0] === 'Starts', rows[0].join());
-  f = await grab(p, '.exp-png');
+  f = await grab(p, '.card:has(#ridgeCanvas) .exp-png');
   t.check('position: PNG downloads (dark theme)', pngSize(f.data).png && f.name === 'f1-2026-finishing-positions-r12.png', f.name);
   await p.done();
 
