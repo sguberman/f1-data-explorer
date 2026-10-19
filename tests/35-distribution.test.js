@@ -35,6 +35,7 @@ module.exports = async (t, h) => {
   t.check('simulator: both plots have a median line per ridge', after.meds.every(v => v != null) && after.posMeds.every(v => v != null), J(after));
   t.check('simulator: sorting is in the link (rsort=median)', /rsort=median/.test(after.link), after.link);
 
+  t.check('simulator: the ridge plots redraw without animation', await p.evaluate(() => ['ridgePosCanvas', 'ridgePointsCanvas'].every(id => Chart.getChart(document.getElementById(id)).options.animation === false)));
   await p.check('#ridgeBarsOpt');
   const bars = await p.evaluate(() => ({ b: Chart.getChart(document.getElementById('ridgePointsCanvas')).data.datasets.filter(d => !d._baseline).every(d => d._bars && d.fill === false),
     pos: Chart.getChart(document.getElementById('ridgePosCanvas')).data.datasets.some(d => d._bars), link: location.search }));

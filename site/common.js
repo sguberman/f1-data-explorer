@@ -234,7 +234,7 @@ const F1Common = (() => {
   // modeLabels, median, extra}: modes/median are category indexes (see ridgeMarkers / ridgeMedians), `extra` is
   // merged into the ridge dataset for the page's tooltip. opts: canvas, wrap (element resized to fit the rows),
   // categories, stepped / tension (the curve), bars (#114: histogram bars instead), label(ctx) and title(items) for the
-  // tooltip, x (extra options for the x axis), animation. Returns the Chart.
+  // tooltip, x (extra options for the x axis). Returns the Chart.
   const RIDGE_ROW=1, RIDGE_PEAK=0.82, RIDGE_ROW_PX=58, RIDGE_PAD_PX=34, RIDGE_FILL_ALPHA=0.35;
   // #30: indexes of the largest value(s) in counts, every one if tied; [] when all are zero.
   function modesOf(counts){
@@ -258,7 +258,7 @@ const F1Common = (() => {
       plugins:[ridgeBars(), ridgeMarkers(), ridgeMedians(), ridgeFlags(row=>order[n-1-row] && order[n-1-row].id)],
       data:{labels:categories, datasets},
       options:{
-        responsive:true, maintainAspectRatio:false, animation:opts.animation,
+        responsive:true, maintainAspectRatio:false, animation:false, // interactions redraw without animating
         interaction:{mode:'index', intersect:false},
         plugins:{
           legend:{display:false},

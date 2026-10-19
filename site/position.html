@@ -307,7 +307,7 @@ function draw(){
  });
  const nar=F1Common.isNarrow();
  ridgeChart=F1Common.ridgeChart({
-   canvas:document.getElementById('ridgeCanvas'), wrap, order, categories:LAB, stepped:'middle', animation:false,
+   canvas:document.getElementById('ridgeCanvas'), wrap, order, categories:LAB, stepped:'middle',
    // issue #13 (mobile): narrow screens rotate the bucket labels (P1...P10, 11+/NC), which don't fit
    // horizontally since autoSkip is deliberately off for the default <=12-bucket case.
    x:{ticks:{color:P.text, maxRotation:nar?60:0, minRotation:nar?60:0, autoSkip:LAB.length>12, font:{size:nar?9:11}}},
