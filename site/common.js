@@ -228,6 +228,59 @@ const F1Common = (() => {
       }
     };
   }
+  // The ridgeline (joyplot) chart both result plots share (#32, #33, #108, #114): each row gets an invisible flat
+  // baseline dataset and a filled dataset drawn down to it (fill:'-1'), rows offset vertically and every ridge
+  // normalized to its OWN peak (a shape comparison). `order` is top row first, items {id, code, color, counts, modes,
+  // modeLabels, median, extra}: modes/median are category indexes (see ridgeMarkers / ridgeMedians), `extra` is
+  // merged into the ridge dataset for the page's tooltip. opts: canvas, wrap (element resized to fit the rows),
+  // categories, stepped / tension (the curve), bars (#114: histogram bars instead), label(ctx) and title(items) for the
+  // tooltip, x (extra options for the x axis), animation. Returns the Chart.
+  const RIDGE_ROW=1, RIDGE_PEAK=0.82, RIDGE_ROW_PX=58, RIDGE_PAD_PX=34, RIDGE_FILL_ALPHA=0.35;
+  // #30: indexes of the largest value(s) in counts, every one if tied; [] when all are zero.
+  function modesOf(counts){
+    const top=Math.max(0,...counts);
+    return top>0 ? counts.map((v,j)=>v===top?j:-1).filter(j=>j>=0) : [];
+  }
+  function ridgeChart(opts){
+    const {order, categories}=opts, n=order.length, P=F1Theme.chart();
+    opts.wrap.style.height=(n*RIDGE_ROW_PX+RIDGE_PAD_PX)+'px';
+    const datasets=[];
+    order.forEach(({code,color,counts,modes,modeLabels,median,extra},i)=>{
+      const baseline=(n-1-i)*RIDGE_ROW, peak=Math.max(...counts,1e-9);
+      datasets.push({ data:categories.map(()=>baseline), borderWidth:0, pointRadius:0, fill:false, _baseline:true });
+      datasets.push(Object.assign({ data:counts.map(v=>baseline+(v/peak)*RIDGE_PEAK), borderColor:color,
+        backgroundColor:withAlpha(color,RIDGE_FILL_ALPHA), borderWidth:opts.bars?0:1.6, pointRadius:0, fill:opts.bars?false:'-1',
+        tension:opts.tension||0, stepped:opts.stepped||false, _bars:!!opts.bars, _code:code, _modes:modes, _modeLabels:modeLabels,
+        _median:median==null?null:median }, extra));
+    });
+    return new Chart(opts.canvas,{
+      type:'line',
+      plugins:[ridgeBars(), ridgeMarkers(), ridgeMedians(), ridgeFlags(row=>order[n-1-row] && order[n-1-row].id)],
+      data:{labels:categories, datasets},
+      options:{
+        responsive:true, maintainAspectRatio:false, animation:opts.animation,
+        interaction:{mode:'index', intersect:false},
+        plugins:{
+          legend:{display:false},
+          tooltip:{filter:item=>!item.dataset._baseline, callbacks:{title:opts.title||(t=>t[0].label), label:opts.label}}
+        },
+        scales:{
+          x:Object.assign({grid:{color:P.grid}, ticks:{color:P.text, maxRotation:0, autoSkip:true}}, opts.x),
+          y:{
+            min:-0.15, max:(n-1)*RIDGE_ROW+RIDGE_PEAK+0.25,
+            grid:{display:false},
+            afterFit:s=>{ s.width+=FLAG_ROOM; }, // room for the flags (#18)
+            afterBuildTicks:axis=>{ axis.ticks=Array.from({length:n},(_,i)=>({value:i})); },
+            ticks:{
+              color:ctx=>{ const i=n-1-Math.round(ctx.tick.value); return (order[i]&&order[i].color)||P.text; },
+              callback:value=>{ const i=n-1-Math.round(value); return (order[i]&&order[i].code)||''; },
+              font:{weight:'600'}
+            }
+          }
+        }
+      }
+    });
+  }
   // The key under a ridgeline chart for the markers above (and, with `median`, the median line).
   function ridgeKeyHTML(text, median){
     return `<span class="ridgeKeyItem"><i class="ridgeKeyMode"></i>${text||'most common'}</span>`
@@ -736,6 +789,6 @@ const F1Common = (() => {
 
   return { TEAM_COLORS, SEASON_TEAM_COLORS, setSeason, maxWeekendPoints, titleRace, titleRaceText, renderTitleRace, titleResultText, clinchLink, shortGP, teamColor, SHORT_TEAM_NAMES, shortTeamName, SEASON_META, seasonMeta, YEARS,
     isNarrow, withAlpha, hoverLine, standingsMoves, moveHTML, driverPickerRowHTML, markActivePreset, presetSets, defaultSelection, loadPickerSelection, savePickerSelection, initPickerToggle, updatePickerSummary,
-    flagCode, flagHTML, flagSpace, FLAG_ROOM, drawFlag, indexPeople, nationalityOf, numberOf, ridgeFlags, ridgeMarkers, ridgeMedians, ridgeBars, medianOf, ridgeKeyHTML, standingsOrder, standingsRank, pickerTeamLabelHTML,
+    flagCode, flagHTML, flagSpace, FLAG_ROOM, drawFlag, indexPeople, nationalityOf, numberOf, ridgeFlags, ridgeMarkers, ridgeMedians, ridgeBars, ridgeChart, modesOf, medianOf, ridgeKeyHTML, standingsOrder, standingsRank, pickerTeamLabelHTML,
     standingsByRound, renderPositionChart, projectionsByRound, renderProjectedPointsChart };
 })();

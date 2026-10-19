@@ -70,7 +70,7 @@ across pages lives in shared files instead (issue #44), so a change is made once
   `isNarrow()`, `withAlpha()`, `driverPickerRowHTML()`, `pickerTeamLabelHTML()`, `markActivePreset()`,
   `standingsOrder()` / `standingsRank()` (standings order with countback, for pickers, ▲/▼ and presets, #20),
   flags and numbers (#18: `flagCode()`, `flagHTML()`, `drawFlag()`, `flagSpace()`, `ridgeFlags()`,
-  `indexPeople()` / `nationalityOf()` / `numberOf()`), `ridgeMarkers()` / `ridgeKeyHTML()` (#30), `medianOf()` / `ridgeMedians()` (#108: median line per ridge, `_median` on the dataset, NC left out) and `ridgeBars()` (#114: `_bars` datasets drawn as histogram bars),
+  `indexPeople()` / `nationalityOf()` / `numberOf()`), `ridgeMarkers()` / `ridgeKeyHTML()` (#30), `ridgeChart()` (the ridgeline chart both result plots are built with, #32), `modesOf()`, `medianOf()` / `ridgeMedians()` (#108: median line per ridge, `_median` on the dataset, NC left out) and `ridgeBars()` (#114: `_bars` datasets drawn as histogram bars),
   `standingsByRound()` / `renderPositionChart()` (the championship-position chart, issue #9),
   `projectionsByRound()` / `renderProjectedPointsChart()` (projection history, issue #10),
   `maxWeekendPoints()` / `titleRace()` / `titleRaceText()` / `renderTitleRace()` / `titleResultText()` (the title clinch

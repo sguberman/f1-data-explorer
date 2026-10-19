@@ -153,11 +153,7 @@ let D=[], L=0, P, FULL=[];
 // Grand Prix results; false restricts the chart to Grand Prix classification only, as it was before.
 let chartSort='mode', showBelowP10=false, includeSprints=true;
 
-// issue #33: single ridgeline (joyplot) chart for the selected drivers — same mechanism as the
-// simulator's ridgeline plots (#32): each driver gets a baseline row (invisible flat dataset) and a
-// stepped curve dataset filled down to it with fill:'-1', offset vertically so rows stack, normalized
-// to each driver's OWN peak bucket (a shape comparison, not an absolute-count one).
-const RIDGE_ROW=1, RIDGE_PEAK=0.82, RIDGE_ROW_PX=58, RIDGE_PAD_PX=34, RIDGE_FILL_ALPHA=0.35;
+// issue #33: single ridgeline (joyplot) chart for the selected drivers, built by F1Common.ridgeChart (shared with the simulator's plots).
 let ridgeChart=null;
 // #30: a driver's most common finish(es), always over individual positions plus NC (P1…Pworst, NC) —
 // even when the chart groups everything below P10 into one "11+/NC" bucket, which must not win just for
@@ -167,10 +163,7 @@ function fullLabels(){
  labs.push('NC');
  return labs;
 }
-function modesOf(counts){
- const top=Math.max(0,...counts);
- return top>0 ? counts.map((v,j)=>v===top?j:-1).filter(j=>j>=0) : [];
-}
+const modesOf=F1Common.modesOf;
 let currentYear=null, currentSeasonRounds=[], currentCalendar=null, selectedDriverIds=null, pickerSort='team';
 
 async function buildFromSelection(detail){
@@ -299,67 +292,28 @@ function draw(){
  wrap.style.display='block'; empty.style.display='none';
  P=F1Theme.chart();
  Chart.defaults.font.family=ff; Chart.defaults.color=P.text;
- const order=sortedRows().map(d=>({id:d.id, code:d.n, color:F1Theme.team(d.c), counts:d.v, starts:d.starts, modes:d.modes, median:d.median,
-     driverRank:d.driverRank, teamRank:d.teamRank}));
- const n=order.length;
- wrap.style.height=(n*RIDGE_ROW_PX+RIDGE_PAD_PX)+'px';
- const datasets=[];
- order.forEach(({code,color,counts,starts,modes,median},i)=>{
-   const baseline=(n-1-i)*RIDGE_ROW;
-   const peak=Math.max(...counts,1e-9);
-   const heights=counts.map(v=>baseline+(v/peak)*RIDGE_PEAK);
-   datasets.push({ data:LAB.map(()=>baseline), borderWidth:0, pointRadius:0, fill:false, _baseline:true });
-   // #30: most common position(s), every tied one, drawn by F1Common.ridgeMarkers. One below P10 while
-   // those positions are grouped goes on the "11+/NC" bucket, labelled with the real position(s).
+ const order=sortedRows().map(d=>{
+   // #30: most common position(s), every tied one. One below P10 while those positions are grouped goes on the
+   // "11+/NC" bucket, labelled with the real position(s). #108: median (P1 = 0); below P10 it goes on that bucket too.
    const shown=[], labels={};
-   modes.forEach(m=>{
+   d.modes.forEach(m=>{
      const j = showBelowP10 || m<10 ? m : LAB.length-1;
      if(!shown.includes(j)) shown.push(j);
      if(!showBelowP10 && m>=10) labels[j] = labels[j] ? labels[j]+'/'+FULL[m] : FULL[m];
    });
-   // #108: median (P1 = 0) on the chart's categories; below P10 it goes on the grouped "11+/NC" bucket
-   const medX = median==null ? null : (showBelowP10 || median<=9) ? median : LAB.length-1;
-   datasets.push({ data:heights, borderColor:color, backgroundColor:F1Common.withAlpha(color,RIDGE_FILL_ALPHA), borderWidth:1.6, pointRadius:0,
-     fill:'-1', stepped:'middle', _median:medX, _code:code, _counts:counts, _starts:starts, _modes:shown, _modeLabels:labels });
+   return {id:d.id, code:d.n, color:F1Theme.team(d.c), counts:d.v, modes:shown, modeLabels:labels,
+     median: d.median==null ? null : (showBelowP10 || d.median<=9) ? d.median : LAB.length-1,
+     extra:{_counts:d.v, _starts:d.starts}, starts:d.starts};
  });
- ridgeChart=new Chart(document.getElementById('ridgeCanvas'),{
-   type:'line',
-   plugins:[F1Common.ridgeMarkers(), F1Common.ridgeMedians(), F1Common.ridgeFlags(row=>order[n-1-row] && order[n-1-row].id)],
-   data:{labels:LAB, datasets},
-   options:{
-     responsive:true, maintainAspectRatio:false, animation:false,
-     interaction:{mode:'index', intersect:false},
-     plugins:{
-       legend:{display:false},
-       tooltip:{
-         filter:item=>!item.dataset._baseline,
-         callbacks:{
-           title:t=>t[0].label,
-           label:ctx=>{
-             const cnt=ctx.dataset._counts[ctx.dataIndex], starts=ctx.dataset._starts;
-             const pct=starts?100*cnt/starts:0;
-             return ` ${ctx.dataset._code}: ${cnt} start${cnt===1?'':'s'} (${pct.toFixed(0)}%)`;
-           }
-         }
-       }
-     },
-     scales:{
-       // issue #13 (mobile): narrow screens rotate the bucket labels (P1...P10, 11+/NC), which don't fit
-     // horizontally since autoSkip is deliberately off for the default <=12-bucket case.
-     x:{grid:{color:P.grid}, ticks:{color:P.text, maxRotation:F1Common.isNarrow()?60:0, minRotation:F1Common.isNarrow()?60:0,
-         autoSkip:LAB.length>12, font:{size:F1Common.isNarrow()?9:11}}},
-       y:{
-         min:-0.15, max:(n-1)*RIDGE_ROW+RIDGE_PEAK+0.25,
-         grid:{display:false},
-         afterFit:s=>{ s.width+=F1Common.FLAG_ROOM; }, // room for the flags (#18)
-         afterBuildTicks:axis=>{ axis.ticks=Array.from({length:n},(_,i)=>({value:i})); },
-         ticks:{
-           color:ctx=>{ const i=n-1-Math.round(ctx.tick.value); return (order[i]&&order[i].color)||P.text; },
-           callback:value=>{ const i=n-1-Math.round(value); return (order[i]&&order[i].code)||''; },
-           font:{weight:'600'}
-         }
-       }
-     }
+ const nar=F1Common.isNarrow();
+ ridgeChart=F1Common.ridgeChart({
+   canvas:document.getElementById('ridgeCanvas'), wrap, order, categories:LAB, stepped:'middle', animation:false,
+   // issue #13 (mobile): narrow screens rotate the bucket labels (P1...P10, 11+/NC), which don't fit
+   // horizontally since autoSkip is deliberately off for the default <=12-bucket case.
+   x:{ticks:{color:P.text, maxRotation:nar?60:0, minRotation:nar?60:0, autoSkip:LAB.length>12, font:{size:nar?9:11}}},
+   label:ctx=>{
+     const cnt=ctx.dataset._counts[ctx.dataIndex], starts=ctx.dataset._starts, pct=starts?100*cnt/starts:0;
+     return ` ${ctx.dataset._code}: ${cnt} start${cnt===1?'':'s'} (${pct.toFixed(0)}%)`;
    }
  });
  document.getElementById('ridgeKey').innerHTML = F1Common.ridgeKeyHTML('most common finish', true);

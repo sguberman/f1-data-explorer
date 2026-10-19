@@ -931,13 +931,8 @@ document.getElementById('rerun').addEventListener('click', ()=>{ if(!activeRun &
 // driver's curve is normalized to its OWN peak (not a shared scale), which is standard for a ridgeline:
 // it's a shape/spread comparison, not an absolute-count one — the win-probability bars already cover
 // the absolute comparison.
-const RIDGE_ROW=1, RIDGE_PEAK=0.82, RIDGE_ROW_PX=58, RIDGE_PAD_PX=34, RIDGE_FILL_ALPHA=0.35;
 const ridgeCharts={};
-// #30: indexes of the largest value(s) in counts, every one if tied.
-function modesOf(counts){
- const top=Math.max(0,...counts);
- return top>0 ? counts.map((v,j)=>v===top?j:-1).filter(j=>j>=0) : [];
-}
+const modesOf=F1Common.modesOf; // #30
 function drawRidges(){
  if(!ridgeInput) return;
  renderRidgePosition(ridgeInput.tracked, ridgeInput.posCounts, ridgeInput.k, ridgeInput.rankCounts);
@@ -946,53 +941,14 @@ function drawRidges(){
 document.querySelectorAll('.resultSort').forEach(e=>e.addEventListener('change', ()=>{ setResultSort(e.value); drawRidges(); F1Share.sync(); }));
 document.getElementById('ridgeBarsOpt').addEventListener('change', e=>{ showBars=e.target.checked; drawRidges(); F1Share.sync(); });
 function renderRidgeline(chartKey, canvasId, wrapId, order, categories, opts){
- const n=order.length;
- document.getElementById(wrapId).style.height=(n*RIDGE_ROW_PX+RIDGE_PAD_PX)+'px';
- const datasets=[];
- order.forEach(({code,color,counts,modes,modeLabels,median},i)=>{
-   const baseline=(n-1-i)*RIDGE_ROW;
-   const total=counts.reduce((a,b)=>a+b,0)||1;
-   const peak=Math.max(...counts,1e-9);
-   const heights=counts.map(v=>baseline+(v/peak)*RIDGE_PEAK);
-   const pct=counts.map(v=>100*v/total);
-   datasets.push({ data:categories.map(()=>baseline), borderWidth:0, pointRadius:0, fill:false, _baseline:true });
-   datasets.push({ data:heights, borderColor:color, backgroundColor:F1Common.withAlpha(color,RIDGE_FILL_ALPHA), borderWidth:1.6, pointRadius:0,
-     fill:opts.bars?false:'-1', borderWidth:opts.bars?0:1.6, tension:opts.tension||0, stepped:opts.stepped||false, _bars:!!opts.bars, _median:median==null?null:median, _code:code, _pct:pct, _modes:modes, _modeLabels:modeLabels }); // #30
- });
- const P=F1Theme.chart();
+ order.forEach(o=>{ const total=o.counts.reduce((a,b)=>a+b,0)||1; o.extra={_pct:o.counts.map(v=>100*v/total)}; });
  if(ridgeCharts[chartKey]) ridgeCharts[chartKey].destroy();
- ridgeCharts[chartKey]=new Chart(document.getElementById(canvasId),{
-   type:'line',
-   plugins:[F1Common.ridgeBars(), F1Common.ridgeMarkers(), F1Common.ridgeMedians(), F1Common.ridgeFlags(row=>order[n-1-row] && order[n-1-row].id)],
-   data:{labels:categories, datasets},
-   options:{
-     responsive:true, maintainAspectRatio:false,
-     interaction:{mode:'index', intersect:false},
-     plugins:{
-       legend:{display:false},
-       tooltip:{
-         filter:item=>!item.dataset._baseline,
-         callbacks:{
-           title:t=>opts.xTitle+': '+t[0].label,
-           label:ctx=>` ${ctx.dataset._code}: ${ctx.dataset._pct[ctx.dataIndex].toFixed(1)}%`
-         }
-       }
-     },
-     scales:{
-       x:{grid:{color:P.grid}, ticks:{color:P.text, maxRotation:0, autoSkip:true}, title:{display:true,text:opts.xTitle,color:P.text}},
-       y:{
-         min:-0.15, max:(n-1)*RIDGE_ROW+RIDGE_PEAK+0.25,
-         grid:{display:false},
-         afterFit:s=>{ s.width+=F1Common.FLAG_ROOM; }, // room for the flags (#18)
-         afterBuildTicks:axis=>{ axis.ticks=Array.from({length:n},(_,i)=>({value:i})); },
-         ticks:{
-           color:ctx=>{ const i=n-1-Math.round(ctx.tick.value); return (order[i]&&order[i].color)||P.text; },
-           callback:value=>{ const i=n-1-Math.round(value); return (order[i]&&order[i].code)||''; },
-           font:{weight:'600'}
-         }
-       }
-     }
-   }
+ ridgeCharts[chartKey]=F1Common.ridgeChart({
+   canvas:document.getElementById(canvasId), wrap:document.getElementById(wrapId), order, categories,
+   tension:opts.tension, stepped:opts.stepped, bars:opts.bars,
+   x:{title:{display:true,text:opts.xTitle,color:F1Theme.chart().text}},
+   title:t=>opts.xTitle+': '+t[0].label,
+   label:ctx=>` ${ctx.dataset._code}: ${ctx.dataset._pct[ctx.dataIndex].toFixed(1)}%`
  });
 }
 function renderRidgePoints(roster, finals){
