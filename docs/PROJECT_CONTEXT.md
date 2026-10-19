@@ -159,7 +159,7 @@ Move something into `common.js` only once it's genuinely identical on every page
   - both championship pages: `result` (the open round, #29) and `session=sprint`
   - position: `d`, `sort`, `chart` (`mode` default, `champ`, `team`, `median`, #108), `below10`, `sprint`
   - what-if: `gp` and `sprint` orders (`-` marks the not-classified line), and `start=clinch` (#85: start from the
-    "🏆 Title clinch" order; the orders are then left out while they're still that order)
+    "🏆 Title clinch" order; the orders are then left out while they're still that order) and `w` (#133: Form from, a number of races or `all`; left out at 8)
   - simulator: `d`, `sort`, `o` (`id:dnf:win`, `a` = auto), `c` (`a:b:n`), `rsort` (`median` = results sorted by median, #108), `bars` (`1` = points plot as bars, #114), `n` (runs), `w` (#117: Form from, a
     number of races or `all`; left out at the default 8) and `seed`
   
