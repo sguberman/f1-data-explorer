@@ -175,7 +175,9 @@ module.exports = async (t, h) => {
   await p.waitForFunction(() => /seasons simulated/.test(document.getElementById('status').textContent));
   t.check('Run again clears the out-of-date note', await p.evaluate(() => document.getElementById('staleNote').hidden));
   await h.setRound(p, (await p.evaluate(() => L)) - 1);
-  t.check('moving the round marks results out of date', await p.evaluate(() => !document.getElementById('staleNote').hidden && document.getElementById('oddsCard').style.display === 'block'));
+  // #112: moving the round re-simulates by itself (see 36-sim-slider), so the results are fresh, not out of date
+  await p.waitForFunction(() => /seasons simulated/.test(document.getElementById('status').textContent) && document.getElementById('staleNote').hidden);
+  t.check('moving the round re-runs and keeps results shown and current', await p.evaluate(() => document.getElementById('staleNote').hidden && document.getElementById('oddsCard').style.display === 'block'));
   t.check('settings, runs and tracked-set changes never fetch', p.apiHits.length === hitsAfterLoad, p.apiHits.slice(hitsAfterLoad).join(' '));
   t.check('simulator: no page errors', p.errors.length === 0, p.errors.join('; '));
   await p.done();

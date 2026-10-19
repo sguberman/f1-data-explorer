@@ -80,6 +80,8 @@ canvas{max-width:100%;}
 .keyLine{display:inline-block;width:16px;height:0;border-top:2.5px solid;}
 #decidedKey{margin-bottom:6px;}
 @media (max-width:600px){ .decidedWrap{height:210px;} }
+#f1controls{position:sticky;top:0;z-index:30;box-shadow:0 2px 8px rgba(0,0,0,.12);}
+#f1controls.compact .f1c-row:first-child,#f1controls.compact .f1c-error{display:none;}
 </style>
 </head>
 <body>
@@ -889,9 +891,9 @@ function refreshResults(){
 // Cancel; cancelling keeps the previous results.
 let activeRun=null;
 const SLICE_MS=40;
-async function startRun(seed){
+async function startRun(seed, quick){
  if(activeRun) return;
- const N=+document.getElementById('n').value, ctx=buildSimContext(), run=newRun(ctx, N), token={cancelled:false};
+ const N=quick ? Math.min(QUICK_N, +document.getElementById('n').value) : +document.getElementById('n').value, ctx=buildSimContext(), run=newRun(ctx, N), token={cancelled:false};
  run.seed = seed!=null ? seed>>>0 : Math.floor(Math.random()*4294967296); // #31
  rand = seededRandom(run.seed);
  activeRun=token;
@@ -910,6 +912,7 @@ async function startRun(seed){
  document.getElementById('rerun').disabled=false;
  if(token.cancelled){
    updateReadiness();
+   if(token.silent) return; // #112: a newer slider step took over
    status.textContent = lastRun ? 'Cancelled — the results below are from the last completed run.' : 'Cancelled.';
    return;
  }
@@ -918,10 +921,24 @@ async function startRun(seed){
  try{ refreshResults(); }
  finally{ // even if drawing fails, never leave the page looking busy (#56)
    updateReadiness();
-   status.textContent=`${N.toLocaleString()} seasons simulated.`;
+   status.textContent=`${N.toLocaleString()} seasons simulated${quick && N<+document.getElementById('n').value ? ' (quick preview)' : ''}.`;
  }
 }
 function cancelRun(){ if(activeRun) activeRun.cancelled=true; }
+// #112: moving the round slider re-simulates by itself once there's a run. While dragging, a quick preview
+// (QUICK_N seasons, about 50 ms) keeps the plots following the slider; on release the chosen number of seasons runs.
+const QUICK_N=2000;
+let sliderTimer=null;
+async function autoRun(quick){
+ clearTimeout(sliderTimer);
+ sliderTimer=setTimeout(async ()=>{
+   if(!lastRun || document.getElementById('run').disabled && !activeRun) return;
+   if(activeRun){ activeRun.silent=true; activeRun.cancelled=true; while(activeRun) await new Promise(r=>setTimeout(r,5)); }
+   if(document.getElementById('run').disabled) return;
+   if(!quick && lastRun.N===+document.getElementById('n').value && lastRun.key===settingsKey()) return;
+   startRun(undefined, quick);
+ }, quick ? 60 : 0);
+}
 document.getElementById('run').addEventListener('click', ()=>{ if(activeRun) cancelRun(); else startRun(); });
 document.getElementById('rerun').addEventListener('click', ()=>{ if(!activeRun && !document.getElementById('run').disabled) startRun(); });
 
@@ -1170,7 +1187,11 @@ F1Export.attach(document.getElementById('ridgePointsCard'), {
  canvas:()=>document.getElementById('ridgePointsCanvas'), csv:ridgeCSV('points', l=>`${l}–${+l+9} pts (% of seasons)`),
 });
 window.addEventListener('f1selection', e=>buildFromSelection(e.detail));
-window.addEventListener('f1roundchange', e=>{ if(currentSeasonRounds.length) recompute(e.detail.round); });
+window.addEventListener('f1roundchange', e=>{ if(currentSeasonRounds.length){ recompute(e.detail.round); autoRun(true); } });
+window.addEventListener('f1roundcommit', ()=>{ if(currentSeasonRounds.length) autoRun(false); }); // #112: slider released
+// #112: the controls stick to the top; once scrolled they shrink to the slider (hysteresis so it can't flicker)
+window.addEventListener('scroll', ()=>{ const c=document.getElementById('f1controls'), y=window.scrollY;
+ if(y>140) c.classList.add('compact'); else if(y<60) c.classList.remove('compact'); }, {passive:true});
 window.addEventListener('themechange', ()=>{
  recolorOutcomeTags();
  renderDriverPicker();
