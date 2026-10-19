@@ -457,7 +457,7 @@ const F1Common = (() => {
   }
   const projWindowParam = () => projWin===PROJ_DEFAULT ? null : projWin===Infinity ? 'all' : String(projWin);
   // "last 5 races", or "every race so far" when the window covers the M rounds played.
-  const projWindowText = M => projWin>=M ? 'every race so far' : `last ${projWin} races`;
+  const projWindowText = M => projWin>=M ? 'every race so far' : projWin===1 ? 'last race' : `last ${projWin} races`;
   // The "Projection from" stepper (a button row in `el`). onChange() runs after a step; call sync(M) when the number
   // of loaded rounds changes. Steps 1..M-1, then "every race so far". Never fetches.
   function mountProjStepper(el, getYear, onChange){

@@ -22,7 +22,7 @@ module.exports = async (t, h) => {
     const c = Chart.getChart(document.getElementById('projChart')); return c.data.datasets.every(ds => D.some(d => d.n === ds.name && Math.round(d.full[N-1]) === Math.round(ds.fin))); }));
   await p.selectOption('#posView', 'proj'); await p.waitForTimeout(100);
   for(let i = 0; i < 20; i++) await p.click('#projStep .projLess', {force: true}).catch(() => {});
-  t.check('drivers: − stops at 1 race', await val() === 'last 1 races' && await p.evaluate(() => document.querySelector('#projStep .projLess').disabled));
+  t.check('drivers: − stops at the last race', await val() === 'last race' && await p.evaluate(() => document.querySelector('#projStep .projLess').disabled));
   for(let i = 0; i < 30; i++) await p.click('#projStep .projMore', {force: true}).catch(() => {});
   t.check('drivers: + ends at every race so far', await val() === 'every race so far' && await check('drivers', Infinity));
   t.check('drivers: pw=all in the link', (await p.evaluate(() => location.search)).includes('pw=all'));
