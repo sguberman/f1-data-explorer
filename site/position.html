@@ -61,6 +61,27 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
 <div id="f1controls" class="f1c"></div>
 <div class="card" style="margin-bottom:16px;">
 <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:10px;">
+ <button type="button" class="pickerToggle" id="pickerToggle" aria-expanded="true" aria-controls="driverPicker" title="Show or hide the list"><span class="chev" aria-hidden="true">▾</span>Drivers shown</button><span id="pickerSummary" class="pickerSummary"></span>
+ <span style="flex:1;"></span>
+ <span class="pickerSort" style="font-size:12px;color:var(--sub);">Sort by</span>
+ <select id="sortSeg" class="ddSelect pickerSort" aria-label="Sort drivers shown">
+  <option value="team">Team</option>
+  <option value="rank">Ranking</option>
+ </select>
+</div>
+<div class="btnrow" id="presetRow" style="margin-bottom:10px;">
+ <button type="button" class="pill" data-preset="all">All</button>
+ <button type="button" class="pill" data-preset="none">None</button>
+ <button type="button" class="pill" data-preset="5">Top 5</button>
+ <button type="button" class="pill" data-preset="10">Top 10</button>
+ <button type="button" class="pill" data-preset="top4" title="The drivers of the top 4 teams in the constructors' standings">Top 4 teams</button>
+ <button type="button" class="pill" data-preset="rest" title="Everyone outside the top 4 teams">Best of the rest</button>
+ <button type="button" class="pill" data-preset="contention" title="The leader and everyone who can still win the title">Title contention</button>
+</div>
+<div id="driverPicker" class="f1-skel"></div>
+</div>
+<div class="card" style="margin-bottom:16px;">
+<div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:10px;">
  <span style="font-size:12px;color:var(--sub);">Sort by</span>
  <select id="chartSortSelect" class="ddSelect" aria-label="Sort by">
   <option value="mode">Most common</option>
@@ -92,27 +113,6 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
 <div id="heatEmpty" style="font-size:12.5px;color:var(--sub);display:none;">No drivers selected.</div>
 <div class="hsKey" id="heatKey"></div>
 <div class="note" id="heatNote"></div>
-</div>
-<div class="card">
-<div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:10px;">
- <button type="button" class="pickerToggle" id="pickerToggle" aria-expanded="true" aria-controls="driverPicker" title="Show or hide the list"><span class="chev" aria-hidden="true">▾</span>Drivers shown</button><span id="pickerSummary" class="pickerSummary"></span>
- <span style="flex:1;"></span>
- <span style="font-size:12px;color:var(--sub);">Sort by</span>
- <select id="sortSeg" class="ddSelect" aria-label="Sort drivers shown">
-  <option value="team">Team</option>
-  <option value="rank">Ranking</option>
- </select>
-</div>
-<div class="btnrow" id="presetRow" style="margin-bottom:10px;">
- <button type="button" class="pill" data-preset="all">All</button>
- <button type="button" class="pill" data-preset="none">None</button>
- <button type="button" class="pill" data-preset="5">Top 5</button>
- <button type="button" class="pill" data-preset="10">Top 10</button>
- <button type="button" class="pill" data-preset="top4" title="The drivers of the top 4 teams in the constructors' standings">Top 4 teams</button>
- <button type="button" class="pill" data-preset="rest" title="Everyone outside the top 4 teams">Best of the rest</button>
- <button type="button" class="pill" data-preset="contention" title="The leader and everyone who can still win the title">Title contention</button>
-</div>
-<div id="driverPicker" class="f1-skel"></div>
 </div>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>

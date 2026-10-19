@@ -103,18 +103,21 @@ module.exports = async (t, h) => {
   for(const [page, noun] of [['drivers', 'drivers'], ['position', 'drivers'], ['simulator', 'drivers'], ['constructors', 'teams']]){
     await go(p, page + '.html');
     const list = page === 'constructors' ? '#teamPicker' : '#driverPicker';
+    t.check(`${page}: the picker card sits right under the round slider card`, await p.evaluate(sel => { const c = document.querySelector(sel).closest('.card'), f = document.getElementById('f1controls'); return f.nextElementSibling === c; }, list));
     const vis = () => p.$eval(list, e => e.offsetHeight > 0);
     t.check(`${page}: the list starts open`, await vis() && await p.getAttribute('#pickerToggle', 'aria-expanded') === 'true');
     await p.click('#pickerToggle'); await p.waitForTimeout(60);
     const n = (await checked(p)).length, total = await p.$$eval(`${list} input`, i => i.length);
     t.check(`${page}: folded away, the list is hidden and a count is shown`, !await vis() && await p.getAttribute('#pickerToggle', 'aria-expanded') === 'false'
       && await p.$eval('#pickerSummary', e => e.offsetHeight > 0 && e.textContent) === `${n} of ${total} ${noun}`, await p.$eval('#pickerSummary', e => e.textContent));
+    if(page !== 'constructors') t.check(`${page}: the sort dropdown is hidden while folded`, await p.$eval('#sortSeg', e => e.offsetHeight === 0));
     t.check(`${page}: the presets stay while folded away`, await p.$eval('#presetRow', e => e.offsetHeight > 0));
     await p.click('#presetRow button[data-preset="all"]'); await p.waitForTimeout(80);
     t.check(`${page}: the count follows the presets`, await p.$eval('#pickerSummary', e => e.textContent) === `${total} of ${total} ${noun}`);
     await go(p, page + '.html');
     t.check(`${page}: stays folded after a reload`, !await vis() && await p.$eval('#pickerSummary', e => e.offsetHeight > 0));
     await p.click('#pickerToggle'); await p.waitForTimeout(60);
+    if(page !== 'constructors') t.check(`${page}: the sort dropdown is back when open`, await p.$eval('#sortSeg', e => e.offsetHeight > 0));
     t.check(`${page}: opens again`, await vis() && await p.getAttribute('#pickerToggle', 'aria-expanded') === 'true');
     await p.click('#presetRow button[data-preset="contention"]'); await p.waitForTimeout(60);
   }
