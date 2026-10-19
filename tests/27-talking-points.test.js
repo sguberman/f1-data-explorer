@@ -39,20 +39,19 @@ module.exports = async (t, h) => {
       f.climber = top(up, 0); f.faller = top(down, 0);
       if(f.climber && f.climber.ids.length === 1) f.climber.path = `P${then.indexOf(f.climber.ids[0]) + 1} → P${pos[f.climber.ids[0]] + 1}`;
     }
-    f.nc = top(nc, 0); if(f.nc) f.nc.starts = starts[f.nc.ids[0]];
     Object.keys(f).forEach(k => { if(!f[k]) delete f[k]; else f[k].codes = f[k].ids.map(id => code[id]); });
     return f;
   }, round);
   const shown = p => p.$$eval('#talkingPoints .tp', els => els.map(e => ({ key: e.dataset.fact, ids: e.dataset.ids.split(','), n: +e.dataset.n,
     label: e.querySelector('.tpLabel').textContent, value: e.querySelector('.tpValue').textContent.replace(/\s+/g, ' ').trim(),
     detail: (e.querySelector('.tpDetail') || { textContent: '' }).textContent.trim() })));
-  const ORDER = ['leader', 'wins', 'podiums', 'streak', 'climber', 'faller', 'nc'];
+  const ORDER = ['leader', 'wins', 'podiums', 'streak', 'climber', 'faller'];
   const names = codes => codes.length > 3 ? codes.slice(0, 3).join(', ') + ` +${codes.length - 3} more` : codes.length > 1 ? codes.slice(0, -1).join(', ') + ' and ' + codes.slice(-1) : codes[0];
 
   let p = await h.openPage('drivers', { width: 1000 }); await h.loaded(p);
   const hits = p.apiHits.length;
-  t.check('the card sits right after the points chart card', await p.evaluate(() => {
-    const cards = [...document.querySelectorAll('.wrap > .card')]; return cards.indexOf(document.getElementById('tpCard')) === cards.indexOf(document.getElementById('c').closest('.card')) + 1; }));
+  t.check('the card sits right under the picker, before the points chart card', await p.evaluate(() => {
+    const cards = [...document.querySelectorAll('.wrap > .card')]; return cards.indexOf(document.getElementById('tpCard')) === 1 && cards.indexOf(document.getElementById('tpCard')) === cards.indexOf(document.getElementById('c').closest('.card')) - 1; }));
 
   for(const round of [12, 9, 6, 5, 2, 1]){
     if(round !== 12){ await h.setRound(p, round); await p.waitForTimeout(80); }
@@ -68,7 +67,6 @@ module.exports = async (t, h) => {
       && g.leader.detail === (want.leader.n > 0 ? `${want.leader.n} pt${want.leader.n === 1 ? '' : 's'} ahead of ${want.leader.second}` : `level with ${want.leader.second}, ahead on countback`), JSON.stringify(g.leader));
     if(want.wins) t.check(`round ${round}: wins line counts the different winners`, g.wins.detail === `${want.wins.winners} different winner${want.wins.winners === 1 ? '' : 's'} in ${round} Grand${round === 1 ? ' Prix' : 's Prix'}`, g.wins.detail);
     if(want.podiums) t.check(`round ${round}: podiums line counts the different drivers on the podium (#102)`, g.podiums.detail === `${want.podiums.drivers} different driver${want.podiums.drivers === 1 ? '' : 's'} on the podium` && /podiums?( each)?$/.test(g.podiums.value), g.podiums.detail + ' | ' + g.podiums.value);
-    if(want.nc && want.nc.ids.length === 1) t.check(`round ${round}: not classified says out of how many starts`, g.nc.detail === `of ${want.nc.starts} started`, g.nc.detail);
     if(want.climber && want.climber.path) t.check(`round ${round}: climber shows from and to`, g.climber.detail === `${want.climber.path} · last 5 rounds`, g.climber.detail);
     t.check(`round ${round}: subtitle names the round`, await h.text(p, '#tpSub') === `whole field · after round ${round}`, await h.text(p, '#tpSub'));
   }
@@ -115,8 +113,8 @@ module.exports = async (t, h) => {
   t.check('tie: two drivers read "AAA and BBB · 1 win each"', tie.r2.wins === 'AAA and BBB · 1 win each | 2 different winners in 2 Grands Prix', tie.r2.wins);
   t.check('tie: three drivers read "AAA, BBB and CCC"', tie.r3.wins === 'AAA, BBB and CCC · 1 win each | 3 different winners in 3 Grands Prix', tie.r3.wins);
   t.check('tie: four drivers read "AAA, BBB, CCC +1 more"', tie.r2.streak === 'AAA, BBB, CCC +1 more · 2 rounds each | every round so far', tie.r2.streak);
-  t.check('a missed score ends a streak; a single driver has no "each"', tie.r3.streak === 'AAA, BBB and CCC · 3 rounds each | every round so far' && tie.r3.nc === 'DDD · 1 Grand Prix | of 3 started', JSON.stringify(tie.r3));
-  t.check('nobody not classified: no such fact', !('nc' in tie.r2));
+  t.check('a missed score ends a streak; a single driver has no "each"', tie.r3.streak === 'AAA, BBB and CCC · 3 rounds each | every round so far', JSON.stringify(tie.r3));
+  t.check('no "most not classified" tile on the drivers page (#109 moved it to the position page)', !('nc' in tie.r2) && !('nc' in tie.r3));
   await p.done();
 
   // Both themes at desktop and phone width: fits without sideways scrolling.

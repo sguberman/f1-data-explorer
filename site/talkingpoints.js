@@ -1,12 +1,12 @@
 /* F1TalkingPoints (#88): a few facts worked out from the season so far, for the whole field, as of the slider's
    round — the leader and the gap, most wins, the longest active points streak, the biggest climber and faller
-   over the last 5 rounds, and the most results not classified. Each fact names its driver(s) by code with a flag;
+   over the last 5 rounds. Each fact names its driver(s) by code with a flag;
    ties list everyone ("VER and NOR · 3 wins each"). A fact that can't be worked out yet (the 5-round moves before
-   round 6) or says nothing (nobody not classified) is left out. Everything comes from the season already loaded,
+   round 6) is left out. Everything comes from the season already loaded,
    so it never fetches. Standings and tie-breaks come from F1Common.standingsOrder, like the rest of the site.
 
    F1TalkingPoints.facts(seasonRounds, round)  the facts, as data: [{key, label, ids, n, value, detail}]
-   F1TalkingPoints.stats(seasonRounds, round, ids)  #109: the same kind of facts for just these drivers (results heat strip)
+   F1TalkingPoints.stats(seasonRounds, round, ids)  #109: wins, podiums, not classified and streaks for these drivers (position page)
    F1TalkingPoints.render(el, seasonRounds, round[, list])  writes them (or `list`) into el (a list of .tp tiles)
 */
 const F1TalkingPoints = (() => {
@@ -29,7 +29,7 @@ const F1TalkingPoints = (() => {
     if(!upto.length) return [];
     const order = F1Common.standingsOrder(seasonRounds, round, 'drivers'), rank = {};
     order.forEach((id, i) => { rank[id] = i; });
-    const code = {}, pts = {}, wins = {}, podiums = {}, nc = {}, gps = {}, roundPts = {};
+    const code = {}, pts = {}, wins = {}, podiums = {}, roundPts = {};
     upto.forEach(r => {
       [...r.raceResults, ...(r.sprintResults || [])].forEach(x => {
         code[x.driverId] = x.code;
@@ -38,10 +38,8 @@ const F1TalkingPoints = (() => {
         rp[r.round] = (rp[r.round] || 0) + x.points;
       });
       r.raceResults.forEach(x => {
-        gps[x.driverId] = (gps[x.driverId] || 0) + 1;
         if(x.position === 1) wins[x.driverId] = (wins[x.driverId] || 0) + 1;
         if(x.position != null && x.position <= 3) podiums[x.driverId] = (podiums[x.driverId] || 0) + 1;
-        if(x.position == null) nc[x.driverId] = (nc[x.driverId] || 0) + 1;
       });
     });
     const out = [];
@@ -96,12 +94,6 @@ const F1TalkingPoints = (() => {
           detail:(b.ids.length === 1 ? `P${before[id] + 1} → P${rank[id] + 1} · ` : '') + `last ${MOVE_SPAN} rounds` });
       });
     }
-
-    // Most Grand Prix results with no classified position.
-    const c = best(nc, rank, 0);
-    if(c) out.push({ key:'nc', label:'Most not classified', ids:c.ids, n:c.n,
-      value:plural(c.n, 'Grand Prix', 'Grands Prix') + (c.ids.length > 1 ? ' each' : ''),
-      detail: c.ids.length === 1 ? `of ${gps[c.ids[0]]} started` : '' });
 
     out.forEach(f => { f.codes = f.ids.map(id => code[id]); });
     return out;

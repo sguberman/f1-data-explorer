@@ -1,13 +1,13 @@
-// #109: stats under the results heat strip (position page): most wins / podiums / not classified and the longest win,
-// podium and points streaks among the drivers shown, Grand Prix finishes through the slider's round. Checked against
-// an independent calculation; follows picker, slider and season; never fetches; fits a phone.
+// #109: Talking points card on the position page (under the picker): most wins / podiums / not classified and the longest
+// win, podium and points streaks among every driver (not just those shown), Grand Prix finishes through the slider's
+// round. Checked against an independent calculation; follows the slider and season; never fetches; fits a phone.
 module.exports = async (t, h) => {
   const shown = p => p.$$eval('#heatStats .tp', els => els.map(e => ({ key: e.dataset.fact, ids: e.dataset.ids.split(','), n: +e.dataset.n,
     value: e.querySelector('.tpValue').textContent.replace(/\s+/g, ' ').trim(), detail: (e.querySelector('.tpDetail') || { textContent: '' }).textContent.trim() })));
   // Independent: counts and longest runs per selected driver; a missed round breaks a run.
   const expected = p => p.evaluate(() => {
     const L = F1Controls.state.round, rounds = F1Controls.state.seasonRounds.filter(r => r.round <= L).sort((a, b) => a.round - b.round);
-    const ids = selectedDriverIds.slice();
+    const ids = [...new Set(rounds.flatMap(r => r.raceResults.map(x => x.driverId)))]; // every driver, not just those shown
     const cnt = { wins: {}, podiums: {}, nc: {} }, runs = { winStreak: {}, podiumStreak: {}, pointsStreak: {} };
     ids.forEach(id => { for(const k in cnt) cnt[k][id] = 0; const cur = {}; for(const k in runs) runs[k][id] = { n: 0, to: 0 };
       rounds.forEach(r => {
@@ -38,14 +38,17 @@ module.exports = async (t, h) => {
   const hits = p.apiHits.length;
   await p.click('#presetRow [data-preset="all"]').catch(() => {});
   let got = await compare(p, 'all drivers, round 12');
-  t.check('the stats sit inside the heat strip card, under the strip', await p.evaluate(() => { const c = document.getElementById('heatCard'), s = document.getElementById('heatStats');
-    return c.contains(s) && s.getBoundingClientRect().top >= document.getElementById('heatStrip').getBoundingClientRect().bottom - 1; }));
+  t.check('own Talking points card right under the picker, then the heat strip card, then the chart card', await p.evaluate(() => {
+    const cards = [...document.querySelectorAll('.wrap > .card')], at = id => cards.indexOf(document.getElementById(id).closest('.card'));
+    return at('driverPicker') === 0 && at('heatStats') === 1 && at('heatStrip') === 2 && at('ridgeCanvas') === 3 && !document.getElementById('heatCard').contains(document.getElementById('heatStats')); }));
   t.check('wording: "N wins" / "N rounds" with flags', got.every(g => /(win|podium|Grands? Prix|round)s?( each)?$/.test(g.value)) && await p.$$eval('#heatStats .tpName img.flag', x => x.length) > 0, JSON.stringify(got.map(g => g.value)));
   for(const round of [9, 4, 1]){ await h.setRound(p, round); await p.waitForTimeout(80); await compare(p, `slider at round ${round}`); }
   await h.setRound(p, 12);
-  await p.click('#presetRow [data-preset="none"]').catch(() => {});
-  t.check('no drivers selected: no stats', await p.$$eval('#heatStats .tp', e => e.length) === 0);
-  await p.click('#presetRow [data-preset="3"]').catch(() => {});
+  const full = JSON.stringify(await shown(p));
+  await p.click('#presetRow [data-preset="none"]');
+  t.check('with no drivers shown, the talking points still cover every driver', JSON.stringify(await shown(p)) === full);
+  await p.click('#presetRow [data-preset="5"]');
+  t.check('picking drivers does not change them', JSON.stringify(await shown(p)) === full);
   await compare(p, 'a small selection');
   t.check('no fetches while interacting', p.apiHits.length === hits, `${p.apiHits.length - hits} new`);
   t.check('no page errors', p.errors.length === 0, p.errors.join('; '));
