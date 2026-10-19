@@ -322,9 +322,10 @@ Grand Prix"), with "Click for the full result" on actual rounds (not on touch sc
 values are round numbers). It opens any loaded round, whatever the slider says, since that chart covers the whole
 season; Escape outside a panel closes the one opened last.
 
-Both championship pages are laid out (issue #10, "Layout A"): points chart (with the title race line, #85) → (drivers: **Talking points**, #88) →
-**Projected final points** card → picker → **Championship position by round** card. Cards above the picker follow the picker
-selection (except Talking points, which covers the whole field); the card below it shows every driver/team.
+Both championship pages are laid out (issue #10, "Layout A", picker moved to the top in #124): **picker** (under the
+season/round controls) → points chart (with the title race line, #85) → (drivers: **Talking points**, #88) →
+**Projected final points** card → **Championship position by round** card. The cards follow the picker selection
+(except Talking points and the position card, which cover the whole field).
 - **Projected final points** (issue #10): for the picker selection, what the points chart's projection
   (points so far + last-5-participated-rounds average × rounds left) said after each round. Its last value
   equals the end of the points chart's projection line. End labels on wide screens, ranked list (`.endLegend`)
@@ -520,8 +521,8 @@ interaction. If the calendar fails or has no dates, the strip stays hidden.
   legends and end labels; **full names** in pickers (driver full name + small muted code tag; full official
   team names).
 - **Picker presets and default (#104):** All / None / Top N plus **Top 4 teams** (the drivers of the top 4 constructors; the 4 teams on the constructors page), **Best of the rest** (everyone else) and **Title contention** (the leader and everyone who can still win, from `titleRace()`'s contenders, so it matches the Title race box; just the champion once decided). Sets come from `F1Common.presetSets()` as of the slider's round. The **default selection** on all four picker pages is the title contenders (`defaultSelection()`), falling back to the top 5 when fewer than 2 or more than 10 (teams: 5) are in it, e.g. early in a season. Picks are **remembered between pages** (`f1cache:pickerSelection` = `{year, drivers, teams}`; drivers, position and simulator share the drivers' list; `null` = still the default; a link's `d`/`t` and a season change override it).
-- **Folding the picker (#124):** the "Drivers shown / tracked / Teams shown" label is a toggle (`#pickerToggle`) that hides the list and shows "N of M drivers"; the sort and presets stay. Shared between pages (`f1cache:pickerCollapsed`).
-- Pickers sit **below** the chart. Rows: checkbox, (rank), team-color dot, flag, number, name, movement, points.
+- **Folding the picker (#124):** the "Drivers shown / tracked / Teams shown" label is a toggle (`#pickerToggle`) that hides the list and the sort dropdown and shows "N of M drivers"; the presets stay. Shared between pages (`f1cache:pickerCollapsed`).
+- Pickers sit at the **top** of the page, in a card right under the season/round controls (#124; moved up from below the chart). Folded away, the sort dropdown is hidden too. Rows: checkbox, (rank), team-color dot, flag, number, name, movement, points.
   Order, ranks, ▲/▼ and presets follow the standings with ties broken by countback (`standingsOrder()`, #20). Movement
   (issue #47) is a green ▲n / red ▼n for places gained/lost in the standings since the previous round
   (`F1Common.standingsMoves()`), blank when unchanged and at round 1.

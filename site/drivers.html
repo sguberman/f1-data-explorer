@@ -44,6 +44,27 @@ html.f1-loading #talkingPoints{min-height:120px;}
 <p class="sub">Points for the drivers you pick below (top 5 by default), projected to the end of the season from each driver's last 5 races. Move the slider, or drag the handle on the chart, to see the standings as of any round. Tap a round on the chart for its result.</p>
 <div id="f1controls" class="f1c"></div>
 <div class="card" style="margin-bottom:16px;">
+<div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:10px;">
+ <button type="button" class="pickerToggle" id="pickerToggle" aria-expanded="true" aria-controls="driverPicker" title="Show or hide the list"><span class="chev" aria-hidden="true">▾</span>Drivers shown</button><span id="pickerSummary" class="pickerSummary"></span>
+ <span style="flex:1;"></span>
+ <span class="pickerSort" style="font-size:12px;color:var(--sub);">Sort by</span>
+ <select id="sortSeg" class="ddSelect pickerSort" aria-label="Sort drivers shown">
+  <option value="team">Team</option>
+  <option value="rank">Ranking</option>
+ </select>
+</div>
+<div class="btnrow" id="presetRow" style="margin-bottom:10px;">
+ <button type="button" class="pill" data-preset="all">All</button>
+ <button type="button" class="pill" data-preset="none">None</button>
+ <button type="button" class="pill" data-preset="5">Top 5</button>
+ <button type="button" class="pill" data-preset="10">Top 10</button>
+ <button type="button" class="pill" data-preset="top4" title="The drivers of the top 4 teams in the constructors' standings">Top 4 teams</button>
+ <button type="button" class="pill" data-preset="rest" title="Everyone outside the top 4 teams">Best of the rest</button>
+ <button type="button" class="pill" data-preset="contention" title="The leader and everyone who can still win the title">Title contention</button>
+</div>
+<div id="driverPicker" class="f1-skel"></div>
+</div>
+<div class="card" style="margin-bottom:16px;">
 <div id="titleRace" class="titleRace" hidden></div>
 <div class="ptsHead">
 <div id="lg" class="lg" style="display:flex;flex-wrap:wrap;gap:8px 20px;font-size:12px;color:var(--ink2);"></div>
@@ -81,27 +102,6 @@ html.f1-loading #talkingPoints{min-height:120px;}
 <div style="font-size:12px;color:var(--muted);line-height:1.6;margin:8px 2px 2px;">What the projection on the chart above would have said after each round: points so far plus the average of the last 5 rounds each driver took part in, for every round left. Hover over a round, or tap it, to see each projection then.</div>
 </div>
 <div class="card">
-<div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:10px;">
- <button type="button" class="pickerToggle" id="pickerToggle" aria-expanded="true" aria-controls="driverPicker" title="Show or hide the list"><span class="chev" aria-hidden="true">▾</span>Drivers shown</button><span id="pickerSummary" class="pickerSummary"></span>
- <span style="flex:1;"></span>
- <span style="font-size:12px;color:var(--sub);">Sort by</span>
- <select id="sortSeg" class="ddSelect" aria-label="Sort drivers shown">
-  <option value="team">Team</option>
-  <option value="rank">Ranking</option>
- </select>
-</div>
-<div class="btnrow" id="presetRow" style="margin-bottom:10px;">
- <button type="button" class="pill" data-preset="all">All</button>
- <button type="button" class="pill" data-preset="none">None</button>
- <button type="button" class="pill" data-preset="5">Top 5</button>
- <button type="button" class="pill" data-preset="10">Top 10</button>
- <button type="button" class="pill" data-preset="top4" title="The drivers of the top 4 teams in the constructors' standings">Top 4 teams</button>
- <button type="button" class="pill" data-preset="rest" title="Everyone outside the top 4 teams">Best of the rest</button>
- <button type="button" class="pill" data-preset="contention" title="The leader and everyone who can still win the title">Title contention</button>
-</div>
-<div id="driverPicker" class="f1-skel"></div>
-</div>
-<div class="card" style="margin-top:16px;">
 <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;margin:0 0 10px;">
  <span style="font-size:13px;font-weight:600;color:var(--ink);">Championship position by round</span>
  <span id="posSub" style="font-size:12px;color:var(--sub);"></span>

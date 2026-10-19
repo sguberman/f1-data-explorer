@@ -236,4 +236,5 @@ html.f1-loading .f1-skel::after{content:"";position:absolute;inset:0;z-index:6;b
 .pickerSummary{display:none;font-size:12px;color:var(--muted);}
 .pickerCollapsed .pickerSummary{display:inline;margin-left:6px;}
 .pickerCollapsed .pickerSummary::before{content:"· ";}
+.pickerCollapsed .pickerSort{display:none;}
 .pickerCollapsed #driverPicker,.pickerCollapsed #teamPicker{display:none;}
