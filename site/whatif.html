@@ -11,6 +11,7 @@
 <script src="theme.js"></script>
 <script src="nav.js"></script>
 <script src="common.js"></script>
+<script src="racemodel.js"></script>
 <script src="data.js"></script>
 <script src="share.js"></script>
 <script src="export.js"></script>
@@ -29,6 +30,13 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
 .presetLbl{font-size:12px;color:var(--sub);white-space:nowrap;}
 .wiPresets .reset{white-space:nowrap;}
 .wiPresets[hidden]{display:none;}
+/* #133: "Form from" stepper beside the Simulated preset (same look as the simulator's) */
+.wiForm{display:flex;align-items:center;gap:4px;}
+.stepper{display:flex;align-items:center;gap:2px;}
+.stepper button{width:26px;height:26px;padding:0;border-radius:6px;background:var(--ctrl);color:var(--ink);border:1px solid var(--line);font-size:15px;font-weight:600;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;}
+.stepper button:active{background:var(--ctrl-active);}
+.stepper button:disabled{opacity:.35;cursor:default;}
+.stepper .val{text-align:center;font-variant-numeric:tabular-nums;font-size:13px;min-width:104px;}
 .orders{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;}
 .orders > div{min-width:0;}
 .orderTitle{font-size:12px;font-weight:600;color:var(--sub);margin:0 0 6px;}
@@ -101,6 +109,13 @@ tr.champ td{background:var(--inset);}
     <button class="reset" id="useActual" type="button" hidden>Actual result</button>
     <button class="reset" id="useStandings" type="button">Standings order</button>
     <button class="reset" id="useClinch" type="button" hidden>🏆 Title clinch</button>
+    <button class="reset" id="useSim" type="button" title="Simulate this race 30,000 times and use the most likely finishing order">🎲 Simulated</button>
+    <span class="wiForm"><span class="presetLbl" id="winLbl">Form from</span>
+      <span class="stepper" role="group" aria-labelledby="winLbl">
+        <button type="button" id="winLess" aria-label="Use fewer races">−</button>
+        <span class="val" id="winVal" aria-live="polite">last 8 races</span>
+        <button type="button" id="winMore" aria-label="Use more races">+</button>
+      </span></span>
   </div>
   <div id="emptyMsg" hidden></div>
   <div class="orders" id="orders"></div>
@@ -131,12 +146,17 @@ let orders={}, sessions=[], roster={};
 // there. startMode 'clinch' (a "Try it in What-If →" link's start=clinch) makes it the starting order, for the first
 // round built only: moving the slider or changing season goes back to the normal start.
 let clinch=null, startMode=null;
+// #133: the "Simulated" preset: Form from (last N Grand Prix starts of each driver, or the whole season), and the
+// note shown after a simulated order has been applied (cleared by any other preset and by a new round).
+const SIM_RUNS=30000, WINDOW_DEFAULT=8, WINDOW_MIN=3;
+let dataWindow=WINDOW_DEFAULT, simNote='';
 
 async function buildFromSelection(detail){
  year=detail.year; seasonRounds=detail.seasonRounds;
  calendar = seasonRounds.length ? await F1Data.getCalendar(year) : null;
  // #31: a shared link's keys, first season only
  const link = F1Share.take();
+ if(link){ const w=link.get('w'); if(w==='all') dataWindow=Infinity; else if(/^\d{1,3}$/.test(w||'') && +w>=WINDOW_MIN) dataWindow=+w; }
  startMode = link && link.get('start')==='clinch' ? 'clinch' : null; // #85: start from the title-clinch order
  setRound(detail.round);
  // #31: the link's orders — used when they list exactly this round's drivers
@@ -158,11 +178,12 @@ const orderKey = o => (o||[]).map(id=>id===null ? '-' : id).join(',');
 F1Share.register(()=>{
  const out={};
  sessions.forEach(s=>{ out[s] = orderKey(orders[s])===orderKey(defaultOrders[s]) ? null : orderKey(orders[s]); });
+ out.w = dataWindow===WINDOW_DEFAULT ? null : dataWindow===Infinity ? 'all' : String(dataWindow); // #133
  out.start = startMode==='clinch' && clinch ? 'clinch' : null; // #85: the orders above are then against the clinch order
  return out;
 });
 function setRound(round){
- L=round; T=L+1;
+ L=round; T=L+1; simNote='';
  const actual=seasonRounds.find(r=>r.round===T);
  const total=calendar && calendar.totalRounds ? calendar.totalRounds : Math.max(seasonRounds.length, F1Common.seasonMeta(year).rounds);
  const empty=document.getElementById('emptyMsg');
@@ -203,14 +224,50 @@ function standingIds(){
 function resetOrders(mode){
  const act=actualRound();
  const all=standingIds();
+ simNote='';
  orders={};
  sessions.forEach(s=>{
-   if(mode==='clinch' && clinch) orders[s]=clinch.orders[s].slice();
+   if(mode==='sim') orders[s]=simulatedOrder(s, all);
+   else if(mode==='clinch' && clinch) orders[s]=clinch.orders[s].slice();
    else if(mode==='actual' && act){
      orders[s]=orderFrom(s==='gp' ? act.raceResults : act.sprintResults);
    }else orders[s]=[...all, null];
  });
+ if(mode==='sim') simNote=`Simulated ${SIM_RUNS.toLocaleString('en-US')} times from each driver’s ${windowShown()===Infinity?'whole season':'last '+windowShown()+' races'}: drivers are ordered by average points, and anyone likely to retire is below the “Not classified” line. `;
  render();
+}
+
+// ---- #133: the "Simulated" preset ----
+// Form from works like the simulator's (#117): the last N Grand Prix starts of each driver as of round L.
+const windowShown = ()=>dataWindow>=L ? Infinity : dataWindow;
+function syncWindow(){
+ const w=windowShown();
+ document.getElementById('winVal').textContent = w===Infinity ? 'whole season' : `last ${w} races`;
+ document.getElementById('winLess').disabled = (w===Infinity ? L-1 : w-1) < WINDOW_MIN;
+ document.getElementById('winMore').disabled = w===Infinity;
+}
+function stepWindow(dir){
+ const w=windowShown();
+ if(dir<0){ const v=(w===Infinity ? L-1 : w-1); if(v<WINDOW_MIN) return; dataWindow=v; }
+ else{ if(w===Infinity) return; dataWindow = w+1>=L ? Infinity : w+1; }
+ syncWindow(); F1Share.sync();
+}
+// One session's order from SIM_RUNS simulated races: average points, then median finish, then the standings.
+// Drivers who didn't race in round L stay out of the draw and go below the not-classified line, as in the simulator.
+function simulatedOrder(session, standing){
+ const gp = session==='gp', pts = gp ? PTS_GP : sprintPoints(year);
+ const res={}, raced=new Set();
+ seasonRounds.filter(r=>r.round<=L).forEach(r=>(r.raceResults||[]).forEach(x=>{
+   (res[x.driverId]=res[x.driverId]||[]).push(Number.isFinite(x.position) && x.position>=1 ? x.position : null);
+   if(r.round===L) raced.add(x.driverId);
+ }));
+ const run=standing.filter(id=>raced.has(id)), rest=standing.filter(id=>!raced.has(id));
+ let starts=0, dnfs=0; Object.values(res).forEach(a=>{ starts+=a.length; dnfs+=a.filter(p=>p==null).length; });
+ const win=windowShown(), drivers=run.map(id=>({results: win===Infinity ? res[id] : res[id].slice(-win)}));
+ const sims=F1RaceModel.simulate(drivers, {pts, gridRate: starts ? dnfs/starts : 0, runs:SIM_RUNS, rand:Math.random});
+ const idx=run.map((id,i)=>i).sort((a,b)=>sims[b].meanPoints-sims[a].meanPoints || sims[a].medianPos-sims[b].medianPos || a-b);
+ const inn=idx.filter(i=>sims[i].pClassified>=0.5).map(i=>run[i]), out=idx.filter(i=>sims[i].pClassified<0.5).map(i=>run[i]);
+ return [...inn, null, ...out, ...rest];
 }
 
 // ---- Result rows for one session from its order ----
@@ -322,11 +379,11 @@ function render(){
    ? `Round ${T} has already happened: it starts from the actual result. Drag the drivers to replay it differently and see what it would have done to both championships.`
    : `Drag the drivers into any finishing order for Round ${T} to see what it would do to both championships.`;
  document.getElementById('orderNote').textContent =
-   `Starts from ${startMode==='clinch' && clinch ? 'a finishing order with which '+clinch.what : act ? 'the actual result' : 'the drivers’ standings after Round '+L}. Drag a driver by the handle, or focus the handle and use the arrow keys. `
+   `Starts from ${startMode==='clinch' && clinch ? 'a finishing order with which '+clinch.what : act ? 'the actual result' : 'the drivers’ standings after Round '+L}. ${simNote}Drag a driver by the handle, or focus the handle and use the arrow keys. `
    + `Drag the “Not classified” line to set who doesn’t finish (no points). Points: ${PTS_GP.join('-')}`
    + (sessions.includes('sprint') ? `, sprint ${sprintPoints(year).join('-')}` : '')
    + (year<=2024 ? '. The fastest-lap point (until 2024) isn’t included.' : '.');
- renderTitleRace(); renderLists(); renderTables();
+ syncWindow(); renderTitleRace(); renderLists(); renderTables();
 }
 
 // ---- #85: title clinch, from F1Common.titleRace (the championship pages' maths and wording; whole field, never fetches) ----
@@ -478,6 +535,9 @@ document.getElementById('orders').addEventListener('keydown', e=>{
 document.getElementById('useActual').addEventListener('click', ()=>resetOrders('actual'));
 document.getElementById('useStandings').addEventListener('click', ()=>resetOrders('standings'));
 document.getElementById('useClinch').addEventListener('click', ()=>resetOrders('clinch'));
+document.getElementById('useSim').addEventListener('click', ()=>resetOrders('sim'));
+document.getElementById('winLess').addEventListener('click', ()=>stepWindow(-1));
+document.getElementById('winMore').addEventListener('click', ()=>stepWindow(1));
 
 // #33: CSV of the two tables (they're tables, not charts, so no PNG)
 const wiRows = id=>{ const rows=F1Export.tableRows(document.getElementById(id)); if(rows.length) rows[0]=['Position','Places gained', rows[0][2], 'Points before', 'Points gained', 'Points after']; return rows; };
