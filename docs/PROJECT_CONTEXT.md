@@ -54,7 +54,7 @@ site/                 The website (deployed as the site root, so URLs are unchan
                       apple-touch-icon.png (180px, square; iOS rounds it) are rendered from it.
   data/               {year}.json: one file per season, written by the snapshot workflow (#13). Don't edit by hand.
 .github/workflows/    static.yml deploys site/ on pushes to main that touch site/ (or the workflow).
-                      tests.yml runs tests/ on PRs. snapshot.yml refreshes site/data/ (#13).
+                      tests.yml runs tests/ on PRs (a new push cancels the PR's older run, #137). snapshot.yml refreshes site/data/ (#13).
 tools/                snapshot.mjs: builds site/data/{year}.json from f1api.dev (run by snapshot.yml).
 tests/                Browser tests, run on every PR (see "Tests" below). Not deployed.
 docs/                 Project docs (not deployed): PROJECT_CONTEXT.md (this file), DONE.md (archive of
