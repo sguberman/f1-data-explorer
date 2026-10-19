@@ -3,6 +3,7 @@
 // weekends, ‹ › to step and × to close. Projected rounds can't be opened. Never fetches; the open round is in the URL.
 module.exports = async (t, h) => {
   const tapRound = async (p, n, sel = '#c') => {
+    await p.evaluate(sel => document.querySelector(sel).scrollIntoView({ block: 'center' }), sel); // the picker card above pushes the chart down (#124)
     const pt = await p.evaluate(([n, sel]) => { const ch = Chart.getChart(document.querySelector(sel)), b = ch.canvas.getBoundingClientRect();
       return { x: b.left + ch.scales.x.getPixelForValue(n - 1), y: b.top + (ch.chartArea.top + ch.chartArea.bottom) / 2 }; }, [n, sel]);
     await p.mouse.click(pt.x, pt.y); await p.waitForTimeout(60);
