@@ -161,6 +161,9 @@ const F1Controls = (() => {
       window.dispatchEvent(new CustomEvent('f1roundchange', { detail: { round: state.round } }));
     });
 
+    // #112: the slider was released (not every drag step), for pages that run something heavier on release
+    roundSlider.addEventListener('change', ()=>window.dispatchEvent(new CustomEvent('f1roundcommit', { detail: { round: state.round } })));
+
     try{ localStorage.setItem(SEASON_KEY, defaultYear); }catch(e){}
     loadYear(container, defaultYear, statusEl);
     mountedContainer = container;
