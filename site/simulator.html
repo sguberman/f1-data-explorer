@@ -169,16 +169,26 @@ canvas{max-width:100%;}
 
   <div class="card" id="ridgePosCard" style="display:none;">
     <h2>Projected final championship position</h2>
+    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:10px;">
+      <span style="font-size:12px;color:var(--sub);">Sort by</span>
+      <select class="ddSelect resultSort" aria-label="Sort results by"><option value="mode">Most common</option><option value="median">Median</option></select>
+    </div>
     <div class="ridgeWrap" id="ridgePosWrap"><canvas id="ridgePosCanvas"></canvas></div>
-    <div class="ridgeKey"><span class="ridgeKeyItem"><i class="ridgeKeyMode"></i>most common finish</span></div>
+    <div class="ridgeKey"><span class="ridgeKeyItem"><i class="ridgeKeyMode"></i>most common finish</span><span class="ridgeKeyItem"><i class="ridgeKeyMedian"></i>median</span></div>
     <div class="note">Each ridge is one tracked driver's share of simulated seasons landing at each final position, tallest at their most likely finish. Position is rank in the full simulated standings — every driver who has raced this season, not just the tracked set, with equal points split by countback — so finishing behind an untracked driver is possible; when the most common finish is outside the positions shown, its marker on the last column says which. Ordered by most common finish, best on top.</div>
   </div>
 
   <div class="card" id="ridgePointsCard" style="display:none;">
     <h2>Projected final points</h2>
+    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:10px;">
+      <span style="font-size:12px;color:var(--sub);">Sort by</span>
+      <select class="ddSelect resultSort" aria-label="Sort results by"><option value="mode">Most common</option><option value="median">Median</option></select>
+      <label class="optCheck" style="margin-left:6px;"><input type="checkbox" id="ridgeBarsOpt"> Bars</label>
+    </div>
+    
     <div class="ridgeWrap" id="ridgePointsWrap"><canvas id="ridgePointsCanvas"></canvas></div>
-    <div class="ridgeKey"><span class="ridgeKeyItem"><i class="ridgeKeyMode"></i>most common final points</span></div>
-    <div class="note">Each ridge is one tracked driver's spread of possible final point totals. Overlap between two ridges is a rough read on how contested that gap still is — heavy overlap means the sim sees it as a toss-up. The marker sits on the most common 10-point range and shows the most common exact total in it. Ordered by most common final points, highest on top.</div>
+    <div class="ridgeKey"><span class="ridgeKeyItem"><i class="ridgeKeyMode"></i>most common final points</span><span class="ridgeKeyItem"><i class="ridgeKeyMedian"></i>median</span></div>
+    <div class="note">Each ridge is one tracked driver's spread of possible final point totals. Overlap between two ridges is a rough read on how contested that gap still is — heavy overlap means the sim sees it as a toss-up. The marker sits on the most common 10-point range and shows the most common exact total in it. The dashed line is the median total. Ordered by most common (or median) final points, highest on top.</div>
   </div>
 </div>
 
@@ -229,6 +239,8 @@ async function buildFromSelection(detail){
    const linked = F1Share.ids(link.get('d'), valid);
    if(linked) selectedDriverIds = linked;
    if(['team','rank'].includes(link.get('sort'))) document.getElementById('sortSeg').value = pickerSort = link.get('sort');
+   if(link.get('rsort')==='median') setResultSort('median'); // #108
+   if(link.get('bars')==='1'){ showBars=true; document.getElementById('ridgeBarsOpt').checked=true; } // #114
    const num = v => v==null || v==='a' || v==='' ? null : Math.max(0, parseInt(v,10)||0);
    (link.get('o')||'').split(',').filter(Boolean).forEach(x=>{
      const [id, dnf, win] = x.split(':');
@@ -256,6 +268,9 @@ F1Common.initPickerToggle(); // #124
 // #31: what goes in the URL. The seed (with the run's size and round) only while the results shown match the
 // settings, so the link re-runs to what's on screen.
 let defaultIds=[];
+// #108 / #114: how the two result plots are ordered, and whether the points plot shows bars. Redraw only.
+let resultSort='mode', showBars=false, ridgeInput=null;
+function setResultSort(v){ resultSort=v; document.querySelectorAll('.resultSort').forEach(e=>{ e.value=v; }); }
 F1Share.register(()=>{
  const tracked = new Set(selectedDriverIds||[]);
  const o = Object.keys(outcomes).filter(id=>tracked.has(id)).map(id=>{ const x=outcomes[id];
@@ -266,6 +281,8 @@ F1Share.register(()=>{
  return {
    d: F1Share.sameSet(selectedDriverIds, defaultIds) ? null : (selectedDriverIds||[]).join(','),
    sort: pickerSort==='team' ? null : pickerSort,
+   rsort: resultSort==='mode' ? null : resultSort, // #108
+   bars: showBars ? '1' : null, // #114
    o: o || null, c: c || null,
    n: n==='10000' ? null : n,
    w: dataWindow===WINDOW_DEFAULT ? null : dataWindow===Infinity ? 'all' : String(dataWindow), // #117
@@ -859,8 +876,8 @@ function refreshResults(){
  });
  renderOdds(tracked, odds);
  renderDecided(lastRun);
- renderRidgePosition(tracked, posCounts, k, rankCounts);
- renderRidgePoints(tracked, finals);
+ ridgeInput={tracked,posCounts,k,rankCounts,finals};
+ drawRidges();
  document.getElementById('oddsCard').style.display='block';
  document.getElementById('decidedCard').style.display='block';
  document.getElementById('ridgePosCard').style.display='block';
@@ -914,61 +931,24 @@ document.getElementById('rerun').addEventListener('click', ()=>{ if(!activeRun &
 // driver's curve is normalized to its OWN peak (not a shared scale), which is standard for a ridgeline:
 // it's a shape/spread comparison, not an absolute-count one — the win-probability bars already cover
 // the absolute comparison.
-const RIDGE_ROW=1, RIDGE_PEAK=0.82, RIDGE_ROW_PX=58, RIDGE_PAD_PX=34, RIDGE_FILL_ALPHA=0.35;
 const ridgeCharts={};
-// #30: indexes of the largest value(s) in counts, every one if tied.
-function modesOf(counts){
- const top=Math.max(0,...counts);
- return top>0 ? counts.map((v,j)=>v===top?j:-1).filter(j=>j>=0) : [];
+const modesOf=F1Common.modesOf; // #30
+function drawRidges(){
+ if(!ridgeInput) return;
+ renderRidgePosition(ridgeInput.tracked, ridgeInput.posCounts, ridgeInput.k, ridgeInput.rankCounts);
+ renderRidgePoints(ridgeInput.tracked, ridgeInput.finals);
 }
+document.querySelectorAll('.resultSort').forEach(e=>e.addEventListener('change', ()=>{ setResultSort(e.value); drawRidges(); F1Share.sync(); }));
+document.getElementById('ridgeBarsOpt').addEventListener('change', e=>{ showBars=e.target.checked; drawRidges(); F1Share.sync(); });
 function renderRidgeline(chartKey, canvasId, wrapId, order, categories, opts){
- const n=order.length;
- document.getElementById(wrapId).style.height=(n*RIDGE_ROW_PX+RIDGE_PAD_PX)+'px';
- const datasets=[];
- order.forEach(({code,color,counts,modes,modeLabels},i)=>{
-   const baseline=(n-1-i)*RIDGE_ROW;
-   const total=counts.reduce((a,b)=>a+b,0)||1;
-   const peak=Math.max(...counts,1e-9);
-   const heights=counts.map(v=>baseline+(v/peak)*RIDGE_PEAK);
-   const pct=counts.map(v=>100*v/total);
-   datasets.push({ data:categories.map(()=>baseline), borderWidth:0, pointRadius:0, fill:false, _baseline:true });
-   datasets.push({ data:heights, borderColor:color, backgroundColor:F1Common.withAlpha(color,RIDGE_FILL_ALPHA), borderWidth:1.6, pointRadius:0,
-     fill:'-1', tension:opts.tension||0, stepped:opts.stepped||false, _code:code, _pct:pct, _modes:modes, _modeLabels:modeLabels }); // #30
- });
- const P=F1Theme.chart();
+ order.forEach(o=>{ const total=o.counts.reduce((a,b)=>a+b,0)||1; o.extra={_pct:o.counts.map(v=>100*v/total)}; });
  if(ridgeCharts[chartKey]) ridgeCharts[chartKey].destroy();
- ridgeCharts[chartKey]=new Chart(document.getElementById(canvasId),{
-   type:'line',
-   plugins:[F1Common.ridgeMarkers(), F1Common.ridgeFlags(row=>order[n-1-row] && order[n-1-row].id)],
-   data:{labels:categories, datasets},
-   options:{
-     responsive:true, maintainAspectRatio:false,
-     interaction:{mode:'index', intersect:false},
-     plugins:{
-       legend:{display:false},
-       tooltip:{
-         filter:item=>!item.dataset._baseline,
-         callbacks:{
-           title:t=>opts.xTitle+': '+t[0].label,
-           label:ctx=>` ${ctx.dataset._code}: ${ctx.dataset._pct[ctx.dataIndex].toFixed(1)}%`
-         }
-       }
-     },
-     scales:{
-       x:{grid:{color:P.grid}, ticks:{color:P.text, maxRotation:0, autoSkip:true}, title:{display:true,text:opts.xTitle,color:P.text}},
-       y:{
-         min:-0.15, max:(n-1)*RIDGE_ROW+RIDGE_PEAK+0.25,
-         grid:{display:false},
-         afterFit:s=>{ s.width+=F1Common.FLAG_ROOM; }, // room for the flags (#18)
-         afterBuildTicks:axis=>{ axis.ticks=Array.from({length:n},(_,i)=>({value:i})); },
-         ticks:{
-           color:ctx=>{ const i=n-1-Math.round(ctx.tick.value); return (order[i]&&order[i].color)||P.text; },
-           callback:value=>{ const i=n-1-Math.round(value); return (order[i]&&order[i].code)||''; },
-           font:{weight:'600'}
-         }
-       }
-     }
-   }
+ ridgeCharts[chartKey]=F1Common.ridgeChart({
+   canvas:document.getElementById(canvasId), wrap:document.getElementById(wrapId), order, categories,
+   tension:opts.tension, stepped:opts.stepped, bars:opts.bars,
+   x:{title:{display:true,text:opts.xTitle,color:F1Theme.chart().text}},
+   title:t=>opts.xTitle+': '+t[0].label,
+   label:ctx=>` ${ctx.dataset._code}: ${ctx.dataset._pct[ctx.dataIndex].toFixed(1)}%`
  });
 }
 function renderRidgePoints(roster, finals){
@@ -991,10 +971,12 @@ function renderRidgePoints(roster, finals){
      exact[bi]=+Object.keys(freq).sort((a,b)=>freq[b]-freq[a] || a-b)[0];
      modeLabels[bi]=String(Math.round(exact[bi]));
    });
+   // #108: the exact median total, on the bin axis (a bin sits at its own index, spanning ±½)
+   const sorted=Float64Array.from(finals[i]).sort(), h=sorted.length, med=h?(sorted[Math.floor((h-1)/2)]+sorted[Math.floor(h/2)])/2:null;
    return {id:d.driverId, code:d.code, color:F1Theme.team(F1Common.teamColor(d.teamId)), counts, modes, modeLabels,
-     best:Math.max(...modes.map(bi=>exact[bi]))};
- }).sort((a,b)=>b.best-a.best); // highest most-common total first
- renderRidgeline('points','ridgePointsCanvas','ridgePointsWrap', order, bins.map(String), {tension:0.35, xTitle:'final points'});
+     median:med==null?null:(med-min)/binSize-0.5, medTotal:med, best:Math.max(...modes.map(bi=>exact[bi]))};
+ }).sort((a,b)=>resultSort==='median' ? (b.medTotal-a.medTotal) : (b.best-a.best)); // highest total first
+ renderRidgeline('points','ridgePointsCanvas','ridgePointsWrap', order, bins.map(String), {tension:0.35, xTitle:'final points', bars:showBars});
 }
 function renderRidgePosition(roster, posCounts, k, rankCounts){
  const labels=Array.from({length:k},(_,i)=>'P'+(i+1)).concat([(k+1)+'th or lower']);
@@ -1006,9 +988,10 @@ function renderRidgePosition(roster, posCounts, k, rankCounts){
      if(!modes.includes(j)) modes.push(j);
      if(r>k) modeLabels[j] = modeLabels[j] ? modeLabels[j]+'/P'+r : 'P'+r;
    });
+   const m=F1Common.medianOf(rankCounts[i]); // #108: a rank value index (1st = 0); beyond the top k it goes on the last slot
    return {id:d.driverId, code:d.code, color:F1Theme.team(F1Common.teamColor(d.teamId)), counts:posCounts[i], modes, modeLabels,
-     best:ranks.length ? ranks[0] : Infinity};
- }).sort((a,b)=>a.best-b.best); // best most-common finish first
+     median:m==null?null:Math.min(m,k), medRank:m==null?Infinity:m, best:ranks.length ? ranks[0] : Infinity};
+ }).sort((a,b)=>resultSort==='median' ? (a.medRank-b.medRank) : (a.best-b.best)); // best finish first
  renderRidgeline('pos','ridgePosCanvas','ridgePosWrap', order, labels, {stepped:'middle', xTitle:'final championship position'});
 }
 
