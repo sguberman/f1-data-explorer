@@ -70,7 +70,7 @@ across pages lives in shared files instead (issue #44), so a change is made once
   `isNarrow()`, `withAlpha()`, `driverPickerRowHTML()`, `pickerTeamLabelHTML()`, `markActivePreset()`,
   `standingsOrder()` / `standingsRank()` (standings order with countback, for pickers, ▲/▼ and presets, #20),
   flags and numbers (#18: `flagCode()`, `flagHTML()`, `drawFlag()`, `flagSpace()`, `ridgeFlags()`,
-  `indexPeople()` / `nationalityOf()` / `numberOf()`), `ridgeMarkers()` / `ridgeKeyHTML()` (#30),
+  `indexPeople()` / `nationalityOf()` / `numberOf()`), `ridgeMarkers()` / `ridgeKeyHTML()` (#30), `medianOf()` / `ridgeMedians()` (#108: median line per ridge, `_median` on the dataset, NC left out) and `ridgeBars()` (#114: `_bars` datasets drawn as histogram bars),
   `standingsByRound()` / `renderPositionChart()` (the championship-position chart, issue #9),
   `projectionsByRound()` / `renderProjectedPointsChart()` (projection history, issue #10),
   `maxWeekendPoints()` / `titleRace()` / `titleRaceText()` / `renderTitleRace()` / `titleResultText()` (the title clinch
@@ -156,10 +156,10 @@ Move something into `common.js` only once it's genuinely identical on every page
   - drivers: `d` (ids), `sort`, `pos`, `pts=gap` (#83)
   - constructors: `t`, `pos`, `pts=gap`
   - both championship pages: `result` (the open round, #29) and `session=sprint`
-  - position: `d`, `sort`, `chart`, `below10`, `sprint`
+  - position: `d`, `sort`, `chart` (`mode` default, `champ`, `team`, `median`, #108), `below10`, `sprint`
   - what-if: `gp` and `sprint` orders (`-` marks the not-classified line), and `start=clinch` (#85: start from the
     "🏆 Title clinch" order; the orders are then left out while they're still that order)
-  - simulator: `d`, `sort`, `o` (`id:dnf:win`, `a` = auto), `c` (`a:b:n`), `n` (runs), `w` (#117: Form from, a
+  - simulator: `d`, `sort`, `o` (`id:dnf:win`, `a` = auto), `c` (`a:b:n`), `rsort` (`median` = results sorted by median, #108), `bars` (`1` = points plot as bars, #114), `n` (runs), `w` (#117: Form from, a
     number of races or `all`; left out at the default 8) and `seed`
   
   How it works:
@@ -364,6 +364,10 @@ grouped "11+/NC" bucket never wins just for being a group; when the most common 
 those positions are grouped, the triangle sits on that bucket labelled with the real position(s) ("P13",
 "NC", "P12/P14"). "Most common" sorting (the default) uses the best most-common finish, ties by standings.
 
+**Median (#108):** every ridge also has a dashed **median line** (key under the chart) and "Sort by" has **Median finish**
+(best median first, ties by standings). The median is over classified finishes only (NC ignored); below P10, while those
+positions are grouped, it sits on the "11+/NC" bucket.
+
 **Results by round (#87, position.html, card under the Talking points card and above the chart):** a heat strip, a compact
 picture rather than a table of numbers (#27). One row per selected driver (flag + code in the team colour), in
 the chart's "Sort by" order (`sortedRows()`, shared with the ridgeline), and one square per loaded round (round
@@ -426,6 +430,10 @@ marking its most common value (#30): the position chart uses exact ranks (one ou
 the last column, labelled "P14"); the points chart marks the most common 10-point range, labelled with the
 most common exact total in it. Both are ordered by that most common value. Default
 tracked set is the top 8.
+
+**Result plots (#108, #114, simulator):** both ridge plots (final position, final points) have a dashed median line (exact
+median of the simulated totals / ranks) and their own "Sort by" Most common / Median dropdown (one shared setting, `rsort`),
+and the points plot a **Bars** checkbox that draws the 10-point bins as bars instead of the smooth curve. Redraw only: no re-run, no fetch.
 
 **When the title is decided (#86, simulator):** a card right after the win probability. Each simulated season records
 the first round after which its champion's lead over every other driver is **more than** the points still available

@@ -183,9 +183,55 @@ const F1Common = (() => {
       }
     };
   }
-  // The key under a ridgeline chart for the markers above.
-  function ridgeKeyHTML(text){
-    return `<span class="ridgeKeyItem"><i class="ridgeKeyMode"></i>${text||'most common'}</span>`;
+  // #108: the median of a counts-by-category array, as a (possibly fractional) category index: the middle
+  // observation, or halfway between the two middle ones. `skip` lists category indexes to leave out (NC).
+  // null when nothing is left.
+  function medianOf(counts, skip){
+    const out=skip||[], idx=[];
+    counts.forEach((c,j)=>{ if(!out.includes(j)) for(let q=0;q<c;q++) idx.push(j); });
+    if(!idx.length) return null;
+    return (idx[Math.floor((idx.length-1)/2)]+idx[Math.floor(idx.length/2)])/2;
+  }
+  // #108: a median line per ridge. Each ridge dataset can carry _median (a fractional category index); the
+  // dashed line runs from the row's baseline up to the top of the ridge.
+  function ridgeMedians(){
+    return {
+      id:'ridgeMedians',
+      afterDatasetsDraw(chart){
+        const {ctx, scales:{x}}=chart;
+        chart.data.datasets.forEach((ds,di)=>{
+          if(ds._baseline || ds._median==null) return;
+          const base=chart.getDatasetMeta(di-1).data[0], px=x.getPixelForValue(ds._median);
+          const top=Math.min(...chart.getDatasetMeta(di).data.map(p=>p.y));
+          ctx.save();
+          ctx.strokeStyle=ds.borderColor; ctx.lineWidth=1.6; ctx.setLineDash([4,3]);
+          ctx.beginPath(); ctx.moveTo(px, base.y); ctx.lineTo(px, top); ctx.stroke();
+          ctx.restore();
+        });
+      }
+    };
+  }
+  // #114: a ridge dataset with _bars is drawn as one filled bar per category (a histogram) instead of a curve.
+  function ridgeBars(){
+    return {
+      id:'ridgeBars',
+      beforeDatasetDraw(chart, args){
+        const ds=chart.data.datasets[args.index];
+        if(!ds._bars) return;
+        const {ctx, scales:{x}}=chart, pts=chart.getDatasetMeta(args.index).data, base=chart.getDatasetMeta(args.index-1).data[0].y;
+        const w=Math.abs(x.getPixelForValue(1)-x.getPixelForValue(0))*0.9;
+        ctx.save();
+        ctx.fillStyle=ds.backgroundColor; ctx.strokeStyle=ds.borderColor; ctx.lineWidth=1;
+        pts.forEach(p=>{ if(base-p.y<0.5) return; ctx.fillRect(p.x-w/2, p.y, w, base-p.y); ctx.strokeRect(p.x-w/2, p.y, w, base-p.y); });
+        ctx.restore();
+        return false;
+      }
+    };
+  }
+  // The key under a ridgeline chart for the markers above (and, with `median`, the median line).
+  function ridgeKeyHTML(text, median){
+    return `<span class="ridgeKeyItem"><i class="ridgeKeyMode"></i>${text||'most common'}</span>`
+      +(median ? `<span class="ridgeKeyItem"><i class="ridgeKeyMedian"></i>median</span>` : '');
   }
 
   // #20: everyone's standings order through `round`, the same ranking as the championship-position
@@ -690,6 +736,6 @@ const F1Common = (() => {
 
   return { TEAM_COLORS, SEASON_TEAM_COLORS, setSeason, maxWeekendPoints, titleRace, titleRaceText, renderTitleRace, titleResultText, clinchLink, shortGP, teamColor, SHORT_TEAM_NAMES, shortTeamName, SEASON_META, seasonMeta, YEARS,
     isNarrow, withAlpha, hoverLine, standingsMoves, moveHTML, driverPickerRowHTML, markActivePreset, presetSets, defaultSelection, loadPickerSelection, savePickerSelection, initPickerToggle, updatePickerSummary,
-    flagCode, flagHTML, flagSpace, FLAG_ROOM, drawFlag, indexPeople, nationalityOf, numberOf, ridgeFlags, ridgeMarkers, ridgeKeyHTML, standingsOrder, standingsRank, pickerTeamLabelHTML,
+    flagCode, flagHTML, flagSpace, FLAG_ROOM, drawFlag, indexPeople, nationalityOf, numberOf, ridgeFlags, ridgeMarkers, ridgeMedians, ridgeBars, medianOf, ridgeKeyHTML, standingsOrder, standingsRank, pickerTeamLabelHTML,
     standingsByRound, renderPositionChart, projectionsByRound, renderProjectedPointsChart };
 })();

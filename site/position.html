@@ -117,6 +117,7 @@ html.f1-loading #heatStats{min-height:120px;}
  <span style="font-size:12px;color:var(--sub);">Sort by</span>
  <select id="chartSortSelect" class="ddSelect" aria-label="Sort by">
   <option value="mode">Most common</option>
+  <option value="median">Median finish</option>
   <option value="champ">Championship</option>
   <option value="team">Team</option>
  </select>
@@ -268,8 +269,10 @@ function recompute(round){
  D = (selectedDriverIds||[]).map(id=>{
    const dr = cum.drivers[id]; if(!dr) return null;
    const {v,starts} = bucketsFor(id, LAB);
-   const modes = modesOf(bucketsFor(id, FULL).v); // #30: over individual positions, see modesOf
-   return { id, modes, n:dr.code, teamId:dr.teamId, teamName:dr.teamName, c:F1Common.teamColor(dr.teamId), v, starts,
+   const full = bucketsFor(id, FULL).v;
+   const modes = modesOf(full); // #30: over individual positions, see modesOf
+   const median = F1Common.medianOf(full, [full.length-1]); // #108: NC left out; a position value index (P1 = 0)
+   return { id, modes, median, n:dr.code, teamId:dr.teamId, teamName:dr.teamName, c:F1Common.teamColor(dr.teamId), v, starts,
      driverRank:driverRank[id]??999, teamRank:teamRank[dr.teamId]??999 };
  }).filter(Boolean);
  draw();
@@ -280,6 +283,7 @@ function recompute(round){
 function sortedRows(){
  return [...D].sort((a,b)=>{
    if(chartSort==='champ') return a.driverRank-b.driverRank;
+   if(chartSort==='median') return ((a.median??Infinity)-(b.median??Infinity)) || (a.driverRank-b.driverRank); // #108
    if(chartSort==='team') return (a.teamRank-b.teamRank) || (a.driverRank-b.driverRank);
    // 'mode' (default): best most-common finish first (NC counts as the worst); ties by standings
    const best=d=>d.modes.length ? d.modes[0] : Infinity;
@@ -295,12 +299,12 @@ function draw(){
  wrap.style.display='block'; empty.style.display='none';
  P=F1Theme.chart();
  Chart.defaults.font.family=ff; Chart.defaults.color=P.text;
- const order=sortedRows().map(d=>({id:d.id, code:d.n, color:F1Theme.team(d.c), counts:d.v, starts:d.starts, modes:d.modes,
+ const order=sortedRows().map(d=>({id:d.id, code:d.n, color:F1Theme.team(d.c), counts:d.v, starts:d.starts, modes:d.modes, median:d.median,
      driverRank:d.driverRank, teamRank:d.teamRank}));
  const n=order.length;
  wrap.style.height=(n*RIDGE_ROW_PX+RIDGE_PAD_PX)+'px';
  const datasets=[];
- order.forEach(({code,color,counts,starts,modes},i)=>{
+ order.forEach(({code,color,counts,starts,modes,median},i)=>{
    const baseline=(n-1-i)*RIDGE_ROW;
    const peak=Math.max(...counts,1e-9);
    const heights=counts.map(v=>baseline+(v/peak)*RIDGE_PEAK);
@@ -313,12 +317,14 @@ function draw(){
      if(!shown.includes(j)) shown.push(j);
      if(!showBelowP10 && m>=10) labels[j] = labels[j] ? labels[j]+'/'+FULL[m] : FULL[m];
    });
+   // #108: median (P1 = 0) on the chart's categories; below P10 it goes on the grouped "11+/NC" bucket
+   const medX = median==null ? null : (showBelowP10 || median<=9) ? median : LAB.length-1;
    datasets.push({ data:heights, borderColor:color, backgroundColor:F1Common.withAlpha(color,RIDGE_FILL_ALPHA), borderWidth:1.6, pointRadius:0,
-     fill:'-1', stepped:'middle', _code:code, _counts:counts, _starts:starts, _modes:shown, _modeLabels:labels });
+     fill:'-1', stepped:'middle', _median:medX, _code:code, _counts:counts, _starts:starts, _modes:shown, _modeLabels:labels });
  });
  ridgeChart=new Chart(document.getElementById('ridgeCanvas'),{
    type:'line',
-   plugins:[F1Common.ridgeMarkers(), F1Common.ridgeFlags(row=>order[n-1-row] && order[n-1-row].id)],
+   plugins:[F1Common.ridgeMarkers(), F1Common.ridgeMedians(), F1Common.ridgeFlags(row=>order[n-1-row] && order[n-1-row].id)],
    data:{labels:LAB, datasets},
    options:{
      responsive:true, maintainAspectRatio:false, animation:false,
@@ -356,7 +362,7 @@ function draw(){
      }
    }
  });
- document.getElementById('ridgeKey').innerHTML = F1Common.ridgeKeyHTML('most common finish');
+ document.getElementById('ridgeKey').innerHTML = F1Common.ridgeKeyHTML('most common finish', true);
  note.textContent = 'NC = not classified (no finishing position). Races counted: ' + order.map(o=>`${o.code} ${o.starts}`).join(' · ');
  updateSub();
 }
