@@ -41,7 +41,7 @@ html.f1-loading #talkingPoints{min-height:120px;}
 <div class="wrap">
 <div class="theme-bar"><nav id="siteNav" class="site-nav" aria-label="Site"></nav><div id="themeToggle"></div></div>
 <h1>Drivers' Championship</h1>
-<p class="sub">Points for the drivers you pick below (top 5 by default), projected to the end of the season from each driver's last 5 races. Move the slider, or drag the handle on the chart, to see the standings as of any round. Tap a round on the chart for its result.</p>
+<p class="sub">Points for the drivers you pick below (top 5 by default), projected to the end of the season from each driver's recent races (5 by default; change it with Projection from). Move the slider, or drag the handle on the chart, to see the standings as of any round. Tap a round on the chart for its result.</p>
 <div id="f1controls" class="f1c"></div>
 <div class="card" style="margin-bottom:16px;">
 <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:10px;">
@@ -82,6 +82,7 @@ html.f1-loading #talkingPoints{min-height:120px;}
   <option value="gap">Gap to leader</option>
  </select>
 </span>
+<span class="ptsView projStep" id="projStep"></span>
 </div>
 <div style="position:relative;width:100%;height:440px;" id="chartWrap" class="f1-skel">
 <canvas id="c" role="img" aria-label="Line chart of championship points by round for the selected drivers, with a knockout line showing the fewest points needed to still catch the highest-ranked selected driver.">Championship points by round for the selected drivers, with a knockout line showing the fewest points needed to still catch the highest-ranked selected driver.</canvas>
@@ -99,7 +100,7 @@ html.f1-loading #talkingPoints{min-height:120px;}
 <canvas id="projChart" role="img" aria-label="Line chart of each selected driver's projected final championship points, as projected after each round of the season."></canvas>
 </div>
 <div id="projLegend" class="endLegend"></div>
-<div style="font-size:12px;color:var(--muted);line-height:1.6;margin:8px 2px 2px;">What the projection on the chart above would have said after each round: points so far plus the average of the last 5 rounds each driver took part in, for every round left. Hover over a round, or tap it, to see each projection then.</div>
+<div style="font-size:12px;color:var(--muted);line-height:1.6;margin:8px 2px 2px;">What the projection on the chart above would have said after each round: points so far plus the average of the most recent rounds each driver took part in (Projection from, 5 by default), for every round left. Hover over a round, or tap it, to see each projection then.</div>
 </div>
 <div class="card">
 <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;margin:0 0 10px;">
@@ -141,7 +142,7 @@ function totalRounds(){
 let posChart=null;
 const POS_NOTES={
  actual:"Position in the drivers' standings after each round, for the whole season so far. Ties on points are broken by countback (most wins, then most second places, and so on).",
- proj:"Projected finishing order after each round, from the same projection as the chart at the top (points so far plus the last-5-round average for every round left). Ties go to the higher-placed driver in the standings."
+ proj:"Projected finishing order after each round, from the same projection as the chart at the top (points so far plus the recent-rounds average for every round left, as set by Projection from). Ties go to the higher-placed driver in the standings."
 };
 // #113: tap a round on the position chart for its result, in a panel under that chart (its own URL keys: presult,
 // psession). The chart covers the whole season, so every loaded round can be opened, whatever the slider says.
@@ -149,7 +150,7 @@ const posResult = F1RoundResult.create({keys:{result:'presult', session:'psessio
 function drawPositions(){
  const projected = document.getElementById('posView').value==='proj';
  posChart = F1Common.renderPositionChart(document.getElementById('posChart'), currentSeasonRounds, 'drivers', posChart,
-   {projected, totalRounds: currentSeasonRounds.length ? totalRounds() : 0, plugins:[posResult.band]});
+   {projected, totalRounds: currentSeasonRounds.length ? totalRounds() : 0, plugins:[posResult.band], win:F1Common.projWindow()});
  posResult.update();
  document.getElementById('posSub').textContent = currentSeasonRounds.length ? `all drivers · through round ${currentSeasonRounds.length}` : '';
  document.getElementById('posNote').textContent = POS_NOTES[projected?'proj':'actual'] + ' Tap a round for its result.'; // #113
@@ -159,6 +160,12 @@ document.getElementById('posView').addEventListener('change', drawPositions);
 // issue #10: projected final points after each round, for the picker selection. Projections are computed
 // once per season (projData); redrawing only rebuilds the chart, and only when the selection changes.
 let projData=null, projChart=null, projKey=null;
+// #103: Projection from — how many recent rounds the projections average. Redraws from loaded data only.
+const projStep = F1Common.mountProjStepper(document.getElementById('projStep'), ()=>currentYear, ()=>{
+ if(!currentSeasonRounds.length) return;
+ projData = F1Common.projectionsByRound(currentSeasonRounds, 'drivers', totalRounds()); projKey=null; trKey=null; tpKey=null;
+ drawPositions(); drawProjPoints(true); recompute(L);
+});
 // #106/#110: a round's short name for tooltips ("Singapore GP"), from the calendar or the loaded results; '' if unknown.
 function raceShort(r){
  const cal=currentCalendar, rd=currentSeasonRounds.find(x=>x.round===r);
@@ -178,6 +185,7 @@ async function buildFromSelection(detail){
  if(!currentSeasonRounds.length){ D=[]; if(chart) chart.destroy(); projData=null; drawPositions(); drawProjPoints(true); trKey=null; drawTitleRace(0); drawTalkingPoints(0); return; }
  currentCalendar = await F1Data.getCalendar(currentYear);
  const link = F1Share.take(); // #31: a shared link's setup, first season only
+ F1Common.initProjWindow(currentYear, link && link.get('pw')); projStep.sync(currentSeasonRounds.length); // #103
  if(link && link.get('pos')==='proj') document.getElementById('posView').value='proj';
  if(link && link.get('pts')==='gap') document.getElementById('ptsView').value='gap';
  if(link && ['team','rank'].includes(link.get('sort'))) document.getElementById('sortSeg').value = pickerSort = link.get('sort');
@@ -204,6 +212,7 @@ F1Share.register(()=>({
  sort: pickerSort==='team' ? null : pickerSort,
  pos: document.getElementById('posView').value==='proj' ? 'proj' : null,
  pts: gapView() ? 'gap' : null,
+ pw: F1Common.projWindowParam(), // #103
 }));
 
 function pickerRowHTML(d, rank, moves){
@@ -298,7 +307,7 @@ function recompute(round){
    });
    let s=0; const cumArr=w.map(v=>s+=v);
    const participated = dr.rounds.reduce((acc,x)=>{ if(!acc.includes(x.round)) acc.push(x.round); return acc; },[]).sort((a,b)=>a-b);
-   const last5rounds = participated.slice(-5);
+   const last5rounds = F1Common.recentRounds(participated); // #103: the projection window
    const rate = last5rounds.length ? last5rounds.reduce((s,rnd)=>s+w[rnd-1],0)/last5rounds.length : 0;
    const full = Array.from({length:N},(_,ri)=>ri<L?cumArr[ri]:cumArr[L-1]+rate*(ri-(L-1)));
    return {cumArr, full, rate};

@@ -153,8 +153,8 @@ Move something into `common.js` only once it's genuinely identical on every page
 
 - **Links (`share.js`, `F1Share`).** The URL always carries `season`. It carries `round` only when the slider
   isn't on the latest round, plus each page's own keys, leaving out anything at its default:
-  - drivers: `d` (ids), `sort`, `pos`, `pts=gap` (#83)
-  - constructors: `t`, `pos`, `pts=gap`
+  - drivers: `d` (ids), `sort`, `pos`, `pts=gap` (#83), `pw` (#103: projection window, a number or `all`; left out at 5)
+  - constructors: `t`, `pos`, `pts=gap`, `pw`
   - both championship pages: `result` (the open round, #29) and `session=sprint`
   - position: `d`, `sort`, `chart` (`mode` default, `champ`, `team`, `median`, #108), `below10`, `sprint`
   - what-if: `gp` and `sprint` orders (`-` marks the not-classified line), and `start=clinch` (#85: start from the
@@ -212,7 +212,7 @@ is hidden. A load token makes a newer load win over a slower older one.
 ## Current functionality by page
 
 **drivers.html** — Cumulative points per selected driver; actual lines solid/dashed by teammate order, then
-a faded projection to season end at each driver's average over their **last 5 participated rounds**.
+a faded projection to season end at each driver's average over their **last N participated rounds** (#103: N is 5 by default, set with the "Projection from" stepper).
 Shaded "Projected" region, draggable round handle on the x-axis, knockout line (minimum points still able to
 win the title) based on the **highest-ranked selected driver**, eliminated / projected-eliminated markers,
 legend grouped by short team name, end-of-line labels (replaced by a ranked list below the chart on screens
@@ -558,7 +558,7 @@ interaction. If the calendar fails or has no dates, the strip stays hidden.
   the leader, not the true full-field leader (issue #26).
   For that reason both charts say "below the line" rather than "eliminated" (legacy #46). Since #16 there's no
   label on the chart; the text under it explains the line and names the selected entry it's based on.
-- Projections use each entry's last 5 **participated** rounds, so a driver who missed rounds isn't
+- Projections use each entry's last N **participated** rounds (N = 5 by default; **Projection from**, #103: a stepper beside the Show dropdown on both championship pages, 1 to "every race so far", shared by the pages and kept for the season in `f1cache:projWindow` = `{year, n}`, link key `pw`, left out at 5; `F1Common.recentRounds()` / `projWindow()`; redraws only, no fetch), so a driver who missed rounds isn't
   penalized for them.
 - Remaining-points math uses the real calendar when available (25 per GP + 8 per sprint for drivers;
   43 + 15 for constructors) and falls back to `SEASON_META` estimates otherwise.

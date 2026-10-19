@@ -435,12 +435,56 @@ const F1Common = (() => {
    return { ids, pos, info };
   }
 
+  // #103: how many of an entry's most recent participated rounds the projections average (default 5; Infinity =
+  // every round so far). One setting for both championship pages, kept between pages for the season
+  // (`f1cache:projWindow` = {year, n}; n a number or 'all') and in the link as `pw`.
+  const PROJ_KEY='f1cache:projWindow', PROJ_DEFAULT=5;
+  let projWin=PROJ_DEFAULT;
+  const projWindow = () => projWin;
+  const recentRounds = (rounds, n=projWin) => n===Infinity ? rounds : rounds.slice(-n);
+  function initProjWindow(year, linked){
+   projWin = PROJ_DEFAULT;
+   try{
+     const o = JSON.parse(localStorage.getItem(PROJ_KEY));
+     if(o && o.year===year) projWin = o.n==='all' ? Infinity : (+o.n>=1 ? Math.floor(+o.n) : PROJ_DEFAULT);
+   }catch(e){}
+   if(linked==='all') projWin = Infinity; else if(/^\d{1,3}$/.test(linked||'') && +linked>=1) projWin = +linked;
+   return projWin;
+  }
+  function setProjWindow(year, n){
+   projWin = n;
+   try{ localStorage.setItem(PROJ_KEY, JSON.stringify({year, n: n===Infinity ? 'all' : n})); }catch(e){}
+  }
+  const projWindowParam = () => projWin===PROJ_DEFAULT ? null : projWin===Infinity ? 'all' : String(projWin);
+  // "last 5 races", or "every race so far" when the window covers the M rounds played.
+  const projWindowText = M => projWin>=M ? 'every race so far' : projWin===1 ? 'last race' : `last ${projWin} races`;
+  // The "Projection from" stepper (a button row in `el`). onChange() runs after a step; call sync(M) when the number
+  // of loaded rounds changes. Steps 1..M-1, then "every race so far". Never fetches.
+  function mountProjStepper(el, getYear, onChange){
+   el.innerHTML = '<span id="projLbl">Projection from</span>'
+     + '<span class="stepper" role="group" aria-labelledby="projLbl"><button type="button" class="projLess" aria-label="Use fewer races">−</button>'
+     + '<span class="val projVal" aria-live="polite"></span><button type="button" class="projMore" aria-label="Use more races">+</button></span>';
+   const less=el.querySelector('.projLess'), more=el.querySelector('.projMore'), val=el.querySelector('.projVal');
+   let M=0;
+   const shown = () => projWin>=M ? Infinity : projWin;
+   function sync(m){
+    if(m!=null) M=m;
+    const w=shown();
+    val.textContent = projWindowText(M);
+    less.disabled = M<2 || (w===Infinity ? M-1 : w-1) < 1;
+    more.disabled = w===Infinity;
+   }
+   less.addEventListener('click', ()=>{ const w=shown(), v=w===Infinity ? M-1 : w-1; if(v<1) return; setProjWindow(getYear(), v); sync(); onChange(); });
+   more.addEventListener('click', ()=>{ const w=shown(); if(w===Infinity) return; setProjWindow(getYear(), w+1>=M ? Infinity : w+1); sync(); onChange(); });
+   return {sync};
+  }
+
   // issue #10: what the points chart's projection would have said after each round, using only the results
   // available then — the same math as the chart: points so far + (average points over the last 5 rounds
-  // the entry took part in) x rounds left in the season (totalRounds). Projected position ranks every
+  // the entry took part in, #103: the projection window, 5 by default) x rounds left in the season (totalRounds). Projected position ranks every
   // entry by that projection (ties: current standings). Returns { ids (latest projected order),
   // pts: {id: [..]}, pos: {id: [..]}, info } with null before an entry's first round.
-  function projectionsByRound(seasonRounds, kind, totalRounds){
+  function projectionsByRound(seasonRounds, kind, totalRounds, win=projWin){
    const actual = standingsByRound(seasonRounds, kind), M=seasonRounds.length;
    const pts={}, pos={};
    actual.ids.forEach(id=>{ pts[id]=new Array(M).fill(null); pos[id]=new Array(M).fill(null); });
@@ -450,8 +494,8 @@ const F1Common = (() => {
        const id = kind==='teams' ? e.teamId : e.driverId;
        const w = Array.from({length:k},(_,ri)=>e.rounds.filter(x=>x.round===ri+1).reduce((s,x)=>s+x.points,0));
        const total = w.reduce((a,b)=>a+b,0);
-       const last5 = [...new Set(e.rounds.map(x=>x.round))].sort((a,b)=>a-b).slice(-5);
-       const rate = last5.length ? last5.reduce((s,r)=>s+w[r-1],0)/last5.length : 0;
+       const recent = recentRounds([...new Set(e.rounds.map(x=>x.round))].sort((a,b)=>a-b), win);
+       const rate = recent.length ? recent.reduce((s,r)=>s+w[r-1],0)/recent.length : 0;
        return {id, proj: total + rate*(N-k), now: actual.pos[id][k-1]};
      });
      rows.sort((a,b)=>b.proj-a.proj || a.now-b.now).forEach((r,i)=>{ pts[r.id][k-1]=r.proj; pos[r.id][k-1]=i+1; });
@@ -475,10 +519,10 @@ const F1Common = (() => {
   // one to replace it. issue #10: with {projected:true, totalRounds} it plots the projected final standings
   // after each round (projectionsByRound) instead of the actual standings.
   // plugins (#113): extra Chart.js plugins, e.g. the round-result panel's band.
-  function renderPositionChart(canvas, seasonRounds, kind, prevChart, {projected=false, totalRounds=0, plugins=[]}={}){
+  function renderPositionChart(canvas, seasonRounds, kind, prevChart, {projected=false, totalRounds=0, plugins=[], win=projWin}={}){
    if(prevChart) prevChart.destroy();
    if(!seasonRounds.length) return null;
-   const {ids, pos, info} = projected ? projectionsByRound(seasonRounds, kind, totalRounds) : standingsByRound(seasonRounds, kind);
+   const {ids, pos, info} = projected ? projectionsByRound(seasonRounds, kind, totalRounds, win) : standingsByRound(seasonRounds, kind);
    const N=seasonRounds.length, n=ids.length, P=F1Theme.chart();
    const ff=getComputedStyle(document.body).fontFamily;
    const label = id => kind==='teams' ? shortTeamName(id, info[id].teamName) : info[id].code;
@@ -790,5 +834,5 @@ const F1Common = (() => {
   return { TEAM_COLORS, SEASON_TEAM_COLORS, setSeason, maxWeekendPoints, titleRace, titleRaceText, renderTitleRace, titleResultText, clinchLink, shortGP, teamColor, SHORT_TEAM_NAMES, shortTeamName, SEASON_META, seasonMeta, YEARS,
     isNarrow, withAlpha, hoverLine, standingsMoves, moveHTML, driverPickerRowHTML, markActivePreset, presetSets, defaultSelection, loadPickerSelection, savePickerSelection, initPickerToggle, updatePickerSummary,
     flagCode, flagHTML, flagSpace, FLAG_ROOM, drawFlag, indexPeople, nationalityOf, numberOf, ridgeFlags, ridgeMarkers, ridgeMedians, ridgeBars, ridgeChart, modesOf, medianOf, ridgeKeyHTML, standingsOrder, standingsRank, pickerTeamLabelHTML,
-    standingsByRound, renderPositionChart, projectionsByRound, renderProjectedPointsChart };
+    standingsByRound, renderPositionChart, projectionsByRound, projWindow, recentRounds, initProjWindow, setProjWindow, projWindowParam, projWindowText, mountProjStepper, renderProjectedPointsChart };
 })();
