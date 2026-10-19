@@ -164,6 +164,10 @@ const F1Controls = (() => {
     // #112: the slider was released (not every drag step), for pages that run something heavier on release
     roundSlider.addEventListener('change', ()=>window.dispatchEvent(new CustomEvent('f1roundcommit', { detail: { round: state.round } })));
 
+    // #132: once scrolled, the floating controls shrink to the slider (hysteresis so it can't flicker). Only a class; no fetch.
+    window.addEventListener('scroll', ()=>{ const y = window.scrollY;
+      if(y>140) container.classList.add('compact'); else if(y<60) container.classList.remove('compact'); }, {passive:true});
+
     try{ localStorage.setItem(SEASON_KEY, defaultYear); }catch(e){}
     loadYear(container, defaultYear, statusEl);
     mountedContainer = container;
