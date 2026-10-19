@@ -80,8 +80,6 @@ canvas{max-width:100%;}
 .keyLine{display:inline-block;width:16px;height:0;border-top:2.5px solid;}
 #decidedKey{margin-bottom:6px;}
 @media (max-width:600px){ .decidedWrap{height:210px;} }
-#f1controls{position:sticky;top:0;z-index:30;box-shadow:0 2px 8px rgba(0,0,0,.12);}
-#f1controls.compact .f1c-row:first-child,#f1controls.compact .f1c-error{display:none;}
 </style>
 </head>
 <body>
@@ -1189,9 +1187,6 @@ F1Export.attach(document.getElementById('ridgePointsCard'), {
 window.addEventListener('f1selection', e=>buildFromSelection(e.detail));
 window.addEventListener('f1roundchange', e=>{ if(currentSeasonRounds.length){ recompute(e.detail.round); autoRun(true); } });
 window.addEventListener('f1roundcommit', ()=>{ if(currentSeasonRounds.length) autoRun(false); }); // #112: slider released
-// #112: the controls stick to the top; once scrolled they shrink to the slider (hysteresis so it can't flicker)
-window.addEventListener('scroll', ()=>{ const c=document.getElementById('f1controls'), y=window.scrollY;
- if(y>140) c.classList.add('compact'); else if(y<60) c.classList.remove('compact'); }, {passive:true});
 window.addEventListener('themechange', ()=>{
  recolorOutcomeTags();
  renderDriverPicker();
