@@ -107,7 +107,7 @@ module.exports = async (t, h) => {
       return JSON.stringify(d.modes) !== JSON.stringify(want) || (d.labels[10] || '') !== lab;
     });
     t.check('position: markers sit on every most common finish (grouped view)', r.rows.length === 22 && bad.length === 0, JSON.stringify(bad.slice(0,2)));
-    t.check('position: no median markers', r.rows.every(d => d.median === undefined));
+    t.check('position: every ridge has a median line (#108)', r.rows.every(d => typeof d.median === 'number'));
     t.check('position: the fake data has a tied mode and a mode below P10 (so the checks cover them)',
       Object.values(exp).some(m => m.length > 1) && Object.values(exp).some(m => m.some(x => shownAs(x) === 10)));
     // e.g. a driver with 8 finishes spread over P11–P20 but 2 at P6: the grouped bucket is tallest, yet P6 is most common
@@ -118,7 +118,7 @@ module.exports = async (t, h) => {
     const wantOrder = Object.keys(exp).sort((a,b) => key(exp[a][0]) - key(exp[b][0]) || rank.indexOf(a) - rank.indexOf(b));
     t.check('position: sorted by most common finish (default), ties by standings', JSON.stringify(r.rows.map(d => d.id)) === JSON.stringify(wantOrder),
       JSON.stringify([r.rows.map(d => d.id).slice(0,5), wantOrder.slice(0,5)]));
-    t.check('position: sort dropdown offers Most common (no Median)', await p.$eval('#chartSortSelect', el => [...el.options].map(o => o.textContent).join(',')) === 'Most common,Championship,Team');
+    t.check('position: sort dropdown offers Most common and Median finish (#108)', await p.$eval('#chartSortSelect', el => [...el.options].map(o => o.textContent).join(',')) === 'Most common,Median finish,Championship,Team');
     // Below P10 shown: markers on the real positions, no labels needed.
     await p.check('#chartOptRow input[data-opt="below10"]');
     r = await read();
@@ -166,7 +166,7 @@ module.exports = async (t, h) => {
     t.check('simulator: points ridges sorted by most common points, highest first', s.pts.every((x,i) => i === 0 || s.pts[i-1].best >= x.best), JSON.stringify(s.pts.map(x => x.best)));
     t.check('simulator: position ridges mark the most common exact finish', s.pos.length > 0 && s.pos.every(x => x.ok), JSON.stringify(s.pos.filter(x => !x.ok).slice(0,2)));
     t.check('simulator: position ridges sorted by most common finish, best first', s.pos.every((x,i) => i === 0 || s.pos[i-1].best <= x.best), JSON.stringify(s.pos.map(x => x.best)));
-    t.check('simulator: no median markers', s.pts.every(x => x.median === undefined));
+    t.check('simulator: every points ridge has a median line (#108)', s.pts.every(x => typeof x.median === 'number'));
     t.check('simulator: most-common key under both ridge charts', s.keys.length === 2 && s.keys.every(k => /most common/.test(k)), JSON.stringify(s.keys));
     t.check('simulator: win-probability rows show flags', s.oddsFlags === s.oddsRows && s.oddsRows > 0, JSON.stringify(s));
     // Track more drivers than the default so some most-common finishes can fall outside the top k... and fewer so they must.
