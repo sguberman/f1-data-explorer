@@ -135,7 +135,7 @@ const F1Export = (() => {
     attach(card('c'), {
       get name(){ return (kind === 'teams' ? 'constructors-' : 'drivers-') + (get().gap ? 'gap' : 'points'); },
       title: () => `${noun} Championship: ${get().gap ? 'gap to leader' : 'points'} by round`,
-      subtitle: () => { const g = get(); return roundText(g.N) + (g.L < g.N ? ' · later rounds projected from the last 5' : ''); },
+      subtitle: () => { const g = get(); return roundText(g.N) + (g.L < g.N ? ' · later rounds projected from the ' + F1Common.projWindowText(g.L) : ''); },
       canvas: () => document.getElementById('c'),
       legend: () => get().D.map(d => ({ label: d.n, color: F1Theme.team(d.c), dash: d.d && d.d.length ? [5, 3] : null }))
         .concat([{ label: get().gap ? 'Points still available' : 'Knockout line', color: F1Theme.chart().knock }]),
