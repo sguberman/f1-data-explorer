@@ -12,6 +12,7 @@
 <script src="nav.js"></script>
 <script src="common.js"></script>
 <script src="data.js"></script>
+<script src="talkingpoints.js"></script>
 <script src="share.js"></script>
 <script src="export.js"></script>
 <script src="controls.js"></script>
@@ -36,6 +37,16 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
 .hsCell.nc{background:linear-gradient(45deg,transparent 43.5%,var(--elim) 43.5% 56.5%,transparent 56.5%),linear-gradient(-45deg,transparent 43.5%,var(--elim) 43.5% 56.5%,transparent 56.5%),var(--inset);}
 .hsCell.none::after{content:"";position:absolute;left:30%;right:30%;top:50%;height:1.5px;margin-top:-.75px;background:var(--line-strong);border-radius:1px;}
 .hsCell.sel{outline:2px solid var(--ink);outline-offset:1px;z-index:1;}
+/* #109: stats under the strip, the same tiles as the drivers' Talking points */
+.tpGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px;margin-top:12px;}
+.tp{background:var(--inset);border:1px solid var(--line);border-radius:8px;padding:8px 10px;min-width:0;}
+.tpLabel{font-size:11.5px;color:var(--sub);margin-bottom:3px;}
+.tpValue{font-size:13px;font-weight:600;color:var(--ink);line-height:1.45;}
+.tpName{white-space:nowrap;}
+.tpSep{color:var(--sub);font-weight:400;}
+.tpMore{color:var(--sub);font-weight:500;cursor:help;}
+.tpDetail{font-size:11.5px;color:var(--sub);margin-top:2px;}
+@media (max-width:600px){ .tpGrid{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;} .tp{padding:7px 8px;} .tpValue{font-size:12.5px;} }
 .hsKey{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;font-size:11.5px;color:var(--sub);margin-top:10px;}
 .hsKeyItem{display:inline-flex;align-items:center;gap:4px;}
 .hsKeyRamp{display:inline-flex;gap:2px;}
@@ -110,6 +121,7 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
  <div class="hsGrid" id="heatStrip" role="img" aria-label="Heat strip of each selected driver's Grand Prix finish in every round: the stronger the colour, the better the finish."></div>
  <div class="hsTip" id="heatTip" hidden></div>
 </div>
+<div id="heatStats" class="tpGrid"></div>
 <div id="heatEmpty" style="font-size:12.5px;color:var(--sub);display:none;">No drivers selected.</div>
 <div class="hsKey" id="heatKey"></div>
 <div class="note" id="heatNote"></div>
@@ -396,8 +408,9 @@ function drawHeat(){
  const none=!heatRows.length;
  box.style.display=none?'none':''; document.getElementById('heatEmpty').style.display=none?'block':'none';
  document.getElementById('heatKey').style.display=none?'none':'';
+ F1TalkingPoints.render(document.getElementById('heatStats'), currentSeasonRounds, L, F1TalkingPoints.stats(currentSeasonRounds, L, heatRows.map(r=>r.id))); // #109
  document.getElementById('heatNote').textContent=none?'':`Gold, silver and bronze for a Grand Prix podium; then the stronger the blue, the better the finish, down to P10. P11 and below (no points) are faint. `
-   +`NC = not classified. ${L<currentSeasonRounds.length?`Rounds after Round ${L} are left blank. `:''}`
+   +`NC = not classified. The tiles count the drivers shown, Grand Prix finishes only; a streak is the longest run of rounds in a row (points count the sprint too). ${L<currentSeasonRounds.length?`Rounds after Round ${L} are left blank. `:''}`
    +(includeSprints?'Hover or tap a square for the race, with the sprint finish on sprint weekends.':'Hover or tap a square for the race; turn on Sprints above to add sprint finishes.');
  if(none){ grid.innerHTML=''; return; }
  grid.style.setProperty('--hs-n', currentSeasonRounds.length);

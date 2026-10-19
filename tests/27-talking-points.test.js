@@ -21,10 +21,11 @@ module.exports = async (t, h) => {
     const f = {};
     const [a, b] = now.order;
     f.leader = { ids: [a], n: now.tot[a] - now.tot[b], pts: now.tot[a], second: code[b] };
-    const wins = {}, nc = {}, starts = {};
+    const wins = {}, pods = {}, nc = {}, starts = {};
     all.forEach(r => r.raceResults.forEach(q => { starts[q.driverId] = (starts[q.driverId] || 0) + 1;
-      if(q.position === 1) wins[q.driverId] = (wins[q.driverId] || 0) + 1; if(q.position == null) nc[q.driverId] = (nc[q.driverId] || 0) + 1; }));
+      if(q.position === 1) wins[q.driverId] = (wins[q.driverId] || 0) + 1; if(q.position != null && q.position <= 3) pods[q.driverId] = (pods[q.driverId] || 0) + 1; if(q.position == null) nc[q.driverId] = (nc[q.driverId] || 0) + 1; }));
     f.wins = top(wins, 0); if(f.wins) f.wins.winners = Object.keys(wins).length;
+    f.podiums = top(pods, 0); if(f.podiums) f.podiums.drivers = Object.keys(pods).length; // #102
     const streak = {};
     now.order.forEach(id => { let s = 0;
       for(let i = all.length - 1; i >= 0; i--){ const r = all[i];
@@ -45,7 +46,7 @@ module.exports = async (t, h) => {
   const shown = p => p.$$eval('#talkingPoints .tp', els => els.map(e => ({ key: e.dataset.fact, ids: e.dataset.ids.split(','), n: +e.dataset.n,
     label: e.querySelector('.tpLabel').textContent, value: e.querySelector('.tpValue').textContent.replace(/\s+/g, ' ').trim(),
     detail: (e.querySelector('.tpDetail') || { textContent: '' }).textContent.trim() })));
-  const ORDER = ['leader', 'wins', 'streak', 'climber', 'faller', 'nc'];
+  const ORDER = ['leader', 'wins', 'podiums', 'streak', 'climber', 'faller', 'nc'];
   const names = codes => codes.length > 3 ? codes.slice(0, 3).join(', ') + ` +${codes.length - 3} more` : codes.length > 1 ? codes.slice(0, -1).join(', ') + ' and ' + codes.slice(-1) : codes[0];
 
   let p = await h.openPage('drivers', { width: 1000 }); await h.loaded(p);
@@ -66,6 +67,7 @@ module.exports = async (t, h) => {
     t.check(`round ${round}: leader shows points and the gap to second`, g.leader && g.leader.value.endsWith(`· ${want.leader.pts} pts`)
       && g.leader.detail === (want.leader.n > 0 ? `${want.leader.n} pt${want.leader.n === 1 ? '' : 's'} ahead of ${want.leader.second}` : `level with ${want.leader.second}, ahead on countback`), JSON.stringify(g.leader));
     if(want.wins) t.check(`round ${round}: wins line counts the different winners`, g.wins.detail === `${want.wins.winners} different winner${want.wins.winners === 1 ? '' : 's'} in ${round} Grand${round === 1 ? ' Prix' : 's Prix'}`, g.wins.detail);
+    if(want.podiums) t.check(`round ${round}: podiums line counts the different drivers on the podium (#102)`, g.podiums.detail === `${want.podiums.drivers} different driver${want.podiums.drivers === 1 ? '' : 's'} on the podium` && /podiums?( each)?$/.test(g.podiums.value), g.podiums.detail + ' | ' + g.podiums.value);
     if(want.nc && want.nc.ids.length === 1) t.check(`round ${round}: not classified says out of how many starts`, g.nc.detail === `of ${want.nc.starts} started`, g.nc.detail);
     if(want.climber && want.climber.path) t.check(`round ${round}: climber shows from and to`, g.climber.detail === `${want.climber.path} · last 5 rounds`, g.climber.detail);
     t.check(`round ${round}: subtitle names the round`, await h.text(p, '#tpSub') === `whole field · after round ${round}`, await h.text(p, '#tpSub'));
