@@ -37,6 +37,7 @@ site/                 The website (deployed as the site root, so URLs are unchan
   position.html       Race finishing-position ridgeline chart per driver, with sort/show options, and a
                       results heat strip (#87).
   simulator.html      Monte Carlo rest-of-season title simulator with ridgeline result charts.
+  racemodel.js        F1RaceModel (#133): the simulator's race model for one race, used by What-If's Simulated preset.
   whatif.html         What-if: drag a finishing order for a round, see both championships after it, with the title race (#85).
   common.js           F1Common: helpers shared by the chart pages (issue #44 and later).
   data.js             F1Data: fetch, cache (localStorage), normalize f1api.dev data; SPRINT_OVERRIDES.
@@ -474,6 +475,7 @@ drivers' and constructors' tables after that round: position, ▲/▼ vs the sta
 before, gained and after, ranked with countback (`F1Common.standingsOrder` on the season with that round
 replaced by your result; later rounds left out). Full names on desktop, codes / short team names on phones.
 Live and lap-by-lap running orders were considered and left out (see #48 for the API research).
+**"🎲 Simulated" preset (#133, `racemodel.js`):** a button after the other "Start from" presets, with the simulator's "Form from" stepper (last N Grand Prix starts per driver as of the slider's round, 3 up to the whole season, default 8, link key `w`). Clicking it runs 30,000 simulated races (the simulator's race model #117, retirements on auto, no wins/DNF settings) and orders the Grand Prix, and on a sprint weekend the sprint, by average points (ties: median finish, then standings). Drivers retiring in over half the runs, and drivers who didn't race in round L, go below the Not classified line. Runs only on click (`Math.random`, about 30 ms), can be dragged afterwards, never fetches; the note names the window. Tested in `39-whatif-sim` against an independent re-implementation fed the same random numbers.
 Title race (#85, see "Title race on What-If" above): a box above the lists with what each title needs at this round, a live
 line above each table and a 🏆 Champion tag on the champion's row as you drag.
 
