@@ -82,7 +82,7 @@ html.f1-loading #talkingPoints{min-height:120px;}
 </div>
 <div class="card">
 <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:10px;">
- <span style="font-size:12px;color:var(--sub);">Drivers shown</span>
+ <button type="button" class="pickerToggle" id="pickerToggle" aria-expanded="true" aria-controls="driverPicker" title="Show or hide the list"><span class="chev" aria-hidden="true">▾</span>Drivers shown</button><span id="pickerSummary" class="pickerSummary"></span>
  <span style="flex:1;"></span>
  <span style="font-size:12px;color:var(--sub);">Sort by</span>
  <select id="sortSeg" class="ddSelect" aria-label="Sort drivers shown">
@@ -95,6 +95,9 @@ html.f1-loading #talkingPoints{min-height:120px;}
  <button type="button" class="pill" data-preset="none">None</button>
  <button type="button" class="pill" data-preset="5">Top 5</button>
  <button type="button" class="pill" data-preset="10">Top 10</button>
+ <button type="button" class="pill" data-preset="top4" title="The drivers of the top 4 teams in the constructors' standings">Top 4 teams</button>
+ <button type="button" class="pill" data-preset="rest" title="Everyone outside the top 4 teams">Best of the rest</button>
+ <button type="button" class="pill" data-preset="contention" title="The leader and everyone who can still win the title">Title contention</button>
 </div>
 <div id="driverPicker" class="f1-skel"></div>
 </div>
@@ -182,13 +185,18 @@ async function buildFromSelection(detail){
  projData = F1Common.projectionsByRound(currentSeasonRounds, 'drivers', totalRounds()); projKey=null; trKey=null; tpKey=null;
  drawPositions();
  selectedDriverIds = null; // reset default whenever the season changes; round changes never touch this
- L = detail.round; // so the default (top 5 "as of now") and the first picker render use the right round
- defaultIds = selectedDriverIds = F1Common.standingsOrder(currentSeasonRounds, L, 'drivers').slice(0,5);
+ L = detail.round; // so the default (the title contenders "as of now") and the first picker render use the right round
+ defaultIds = F1Common.defaultSelection(driverSets(L), F1Common.standingsOrder(currentSeasonRounds, L, 'drivers')); // #104
+ selectedDriverIds = F1Common.loadPickerSelection('drivers', currentYear, Object.keys(F1Data.cumulative(currentSeasonRounds, currentSeasonRounds.length).drivers)) || defaultIds; // remembered between pages
  const linked = link && F1Share.ids(link.get('d'), Object.keys(F1Data.cumulative(currentSeasonRounds, currentSeasonRounds.length).drivers));
  if(linked) selectedDriverIds = linked;
  recompute(detail.round);
  if(link) F1Share.sync(); // #31: the URL reflects the link once it's applied
 }
+// #104: preset sets as of round `round` (top 4 teams' drivers, the rest, title contention)
+const driverSets = round => F1Common.presetSets(currentSeasonRounds, round, 'drivers', {year:currentYear, calendar:currentCalendar});
+const saveSelection = () => F1Common.savePickerSelection('drivers', currentYear, selectedDriverIds, defaultIds);
+F1Common.initPickerToggle(); // #124
 // #31: what goes in the URL (anything at its default is left out)
 let defaultIds=[];
 F1Share.register(()=>({
@@ -228,9 +236,11 @@ function renderDriverPicker(){
    cb.addEventListener('change', ()=>{
      const id=cb.dataset.id;
      selectedDriverIds = cb.checked ? [...selectedDriverIds, id] : selectedDriverIds.filter(x=>x!==id);
+     saveSelection();
      recompute(L);
    });
  });
+ F1Common.updatePickerSummary(selectedDriverIds, roster.length, 'drivers'); // #124
  updatePresetActive();
 }
 
@@ -239,7 +249,7 @@ function renderDriverPicker(){
 function updatePresetActive(){
  const cum = F1Data.cumulative(currentSeasonRounds, L);
  const ranked = F1Common.standingsOrder(currentSeasonRounds, L, 'drivers');
- const sets = { all: Object.keys(cum.drivers), none: [], 5: ranked.slice(0,5), 10: ranked.slice(0,10) };
+ const sets = { all: Object.keys(cum.drivers), none: [], 5: ranked.slice(0,5), 10: ranked.slice(0,10), ...driverSets(L) };
  F1Common.markActivePreset(sets, selectedDriverIds);
 }
 
@@ -252,7 +262,9 @@ document.getElementById('presetRow').addEventListener('click', e=>{
  const cum = F1Data.cumulative(currentSeasonRounds, L); // ranking as of the CURRENT round
  const ranked = F1Common.standingsOrder(currentSeasonRounds, L, 'drivers');
  const p = btn.dataset.preset;
- selectedDriverIds = p==='all' ? Object.keys(cum.drivers) : p==='none' ? [] : ranked.slice(0,+p);
+ const named = driverSets(L);
+ selectedDriverIds = p==='all' ? Object.keys(cum.drivers) : p==='none' ? [] : named[p] || ranked.slice(0,+p);
+ saveSelection();
  recompute(L);
 });
 

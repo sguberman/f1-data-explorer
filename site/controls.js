@@ -4,6 +4,7 @@
    the data is ready or the selection changes. Pages just listen for that event and redraw. */
 const F1Controls = (() => {
   const SEASON_KEY = 'f1cache:selectedSeason';
+  const ROUND_KEY = 'f1cache:selectedRound'; // #105: the slider's round, kept between pages (only while it isn't on the latest)
   const YEARS = F1Common.YEARS; // newest first — add a season by adding its row to F1Common.SEASON_META
 
   let state = { year:null, round:null, maxRound:null, seasonRounds:[] };
@@ -21,6 +22,20 @@ const F1Controls = (() => {
     window.dispatchEvent(new CustomEvent('f1selection', { detail: { ...state } }));
   }
 
+  // #105: remembered as {year, round}; nothing is kept while the slider is on the latest round, so "latest" keeps
+  // following the season. A saved round that doesn't fit the loaded season is ignored.
+  function savedRound(year, max){
+    try{
+      const o = JSON.parse(localStorage.getItem(ROUND_KEY));
+      return o && o.year===year && Number.isInteger(o.round) && o.round>=1 && o.round<max ? o.round : null;
+    }catch(e){ return null; }
+  }
+  function saveRound(){
+    try{
+      if(state.year && state.round && state.round<state.maxRound) localStorage.setItem(ROUND_KEY, JSON.stringify({year:state.year, round:state.round}));
+      else localStorage.removeItem(ROUND_KEY);
+    }catch(e){}
+  }
   // issue #49: "updated 5 min ago"-style age of the newest data, from F1Data's fetch timestamps.
   function relativeAge(ms){
     const s = Math.max(0, Math.round((Date.now()-ms)/1000));
@@ -31,6 +46,7 @@ const F1Controls = (() => {
   }
   let fetchedAt = null, loadedMsg = '';
   let linkRound = null; // #31: the round from a shared link, applied once
+  let linkSeason = false; // #105: the first load came from a link
   const SHARE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7"/><path d="M12 3v12"/><path d="M8 7l4-4 4 4"/></svg>';
   function renderStatus(container){
     container.querySelector('.f1c-status').textContent = loadedMsg;
@@ -76,6 +92,9 @@ const F1Controls = (() => {
     state.maxRound = rounds.length;
     state.round = rounds.length; // default to "as of the latest round loaded"
     if(linkRound){ if(linkRound>=1 && linkRound<rounds.length) state.round = linkRound; linkRound = null; } // #31: a shared link's round, first load only
+    else if(!linkSeason && savedRound(year, rounds.length)) state.round = savedRound(year, rounds.length); // #105: a link without a round means the latest
+    linkSeason = false;
+    saveRound();
     const slider = container.querySelector('.f1c-round');
     slider.max = state.maxRound || 1;
     slider.value = state.round || 1;
@@ -92,6 +111,7 @@ const F1Controls = (() => {
     // #31: a shared link's season comes first, and its round is used for that first load
     const linkYear = YEARS.includes(+F1Share.param('season')) ? +F1Share.param('season') : null;
     linkRound = linkYear || !F1Share.param('season') ? +F1Share.param('round') || null : null;
+    linkSeason = !!linkYear;
     const defaultYear = linkYear || savedYear || opts.defaultYear || YEARS[0];
 
     container.innerHTML = `
@@ -133,6 +153,7 @@ const F1Controls = (() => {
     });
     roundSlider.addEventListener('input', ()=>{
       state.round = +roundSlider.value;
+      saveRound();
       container.querySelector('.f1c-roundlabel').innerHTML = roundLabelHTML(state.round);
       // Live update on every drag step, same as the on-chart drag handle — a lightweight event
       // (not `f1selection`) so pages can just recompute from already-loaded data, with no network
@@ -151,6 +172,7 @@ const F1Controls = (() => {
   function setRound(round){
     if(!mountedContainer) return;
     state.round = round;
+    saveRound();
     const slider = mountedContainer.querySelector('.f1c-round');
     if(slider) slider.value = round;
     const label = mountedContainer.querySelector('.f1c-roundlabel');
