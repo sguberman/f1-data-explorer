@@ -522,9 +522,8 @@ entries dim. Redraws only (`applyFocus()`); a pin whose line leaves the chart is
 **Open a season (#141):** **a year on the x-axis** is a link: clicking (or tapping) it goes straight to that season's drivers' (Drivers view) or constructors' (Constructors
 view) page, `page.html?season=Y` with no `round`, so it lands on the end of the season; the cursor turns to a pointer over the axis labels. **A click inside the plot**, on a
 line or in empty space, **locks that year**: a shaded band with a vertical line marks it (`lockPlugin`, like the round shading on the championship pages) and the line under
-the chart, "Open 1988 [× locked]: Constructors' championship → · Positions · What-if · Simulator", stays on it (links `page.html?season=Y`) until Escape or the ×
-lets go. A click on a line also lights it as before; Escape lets go of a lit line first, then the lock. Without a lock that line follows the season under the pointer or finger
-(pointermove / pointerdown). The tooltip's footer says "Click 1988 on the axis to open it · click here to lock it". The rule eras themselves live in `F1Common.ERAS`
+the chart, "Open 1988: Constructors' championship → · Positions · What-if · Simulator", stays on it (links `page.html?season=Y`) until another year is clicked or Escape lets go. A click on a line also lights it as before; Escape lets go of a lit line first, then the lock. Without a lock that line follows the season under the pointer or finger
+(pointermove / pointerdown). The rule eras themselves live in `F1Common.ERAS`
 (also the season dropdown's groups); `F1Eras.ERAS` is the same list.
 **Drivers' titles on the constructors plot (#135 O6):** a ★ on a team's line in each finished season one of its drivers won the drivers' championship (the
 champion's team from the standings file, mapped through the lineage map, so Brawn's 2009 star is on the Mercedes line; a champion who changed team mid-season counts
