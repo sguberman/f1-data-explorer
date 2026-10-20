@@ -285,10 +285,11 @@ function recompute(round){
 
  // A constructor scores through BOTH cars, so the max available per weekend is the top two
  // finishing positions combined: 25+18=43 for a race, 8+7=15 for a sprint (both cars finishing 1-2).
+ const sc = F1Common.scoring(year), gpTop = sc.gp[0]+sc.gp[1], spTop = (sc.sprint[0]||0)+(sc.sprint[1]||0);
  const rem = haveCalendar
-   ? (r => 43*(N-r) + 15*cal.sprintRounds.filter(x=>x>r).length)
+   ? (r => gpTop*(N-r) + spTop*cal.sprintRounds.filter(x=>x>r).length)
    : (r => { const left=N-r; const sprintsSoFar=seasonRounds.filter(x=>x.round<=L && x.sprintResults).length;
-       return 43*left + 15*Math.min(Math.max(0,meta.sprints-sprintsSoFar), left); });
+       return gpTop*left + spTop*Math.min(Math.max(0,meta.sprints-sprintsSoFar), left); });
  usingRealCalendar = haveCalendar;
 
  D = (selectedTeamIds||[]).map(id=>{

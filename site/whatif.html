@@ -137,8 +137,8 @@ tr.champ td{background:var(--inset);}
 // order for the Grand Prix (and the sprint, on a sprint weekend); the page adds those points to the standings
 // as of the slider's round and shows the new championship tables. Everything is computed in the browser from
 // the season already loaded — dragging and the buttons never fetch.
-const PTS_GP=[25,18,15,12,10,8,6,4,2,1];
-const sprintPoints = year => year<=2021 ? [3,2,1] : [8,7,6,5,4,3,2,1];
+let PTS_GP=[25,18,15,12,10,8,6,4,2,1]; // the season's scoring (#141: F1Common.scoring), set when a season loads
+const sprintPoints = year => F1Common.scoring(year).sprint;
 let year=null, seasonRounds=[], calendar=null, L=0, T=0;
 // orders[session] = [driverId…] with null as the "not classified" divider: everyone after it gets no position.
 let orders={}, sessions=[], roster={};
@@ -152,7 +152,7 @@ const SIM_RUNS=30000, WINDOW_DEFAULT=8, WINDOW_MIN=3;
 let dataWindow=WINDOW_DEFAULT, simNote='';
 
 async function buildFromSelection(detail){
- year=detail.year; seasonRounds=detail.seasonRounds;
+ year=detail.year; seasonRounds=detail.seasonRounds; PTS_GP=F1Common.scoring(year).gp;
  calendar = seasonRounds.length ? await F1Data.getCalendar(year) : null;
  // #31: a shared link's keys, first season only
  const link = F1Share.take();

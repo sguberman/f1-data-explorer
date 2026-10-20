@@ -53,6 +53,9 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
 .eraBtn.on .yrs{color:inherit;opacity:.75;}
 @media (max-width:600px){ .eraBtn .yrs{display:none;} }
 .erasLegend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--ink2);margin:0 0 10px;}
+.erasOpen{margin:8px 0 2px;font-size:13px;color:var(--muted);}
+.erasOpen a{color:var(--ink);font-weight:600;text-decoration:underline;text-underline-offset:2px;}
+.erasOpen .sep{margin:0 6px;opacity:.5;}
 .erasLegend .lgItem{display:inline-flex;align-items:center;gap:6px;font:inherit;color:inherit;background:none;border:none;padding:2px 0;cursor:pointer;border-radius:4px;}
 .erasLegend .lgItem:focus-visible{outline:2px solid var(--line-strong);outline-offset:2px;}
 .erasLegend .lgItem.dim{opacity:.4;}
@@ -115,6 +118,7 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
 <div class="note" id="erasHint" hidden>Swipe the chart sideways to see earlier seasons; the position labels stay in place.</div>
 <div class="note" id="erasMany" hidden>That's a lot of lines. Pick fewer, or click a line or its name to follow it.</div>
 <div id="erasEmpty" style="font-size:12.5px;color:var(--sub);display:none;margin-top:8px;">Nothing picked.</div>
+<div class="erasOpen" id="erasOpen" hidden></div>
 <div class="erasLineage" id="erasLineage"></div>
 <div class="note" id="erasNote"></div>
 <div class="eraKey" id="eraKey"></div>
@@ -453,6 +457,7 @@ function draw(keepScroll){
             title(items){ const y = Math.round(items[0].raw.x), era = F1Eras.eraOf(y); return `${y}${era ? ' · ' + era.name : ''}${y === model.partial ? ` (after round ${model.round})` : ''}`; },
             label(it){ const s = it.dataset._e.seasons[Math.round(it.raw.x)]; return `${it.dataset.label}: P${s.pos} · ${Math.round(s.pts * 10) / 10} pts${s.name ? ' · ' + s.name : ''}`; },
             afterLabel(it){ const k = it.dataset._e.seasons[Math.round(it.raw.x)]; return k && k.champ ? `★ Drivers' champion: ${k.champ}` : ''; },
+            footer(items){ const y = Math.round(items[0].raw.x); return `Open ${y} → link below the chart`; },
             labelColor: it => ({ borderColor: it.dataset.borderColor, backgroundColor: it.dataset.pointBackgroundColor[it.dataIndex] || it.dataset.borderColor })
           }
         }
@@ -504,13 +509,30 @@ $('erasPicker').addEventListener('change', e => {
   if(isDefault(picked[view])) picked[view] = null;
   renderPicker(false); draw(); syncURL();
 });
-$('viewSel').addEventListener('change', e => { view = e.target.value; filter = ''; $('erasFilter').value = ''; render(); });
+$('viewSel').addEventListener('change', e => { view = e.target.value; { const y = openYear; openYear = null; setOpenYear(y); } filter = ''; $('erasFilter').value = ''; render(); });
 $('sortSel').addEventListener('change', e => { sortBy = e.target.value; renderPicker(); });
 $('erasFilter').addEventListener('input', e => { filter = e.target.value; renderPicker(); });
 window.addEventListener('themechange', () => { renderPicker(); draw(true); });
 let lastW = innerWidth; // turning the phone (not the address bar showing or hiding) changes the chart's size
 window.addEventListener('resize', () => { if(innerWidth !== lastW){ lastW = innerWidth; draw(true); } });
 $('erasCanvas').addEventListener('click', e => { const id = lineUnder(e); setPinned(id); }); // empty space: id is null, which lets go
+
+// #141: open a season on the other pages. The link sits under the chart (a canvas tooltip can't be clicked) and follows
+// the season under the pointer or finger; it lands on the end of that season (no round in the link).
+let openYear = null;
+function setOpenYear(y){
+  if(!model || !y || !model.years.includes(y) || y === openYear) return;
+  openYear = y;
+  const main = view === 'drivers' ? ['drivers.html', "Drivers' championship"] : ['constructors.html', "Constructors' championship"];
+  const link = (page, label) => `<a href="${page}?season=${y}">${label}</a>`;
+  $('erasOpen').innerHTML = `Open ${y}: ${link(main[0], main[1] + ' →')}<span class="sep">·</span>`
+    + [['position.html', 'Positions'], ['whatif.html', 'What-if'], ['simulator.html', 'Simulator']].map(([pg, l]) => link(pg, l)).join('<span class="sep">·</span>');
+  $('erasOpen').hidden = false;
+}
+const seasonAt = ev => { if(!chart) return null; const r = $('erasCanvas').getBoundingClientRect(), mx = ev.clientX - r.left, a = chart.chartArea;
+  return mx < a.left || mx > a.right ? null : Math.round(chart.scales.x.getValueForPixel(mx)); };
+$('erasCanvas').addEventListener('pointermove', e => setOpenYear(seasonAt(e)));
+$('erasCanvas').addEventListener('pointerdown', e => setOpenYear(seasonAt(e)));
 $('erasLegend').addEventListener('click', e => { const b = e.target.closest('.lgItem'); if(b) setPinned(b.dataset.id); });
 document.addEventListener('keydown', e => { if(e.key === 'Escape' && pinned){ pinned = null; applyFocus(); } });
 $('chartTitle').parentNode.insertAdjacentHTML('beforeend', F1Share.BUTTON); // #145: the same button as the other pages, sharing the address (kept current by syncURL)

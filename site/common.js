@@ -616,13 +616,43 @@ const F1Common = (() => {
          y:{grid:{color:P.grid}, ticks:{color:P.text}, title:{display:true, text:'Projected final points', color:P.text}}}}});
   }
 
+  // Rule eras: first and last season (inclusive), a short label for the chart and a plain-language note.
+  const ERAS = [
+    { from: 1950, to: 1960, label: 'Front engine', short: 'FE', name: 'Front-engined cars', note: 'Front-engined cars; the first world championship seasons' },
+    { from: 1961, to: 1965, label: '1.5 L', short: '1.5L', name: '1.5-litre formula', note: 'Rear-engined cars with 1.5-litre engines' },
+    { from: 1966, to: 1976, label: '3 L, wings', short: '3L', name: '3-litre and wings', note: '3-litre engines, the Cosworth V8, wings and slick tyres' },
+    { from: 1977, to: 1982, label: 'Ground effect I', short: 'GE I', name: 'First ground effect', note: 'Ground-effect cars (Lotus 78 onwards), until they were banned after 1982' },
+    { from: 1983, to: 1988, label: 'Turbo', short: 'Turbo', name: 'Turbo era', note: 'Flat-bottomed cars; turbo engines of 1,000 hp and more until they were banned after 1988' },
+    { from: 1989, to: 2005, label: 'V10', short: 'V10', name: 'V10 era', note: 'Naturally aspirated engines; the V10 became the standard' },
+    { from: 2006, to: 2013, label: 'V8', short: 'V8', name: 'V8 era', note: '2.4-litre V8 engines, with KERS from 2009' },
+    { from: 2014, to: 2021, label: 'Turbo hybrid', short: 'Hybrid', name: 'Turbo-hybrid era', note: '1.6-litre V6 turbo hybrid power units' },
+    { from: 2022, to: 2025, label: 'Ground effect II', short: 'GE II', name: 'Ground effect returns', note: 'Ground-effect cars again, with 18-inch wheels and a cost cap' },
+    { from: 2026, to: 9999, label: 'Current', short: 'Now', name: 'Current era', note: 'Lighter cars with active aero and a 50/50 electric and combustion power unit' },
+  ];
+
+  // #141: the points a season paid, as awarded (the pages use these and the points in the data; "best N results
+  // count" rules and shared-drive splits are not applied). gp = the places that scored, in order; sprint =
+  // the sprint scale ([] before 2021); fl = the most the fastest lap added (1950–58 and 2019–24).
+  const SCORING_ERAS = [
+   {from:1950, to:1959, gp:[8,6,4,3,2]},
+   {from:1960, to:1960, gp:[8,6,4,3,2,1]},
+   {from:1961, to:1990, gp:[9,6,4,3,2,1]},
+   {from:1991, to:2002, gp:[10,6,4,3,2,1]},
+   {from:2003, to:2009, gp:[10,8,6,5,4,3,2,1]},
+   {from:2010, to:9999, gp:[25,18,15,12,10,8,6,4,2,1]}];
+  function scoring(year){
+   const e = SCORING_ERAS.find(x=>year>=x.from && year<=x.to) || SCORING_ERAS[SCORING_ERAS.length-1];
+   return { gp:e.gp, sprint: year===2021 ? [3,2,1] : year>=2022 ? [8,7,6,5,4,3,2,1] : [],
+            fl: (year>=1950 && year<=1958) || (year>=2019 && year<=2024) ? 1 : 0 };
+  }
+
   // ---- #85: title clinch calculator (the championship pages' title-race line and the What-If page) ----
   // The most one entry can score in a weekend, by season: a Grand Prix win (plus the fastest-lap point,
   // 2019–2024) and a sprint win (3-2-1 sprints in 2021). Teams: both cars first and second. This is the
   // season's real maximum, so "clinched" is only said when it's certain (the knockout line keeps its 25/8).
   function maxWeekendPoints(year, kind){
-   const fl = year>=2019 && year<=2024 ? 1 : 0, sp = year===2021 ? [3,2,1] : [8,7,6,5,4,3,2,1];
-   return kind==='teams' ? {gp:25+18+fl, sprint:sp[0]+sp[1]} : {gp:25+fl, sprint:sp[0], fl, gpPts:[25,18,15,12,10,8,6,4,2,1], spPts:sp};
+   const sc = scoring(year), fl = sc.fl, sp = sc.sprint, g = sc.gp;
+   return kind==='teams' ? {gp:g[0]+g[1]+fl, sprint:(sp[0]||0)+(sp[1]||0)} : {gp:g[0]+fl, sprint:sp[0]||0, fl, gpPts:g, spPts:sp};
   }
   // The title race as of `round`, for the whole field (not just the picked entries). Pure: no DOM, no fetch.
   // opts: {year, calendar} (calendar = F1Data.getCalendar's result, or null to estimate from SEASON_META).
@@ -831,8 +861,10 @@ const F1Common = (() => {
    return {champion:null, html, won:false, contenders:[tr.leader, ...tr.contenders.map(c=>c.id)]};
   }
 
-  return { TEAM_COLORS, SEASON_TEAM_COLORS, setSeason, maxWeekendPoints, titleRace, titleRaceText, renderTitleRace, titleResultText, clinchLink, shortGP, teamColor, SHORT_TEAM_NAMES, shortTeamName, SEASON_META, seasonMeta, YEARS,
+  return { TEAM_COLORS, SEASON_TEAM_COLORS, setSeason, ERAS, scoring, maxWeekendPoints, titleRace, titleRaceText, renderTitleRace, titleResultText, clinchLink, shortGP, teamColor, SHORT_TEAM_NAMES, shortTeamName, SEASON_META, seasonMeta, YEARS,
     isNarrow, withAlpha, hoverLine, standingsMoves, moveHTML, driverPickerRowHTML, markActivePreset, presetSets, defaultSelection, loadPickerSelection, savePickerSelection, initPickerToggle, updatePickerSummary,
     flagCode, flagHTML, flagSpace, FLAG_ROOM, drawFlag, indexPeople, nationalityOf, numberOf, ridgeFlags, ridgeMarkers, ridgeMedians, ridgeBars, ridgeChart, modesOf, medianOf, ridgeKeyHTML, standingsOrder, standingsRank, pickerTeamLabelHTML,
     standingsByRound, renderPositionChart, projectionsByRound, projWindow, recentRounds, initProjWindow, setProjWindow, projWindowParam, projWindowText, mountProjStepper, renderProjectedPointsChart };
 })();
+
+if(typeof module !== "undefined") module.exports = F1Common;

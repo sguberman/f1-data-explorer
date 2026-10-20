@@ -194,9 +194,9 @@ canvas{max-width:100%;}
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script>
-// Real F1 scoring. GP pays the top 10; sprint pays the top 8.
-const PTS_GP=[25,18,15,12,10,8,6,4,2,1];
-const PTS_SPRINT=[8,7,6,5,4,3,2,1];
+// The season's scoring (#141: F1Common.scoring; set when a season loads). Modern: GP pays the top 10, sprint the top 8.
+let PTS_GP=[25,18,15,12,10,8,6,4,2,1];
+let PTS_SPRINT=[8,7,6,5,4,3,2,1];
 
 let currentYear=null, currentSeasonRounds=[], currentCalendar=null;
 let L=0, fullRoster=[], remainingEvents=[];
@@ -216,6 +216,7 @@ function seededRandom(seed){
 async function buildFromSelection(detail){
  cancelRun(); // a run for the previous season is no use any more (#56)
  currentYear = detail.year;
+ PTS_GP = F1Common.scoring(currentYear).gp; PTS_SPRINT = F1Common.scoring(currentYear).sprint;
  currentSeasonRounds = detail.seasonRounds;
  if(!currentSeasonRounds.length){
    fullRoster=[]; remainingEvents=[]; selectedDriverIds=[];
@@ -433,10 +434,10 @@ function buildSimContext(){
 function decidedContext(events, startRound){
  const E=events.length, endRound=new Int16Array(E), roomAfter=new Float64Array(E);
  let room=0;
- for(const ev of events) room += ev.type==='gp' ? PTS_GP[0] : PTS_SPRINT[0];
+ for(const ev of events) room += ev.type==='gp' ? PTS_GP[0] : (PTS_SPRINT[0]||0);
  const room0=room;
  for(let e=0;e<E;e++){
-   room -= events[e].type==='gp' ? PTS_GP[0] : PTS_SPRINT[0];
+   room -= events[e].type==='gp' ? PTS_GP[0] : (PTS_SPRINT[0]||0);
    if(e===E-1 || events[e+1].round!==events[e].round) endRound[e]=events[e].round;
    roomAfter[e]=room;
  }

@@ -1,6 +1,6 @@
 # F1 Data Explorer
 
-Interactive charts and a title simulator for the 2026 Formula 1 season (2021–2025 seasons load too).
+Interactive charts and a title simulator for the 2026 Formula 1 season (every season back to 1950 loads too).
 
 **Live site: <https://f1.gubes.net/>**
 

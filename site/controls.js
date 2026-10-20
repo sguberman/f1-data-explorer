@@ -103,6 +103,17 @@ const F1Controls = (() => {
     emit();
   }
 
+  // #141: the seasons, newest first, grouped by the Eras page's rule eras (an <optgroup> each; the latest era
+  // has few seasons, so a group header over a single 2026 is still fine). Seasons outside any era go ungrouped.
+  function yearOptionsHTML(selected){
+    const opt = y => `<option value="${y}" ${y===selected?'selected':''}>${y}</option>`;
+    const eras = F1Common.ERAS.slice().sort((a,b)=>b.from-a.from);
+    return eras.map(e=>{
+      const ys = YEARS.filter(y=>y>=e.from && y<=e.to);
+      return ys.length ? `<optgroup label="${e.name} · ${e.from}–${e.to>=9999?'':e.to}">${ys.map(opt).join('')}</optgroup>` : '';
+    }).join('') + YEARS.filter(y=>!F1Common.ERAS.some(e=>y>=e.from && y<=e.to)).map(opt).join('');
+  }
+
   function mount(containerId, opts={}){
     const container = document.getElementById(containerId);
     // #62: the season chosen on any page wins, so moving between pages keeps it; otherwise the newest season.
@@ -116,7 +127,7 @@ const F1Controls = (() => {
     container.innerHTML = `
       <div class="f1c-row">
         <label class="f1c-label">Season
-          <select class="f1c-year">${YEARS.map(y=>`<option value="${y}" ${y===defaultYear?'selected':''}>${y}</option>`).join('')}</select>
+          <select class="f1c-year">${yearOptionsHTML(defaultYear)}</select>
         </label>
         <span class="f1c-statusline"><span class="f1c-status"></span><span class="f1c-age" hidden></span>
           · <button type="button" class="f1c-link f1c-refresh" title="Clear cached race data (all seasons) and reload from f1api.dev">Refresh data</button></span>
