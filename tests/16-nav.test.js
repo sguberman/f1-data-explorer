@@ -8,6 +8,7 @@ module.exports = async (t, h) => {
   const snapshots = { 2026: full, 2025: { ...full, year: 2025, complete: true } };
   const PAGES = { drivers:"Drivers' Championship", constructors:"Constructors' Championship", whatif:'What-If Results',
     position:'Race Finishing Positions', simulator:'Title Simulator' }; // #107: the homepage's card order
+  const ALL = { ...PAGES, eras:'Eras' }; // #135: the Eras page reads its own file and has no season controls
 
   for(const [name, title] of Object.entries(PAGES)){
     const p = await h.openPage(name, { snapshots }); await h.loaded(p);
@@ -19,8 +20,8 @@ module.exports = async (t, h) => {
     }));
     t.check(`${name}: link home`, nav.home === 'index.html', nav.home);
     t.check(`${name}: Pages menu names the current page`, nav.label === title, nav.label);
-    t.check(`${name}: menu lists all five pages, current one marked`,
-      JSON.stringify(nav.links.map(l => l[0])) === JSON.stringify(Object.keys(PAGES).map(n => n + '.html')) &&
+    t.check(`${name}: menu lists all six pages, current one marked`,
+      JSON.stringify(nav.links.map(l => l[0])) === JSON.stringify(Object.keys(ALL).map(n => n + '.html')) &&
       nav.links.filter(l => l[2] === 'page').map(l => l[0]).join() === name + '.html', JSON.stringify(nav.links));
     t.check(`${name}: menu starts closed`, nav.hidden === true);
     t.check(`${name}: no page errors`, p.errors.length === 0, p.errors.join('; '));
@@ -31,7 +32,7 @@ module.exports = async (t, h) => {
   const home = await h.openPage('index', { snapshots });
   const cards = await home.$$eval('a.card', as => as.map(a => a.getAttribute('href')));
   await home.done();
-  t.check('the Pages menu has the same order as the homepage cards', JSON.stringify(cards) === JSON.stringify(Object.keys(PAGES).map(n => n + '.html')), cards.join(','));
+  t.check('the Pages menu has the same order as the homepage cards', JSON.stringify(cards) === JSON.stringify(Object.keys(ALL).map(n => n + '.html')), cards.join(','));
 
   // Menu behaviour, and the season carried from page to page.
   const p = await h.openPage('drivers', { snapshots }); await h.loaded(p);

@@ -1,4 +1,5 @@
-# #13: refresh the season data files (site/data/{year}.json) from f1api.dev, commit them if anything
+# #13: refresh the season data files (site/data/{year}.json) from f1api.dev (and, #135, the Eras page's
+# site/data/eras.json from Jolpica), commit them if anything
 # changed, and redeploy the site. Pages load a whole season from one of these files instead of ~2 f1api.dev
 # requests per round; they still ask f1api.dev live for any round newer than the file.
 name: Update season data
@@ -17,6 +18,7 @@ on:
   push:
     paths:
       - "tools/snapshot.mjs"
+      - "tools/eras-snapshot.mjs"
       - "site/data.js"
       - ".github/workflows/snapshot.yml"
 
@@ -40,6 +42,8 @@ jobs:
           node-version: 22
       - name: Build season files
         run: node tools/snapshot.mjs ${{ github.event.inputs.all == 'true' && '--all' || '' }}
+      - name: Build the eras file (#135)
+        run: node tools/eras-snapshot.mjs ${{ github.event.inputs.all == 'true' && '--all' || '' }}
       - name: Commit if changed
         id: commit
         run: |

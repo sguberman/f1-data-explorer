@@ -15,8 +15,8 @@ module.exports = async (t, h) => {
         c4: getComputedStyle(document.querySelector('.pv')).getPropertyValue('--c4').trim(),
       };
     });
-    t.check(`${theme} ${width}px: cards in order drivers, constructors, what-if (#107), positions, simulator`,
-      JSON.stringify(r.hrefs) === JSON.stringify(['drivers.html','constructors.html','whatif.html','position.html','simulator.html']), r.hrefs.join(','));
+    t.check(`${theme} ${width}px: cards in order drivers, constructors, what-if (#107), positions, simulator, eras (#135)`,
+      JSON.stringify(r.hrefs) === JSON.stringify(['drivers.html','constructors.html','whatif.html','position.html','simulator.html','eras.html']), r.hrefs.join(','));
     t.check(`${theme} ${width}px: every card has a chart picture`, r.pictures.every(Boolean));
     t.check(`${theme} ${width}px: cards are laid out vertically, one per row`, r.stacked && r.sameLeft);
     t.check(`${theme} ${width}px: no horizontal scroll`, r.scroll <= width);

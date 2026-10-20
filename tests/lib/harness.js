@@ -21,8 +21,9 @@ async function close(){ if(browser) await browser.close(); }
 //   snapshots: {year: object} served as site/data/{year}.json (#13). The real season files in site/data/ are
 //   never served, so tests always use the fake season; without this option every season file is a 404 and
 //   pages load live from the (fake) f1api.dev, as before.
+//   eras: an object served as site/data/eras.json (#135); without it that file is a 404.
 // The returned page has .errors (uncaught page errors), .apiHits (f1api.dev requests made) and .done().
-async function openPage(name, {theme='light', width=1000, fail=()=>false, delay=0, snapshots={}, now=null, timezone, locale}={}){
+async function openPage(name, {theme='light', width=1000, fail=()=>false, delay=0, snapshots={}, eras=null, now=null, timezone, locale}={}){
   const ctx = await browser.newContext({ viewport:{width, height:1400}, ...(timezone ? {timezoneId:timezone} : {}), ...(locale ? {locale} : {}) });
   if(now !== null) await ctx.clock.setFixedTime(now);
   await ctx.addInitScript(t => { try{ localStorage.setItem('f1-theme', t); }catch(e){} }, theme);
@@ -40,6 +41,8 @@ async function openPage(name, {theme='light', width=1000, fail=()=>false, delay=
     if(url.startsWith('https://cdnjs.cloudflare.com/') && url.includes('Chart.js'))
       return route.fulfill({status:200, contentType:'application/javascript', body:CHART_JS});
     if(url.startsWith('http://site.test/')){
+      if(new URL(url).pathname === '/data/eras.json')
+        return eras ? route.fulfill({status:200, contentType:'application/json', body:JSON.stringify(eras)}) : route.fulfill({status:404, body:''});
       const snap = new URL(url).pathname.match(/^\/data\/(\d{4})\.json$/);
       if(snap){
         snapshotHits.push(url);

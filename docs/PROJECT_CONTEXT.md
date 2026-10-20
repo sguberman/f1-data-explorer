@@ -38,6 +38,7 @@ site/                 The website (deployed as the site root, so URLs are unchan
                       results heat strip (#87).
   simulator.html      Monte Carlo rest-of-season title simulator with ridgeline result charts.
   racemodel.js        F1RaceModel (#133): the simulator's race model for one race, used by What-If's Simulated preset.
+  eras.html / eras.js Eras (#135): championship position per season since 1950 against rule eras; F1Eras = lineage map + model.
   whatif.html         What-if: drag a finishing order for a round, see both championships after it, with the title race (#85).
   common.js           F1Common: helpers shared by the chart pages (issue #44 and later).
   data.js             F1Data: fetch, cache (localStorage), normalize f1api.dev data; SPRINT_OVERRIDES.
@@ -57,6 +58,7 @@ site/                 The website (deployed as the site root, so URLs are unchan
 .github/workflows/    static.yml deploys site/ on pushes to main that touch site/ (or the workflow).
                       tests.yml runs tests/ on PRs (a new push cancels the PR's older run, #137). snapshot.yml refreshes site/data/ (#13).
 tools/                snapshot.mjs: builds site/data/{year}.json from f1api.dev (run by snapshot.yml).
+                      eras-snapshot.mjs (#135): builds site/data/eras.json (standings since 1950) from Jolpica (same workflow).
 tests/                Browser tests, run on every PR (see "Tests" below). Not deployed.
 docs/                 Project docs (not deployed): PROJECT_CONTEXT.md (this file), DONE.md (archive of
                       legacy issues #1–#55), TODO.md (legacy → GitHub issue numbers).
@@ -479,7 +481,68 @@ Live and lap-by-lap running orders were considered and left out (see #48 for the
 Title race (#85, see "Title race on What-If" above): a box above the lists with what each title needs at this round, a live
 line above each table and a 🏆 Champion tag on the champion's row as you drag.
 
-**index.html** — Static landing page (#50): five cards, one per row, in the order Drivers' Championship,
+**eras.html (#135, `eras.js` = global `F1Eras`)** — Championship **position** (not points: scoring changed too often) of the picked
+drivers or teams in every season from 1950 to the latest, on one chart in the position trackers' style (#135 O1): each season is a flat
+segment at its position (`HALF` = 0.3 of a season either side of the year, a linear year axis), joined to the next season by an angled
+line, a missing season breaking the line; P1 at the top; no markers and no mark for title years (O4); a thin vertical line (`F1Common.hoverLine`)
+and the tooltip at the hovered season.
+**Highlight a line (#135 C2):** hovering with a mouse lights the line nearest the pointer in the season under it (within 14 px; 26 px for a finger);
+a click or tap pins it, as does clicking its legend entry (the legend entries are buttons); clicking the same line or entry again, empty space or
+Escape lets go; while pinned, hovering changes nothing. The lit line is drawn on top and thicker, the others fade to 15% opacity and their legend
+entries dim. Redraws only (`applyFocus()`); a pin whose line leaves the chart is dropped, and the PNG export lets go of any highlight first.
+**Drivers' titles on the constructors plot (#135 O6):** a ★ on a team's line in each finished season one of its drivers won the drivers' championship (the
+champion's team from the standings file, mapped through the lineage map, so Brawn's 2009 star is on the Mercedes line; a champion who changed team mid-season counts
+for the first team listed). The star is the team's colour for that season with a panel-coloured edge, drawn at the team's own position that season (e.g. McLaren
+2008, P2, Hamilton); the tooltip adds "★ Drivers' champion: NAME", the note explains it, and the constructors CSV has a "drivers' champion" column per team. Fades
+with the other lines when one is lit. The drivers plot has no stars (a title there is P1). `F1Eras.build()` gives each team season `champ` and the model `champions`.
+
+**Fewer lines, easier picking (#135 C1 + C5):** the default is the three with the most titles (`top3`); more than 6 lines (`MANY`) shows a note under the legend
+("That's a lot of lines. Pick fewer, or click a line or its name to follow it."). The picker lists what's picked first, with a divider before the rest;
+the grouping is taken when the list is rebuilt for a new set of picks (preset, view, era, sort, filter), not on each tick, so a row never moves from
+under the pointer when it's ticked or unticked.
+
+**Eras zoom (#135 O2 + C4):** a row of chips above the legend ("All" plus one per era). Choosing eras zooms the x-axis to the range from the start of the
+first chosen era to the end of the last (chips lying inside the range but not chosen get a dashed border); the position axis then fits the seasons in
+view only. The link key is `era=` (start years, `era=2006,2014`; unknown years dropped; left out for All). While a range is on, the picker lists only
+those who raced in it (and anything still picked, marked "not in these years") and shows titles/best finish **in the range**, sorted by them; two
+presets appear: **Champions of this era / the range** (everyone who won a title in the seasons in view) and **Top 5 of this era / the range** (most titles in
+view, then best finish, then most seasons). They set the picks as any preset does; clearing the zoom (All) doesn't change the picks. Picks with no season in
+the range show "None of these drivers raced in these years." Redraws only; no fetch.
+
+**Phones (#135 O3 + C7):** at ≤600 px the chart is 14 px a season wide (`PX_PER_SEASON`, plus 44 px for the axis) inside a box that scrolls sideways
+(`#erasScroll`), starting at the latest seasons (a new set of picks, not a theme change or resize, resets it); a few seasons (picks that fit the
+screen) don't scroll and show no hint. The position labels are copied onto a canvas that sticks to the box's left edge (`axisPin` plugin; only down
+to the bottom of the plot, so the season labels scroll away normally). The page itself never scrolls sideways. Era labels are never turned sideways
+on phones: the scroll width leaves room for them, and a band too narrow for its short label (the last season alone, "Now") is right-aligned at the edge.
+Desktop is unchanged (fits its box, rotated labels where a band is too narrow). Turning the phone redraws to fit; showing or hiding the address bar doesn't.
+The PNG export is the whole wide chart.
+**The axes fit the picks (#135 O5, `axes()`):** seasons from one before the first to one after the last season any pick raced, positions
+down to the worst one shown (to a multiple of 5, at least P5 with ticks 1–5, never below P20); nothing picked: the whole span and P20. With the **rule eras shaded behind it** and labelled (`F1Eras.ERAS`: front engine 1950–60, 1.5 L 1961–65,
+3 L and wings 1966–76, first ground effect 1977–82, turbo 1983–88, V10 1989–2005, V8 2006–13, turbo hybrid 2014–21, ground effect
+II 2022–25, current 2026–; a label too long for its band falls back to `short`, then runs sideways) and a key under the chart with
+each era's one-line note. It has no season or round controls and **does not use F1Controls / F1Share**: it reads one file,
+`site/data/eras.json`, with a Retry on failure; it never calls an API. A "Show" dropdown switches Constructors' / Drivers' (**the constructors plot is the default**, #135 O7; the standings only exist from 1958); presets Most titles (3, the default, #135 C1), Top 10, All champions, Top 10 / Top 5 now, Clear (C5; was None);
+a picker with a name filter and Sort by Titles / Name / First season; PNG and CSV (`eras-drivers` / `eras-teams`). Link keys
+(kept current with `history.replaceState`, left out at the default): `view=drivers` (an old `view=teams` link still works), `d`, `t`, `era`. The latest season, while it runs, is the
+standings after round N (tooltip says so) and counts for no title yet.
+- **Lineages** (`F1Eras.LINEAGES`): a team's line follows it through renames and owners, each member `{ids, from, to, name, color}`:
+  Mercedes = Tyrrell → BAR → Honda (2000+) → Brawn → Mercedes; Alpine = Toleman → Benetton → Renault (1990+) → Lotus F1 → Alpine;
+  Aston Martin = Jordan → Midland → Spyker → Force India → Racing Point → Aston Martin; Racing Bulls = Minardi → Toro Rosso → AlphaTauri →
+  RB; Audi = Sauber → BMW Sauber → Sauber → Alfa Romeo (2019+) → Sauber → Audi; Red Bull = Stewart → Jaguar → Red Bull; also Lotus, Cooper,
+  Brabham, McLaren, Matra, March… (engine-badged ids such as `lotus-climax` fold in), Caterham, Manor, Ligier/Prost, Arrows/Footwork.
+  Some ids are split by year (`renault`, `alfa`, `honda`, `sauber`: `from`/`to`). A team id in no lineage is its own line (name from the
+  data without " F1 Team", a hashed colour). **A line's colour changes with the member**: segments take the colour the team had in that
+  season (drivers too, from the team they raced for); the legend swatch is a team's latest colour, a driver's most used. Teammates in one
+  colour: second dashed, third dotted. Two entries of one lineage in a season (rare) combine: best position, points added.
+  **New team or rename → add it to `LINEAGES`** (a new team needs nothing until it has a name/colour you care about).
+- **Data** (`tools/eras-snapshot.mjs`, run by `snapshot.yml` after the season files; `--all` rebuilds): Jolpica
+  `/{year}/driverstandings` (1950–) and `/constructorstandings` (1958–; 404 before) with `limit=100`, ~350 ms apart, retries on 429/5xx.
+  File: `{v:1, generatedAt, partial, drivers:{id:{n,s}}, teams:{id:{n}}, seasons:{year:{round, d:[[driverId,pos,pts,teamId]],
+  t:[[teamId,pos,pts]]}}}` (~85 KB); not-ranked rows ("-") dropped. A finished season is never fetched again; the current one
+  and the one that was `partial` last time are. A failed fetch leaves the file as it was. `partial` = the current year unless its
+  `site/data/{year}.json` says complete. Never edit by hand.
+
+**index.html** — Static landing page (#50): six cards (the Eras card, #135, is last), one per row, in the order Drivers' Championship,
 Constructors' Championship, What-If Results (#107: right after the championships), Race Finishing Positions, Title
 Simulator; the Pages menu on the other pages (`nav.js`) lists them in the same order. Each card has a
 picture of that page's main chart on the left (on top on phones): an inline SVG with illustrative shapes, not
@@ -646,6 +709,9 @@ since fonts render differently on different machines.
   never serves the real `site/data/*.json`: tests pass `snapshots` built from the fake season. The fixture's names mix country names and demonyms, with
   one unknown. Logic is checked against
   independent calculations written in the tests, not against the site's own helpers.
+- `40-eras` (#135; the harness's `eras` option serves a small fake `eras.json`; the lineage map, era table, model, picker, presets,
+  link keys, chart data and tooltips, CSV, themes, phone width, load failure) and `41-eras-snapshot` (a fake Jolpica: 404 before
+  1958, "not ranked" rows, 429 retry, updates fetching only the open seasons, failures leaving the file alone).
 - Add tests for each new feature in the same PR. Before trusting a new check, make sure it fails when the
   feature is broken.
 - `F1Controls` and page globals are top-level `const`/`let`, so they're reachable by name in

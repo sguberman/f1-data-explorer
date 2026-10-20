@@ -103,7 +103,7 @@ module.exports = async (t, h) => {
   // Failure: no file and f1api.dev down → nothing shown, cards in place, no errors.
   p = await open('2026-10-15T12:00:00Z', { snapshots:{}, fail: () => true }); await p.waitForTimeout(1200); s = await strip(p);
   t.check('calendar fails: nothing shown', s.hidden, JSON.stringify(s));
-  t.check('calendar fails: the cards are still there', (await p.$$('a.card')).length === 5);
+  t.check('calendar fails: the cards are still there', (await p.$$('a.card')).length === 6);
   t.check('calendar fails: no page errors', p.errors.length === 0, p.errors.join('; '));
   await p.done();
 

@@ -15,7 +15,10 @@ Interactive charts and a title simulator for the 2026 Formula 1 season (2021–2
 - **What-if results**: drag the drivers into any finishing order for the next race (and sprint), or replay
   one that's happened, and see the new drivers' and constructors' standings.
 
-Every page has a season picker and an "as of round" slider, and light, dark and system themes.
+- **Eras**: championship position of any drivers and teams, season by season since 1950, against the rule
+  eras (V10, V8, turbo hybrid, ground effect…). Teams keep one line through renames and new owners.
+
+Every page except Eras has a season picker and an "as of round" slider, and light, dark and system themes.
 
 ## How it works
 
