@@ -47,7 +47,6 @@ const F1Controls = (() => {
   let fetchedAt = null, loadedMsg = '';
   let linkRound = null; // #31: the round from a shared link, applied once
   let linkSeason = false; // #105: the first load came from a link
-  const SHARE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7"/><path d="M12 3v12"/><path d="M8 7l4-4 4 4"/></svg>';
   function renderStatus(container){
     container.querySelector('.f1c-status').textContent = loadedMsg;
     const age = container.querySelector('.f1c-age');
@@ -121,7 +120,7 @@ const F1Controls = (() => {
         </label>
         <span class="f1c-statusline"><span class="f1c-status"></span><span class="f1c-age" hidden></span>
           · <button type="button" class="f1c-link f1c-refresh" title="Clear cached race data (all seasons) and reload from f1api.dev">Refresh data</button></span>
-        <button type="button" class="f1c-share" title="Copy a link to exactly this view">${SHARE_ICON}<span>Share</span></button>
+        ${F1Share.BUTTON}
       </div>
       <div class="f1c-error" role="alert" hidden><span class="f1c-errortext"></span>
         <button type="button" class="f1c-link f1c-retry">Retry</button></div>

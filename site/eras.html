@@ -13,6 +13,7 @@
 <script src="common.js"></script>
 <script src="eras.js"></script>
 <script src="export.js"></script>
+<script src="share.js"></script>
 <style>
 body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;padding:24px 16px 40px;}
 .wrap{max-width:820px;margin:0 auto;}
@@ -26,6 +27,12 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
 .erasFilter{font:inherit;font-size:12.5px;background:var(--inset);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:5px 8px;min-width:0;width:150px;}
 #erasPicker{max-height:280px;overflow-y:auto;}
 .pickerRow.restFirst{border-top:1px solid var(--line-strong);}
+.erasFormer,.erasMatch{display:block;font-size:11px;font-weight:400;color:var(--sub);line-height:1.35;margin-top:1px;}
+.erasMatch{font-style:italic;}
+.erasFormer.short{display:none;}
+.erasLineage{font-size:11.5px;color:var(--sub);line-height:1.5;margin-top:10px;}
+.erasLineage b{color:var(--ink2);font-weight:600;}
+@media (max-width:600px){ .erasFormer.full{display:none;} .erasFormer.short{display:block;} }
 .pickerEmpty{font-size:12.5px;color:var(--sub);padding:8px 2px;}
 .erasScroll{overflow-x:auto;overscroll-behavior-x:contain;}
 .erasInner{position:relative;height:380px;min-width:100%;}
@@ -108,6 +115,7 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
 <div class="note" id="erasHint" hidden>Swipe the chart sideways to see earlier seasons; the position labels stay in place.</div>
 <div class="note" id="erasMany" hidden>That's a lot of lines. Pick fewer, or click a line or its name to follow it.</div>
 <div id="erasEmpty" style="font-size:12.5px;color:var(--sub);display:none;margin-top:8px;">Nothing picked.</div>
+<div class="erasLineage" id="erasLineage"></div>
 <div class="note" id="erasNote"></div>
 <div class="eraKey" id="eraKey"></div>
 </div>
@@ -183,14 +191,28 @@ function markPresets(){
 }
 
 // ---- picker ----
+// #144: the search ignores case and accents and also finds a team by any name its line has had (Tyrrell, Force India, Lotus-Climax…).
+const norm = x => String(x).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+const EXTRA_TERMS = e => [e.short, ...(e.aliases || [])];
+// null: no match; '': matches the name itself; otherwise the earlier name it matches
+function matchOf(e, f){
+  if(norm(e.name).includes(f)) return '';
+  const hit = EXTRA_TERMS(e).find(x => x && norm(x).includes(f));
+  if(hit === undefined) return null;
+  return norm(hit) === norm(e.short) ? '' : hit;
+}
+// #144: the names a team has had, e.g. "formerly Tyrrell, BAR, Honda, Brawn" (a phone shows the first two and "+N"; the title has all, with years).
+const formerNames = e => view === 'teams' && e.names ? e.names.map(n => n.name).filter((n, i, a) => n !== e.name && a.indexOf(n) === i) : [];
+const nameYears = e => e.names.map(n => `${n.name} ${n.from === n.to ? n.from : n.from + '–' + (n === e.names[e.names.length - 1] && e.last === model.years[model.years.length - 1] ? '' : n.to)}`);
+const MORE_PHONE = 2;
 function sorted(){
   let L = [...list()];
   if(range()){ const cur = new Set(current()); L = L.filter(e => stats(e).count > 0 || cur.has(e.id)); } // only who raced in the period (and anything still picked)
   if(sortBy === 'titles' && range()) L.sort(rankIn);
   if(sortBy === 'name') L.sort((a, b) => a.short.localeCompare(b.short));
   else if(sortBy === 'first') L.sort((a, b) => a.first - b.first || b.titles - a.titles);
-  const f = filter.trim().toLowerCase();
-  return f ? L.filter(e => e.name.toLowerCase().includes(f)) : L;
+  const f = norm(filter.trim());
+  return f ? L.filter(e => matchOf(e, f) !== null) : L;
 }
 // C5: what's picked is listed first. The grouping is taken when the list is rebuilt for a new set of picks (a preset, view, era,
 // sort or filter), not on every tick, so ticking or unticking a row never moves it from under the pointer.
@@ -202,9 +224,13 @@ function renderPicker(regroup = true){
   $('pickerLabel').textContent = view === 'drivers' ? 'Drivers shown' : 'Teams shown';
   $('erasPicker').innerHTML = rows.map((e, i) => {
     const on = cur.has(e.id), st = stats(e), t = st.count === 0 ? 'not in these years' : st.titles ? `${st.titles} ${st.titles === 1 ? 'title' : 'titles'}` : `best P${st.best}`;
-    return `<label class="pickerRow${i > 0 && i === firstRest ? ' restFirst' : ''}"><input type="checkbox" data-id="${esc(e.id)}" ${on ? 'checked' : ''}>
+    const former = formerNames(e), f = norm(filter.trim()), hit = f ? matchOf(e, f) : '';
+    const phone = former.length > MORE_PHONE ? former.slice(0, MORE_PHONE) : null;
+    const lineage = former.length ? `<span class="erasFormer${phone ? ' full' : ''}">formerly ${esc(former.join(', '))}</span>` + (phone ? `<span class="erasFormer short">formerly ${esc(phone.join(', '))} +${former.length - MORE_PHONE}</span>` : '') : '';
+    const matched = hit ? `<span class="erasMatch">matches ${esc(hit)}</span>` : '';
+    return `<label class="pickerRow${i > 0 && i === firstRest ? ' restFirst' : ''}"${former.length ? ` title="${esc(nameYears(e).join(', '))}"` : ''}><input type="checkbox" data-id="${esc(e.id)}" ${on ? 'checked' : ''}>
       <span class="pickerDot" style="background:${col(e.color)}"></span>
-      <span class="pickerCode${on ? '' : ' off'}">${esc(e.name)}<span class="pickerCodeTag">${e.span}</span></span>
+      <span class="pickerCode${on ? '' : ' off'}">${esc(e.name)}<span class="pickerCodeTag">${e.span}</span>${lineage}${matched}</span>
       <span class="pickerPts">${t}</span></label>`;
   }).join('') || '<div class="pickerEmpty">No match.</div>';
   F1Common.updatePickerSummary(current(), list().length, view === 'drivers' ? 'drivers' : 'teams');
@@ -321,8 +347,8 @@ Chart.Tooltip.positioners.season = function(items, pos){
 // #135 (C2): highlight a line. Hovering with a mouse lights the line under the pointer; a click or tap (or a click on
 // its legend entry) pins it; clicking empty space, the same line or legend entry again, or Escape lets go. Everything else
 // fades and the lit line is drawn on top and thicker. Redraws only; nothing is fetched.
-let pinned = null, hover = null; // the lit line's id (a driver id or a team lineage id)
-const lit = () => pinned || hover;
+let pinned = null; // the lit line's id (a driver id or a team lineage id); #143: a line is lit by a click or tap only, never by hovering
+const lit = () => pinned;
 const shade = (d, color) => lit() && lit() !== d.e.id ? F1Common.withAlpha(color, 0.15) : color;
 function applyFocus(){
   if(!chart) return;
@@ -345,8 +371,7 @@ function lineUnder(ev){
     const dy = Math.abs(chart.scales.y.getPixelForValue(k.pos) - my); if(dy <= bd){ bd = dy; best = d._e.id; } });
   return best;
 }
-function setHover(id){ if(id !== hover){ hover = id; applyFocus(); } }
-function setPinned(id){ pinned = pinned === id ? null : id; hover = null; applyFocus(); }
+function setPinned(id){ pinned = pinned === id ? null : id; applyFocus(); }
 
 function datasets(){
   const ids = current(), L = list(), byId = new Map(L.map(e => [e.id, e])), seen = {};
@@ -383,13 +408,14 @@ function draw(keepScroll){
 
   $('erasLegend').innerHTML = ds.map(d => `<button type="button" class="lgItem" data-id="${esc(d.e.id)}" aria-pressed="false" title="Highlight this line" style="--c:${d.color}"><i class="${d.dash.length === 0 ? '' : d.dash[0] > 3 ? 'd1' : 'd2'}"></i>${esc(d.label)}</button>`).join('');
   if(pinned && !ds.some(d => d.e.id === pinned)) pinned = null; // its line is gone
-  hover = null;
   const ax = axes(ds);
   $('erasMany').hidden = ds.length <= MANY; // C1
   $('erasEmpty').style.display = !ds.length || ax.none ? 'block' : 'none';
   $('erasEmpty').textContent = !ds.length ? 'Nothing picked.' : `None of these ${view === 'drivers' ? 'drivers' : 'teams'} ${view === 'drivers' ? 'raced' : 'competed'} in these years.`;
   const n = ax.x1 - ax.x0 + 1, stride = n <= 12 ? 1 : n <= 20 ? (nar ? 2 : 1) : n <= 45 ? 5 : nar ? 10 : 5;
   $('chartSub').textContent = `${view === 'drivers' ? 'drivers' : 'constructors'} · ${ax.x0}–${ax.x1}`;
+  // #144: under the chart, each picked team's names with the years it raced under each (only teams that have had more than one)
+  $('erasLineage').innerHTML = view === 'teams' ? ds.filter(d => d.e.names && d.e.names.length > 1).map(d => `<div><b>${esc(d.e.name)}</b>: ${esc(nameYears(d.e).join(' → '))}</div>`).join('') : '';
   $('erasNote').textContent = (view === 'teams' ? `Constructors' standings start in ${model.firstTeamYear}. ` : '')
     + `Positions below P${MAX_POS} run off the bottom.`
     + (model.partial ? ` ${model.partial} is the standings after round ${model.round}, so no title yet.` : '')
@@ -455,7 +481,7 @@ F1Export.attach($('chartCard'), {
   get name(){ return 'eras-' + view; },
   title: () => view === 'drivers' ? "Drivers' Championship by era" : "Constructors' Championship by era",
   subtitle: () => `Championship position by season, ${model.years[0]}–${model.years[model.years.length - 1]}`,
-  canvas: () => { pinned = hover = null; applyFocus(); return $('erasCanvas'); }, // the picture is never faded
+  canvas: () => { pinned = null; applyFocus(); return $('erasCanvas'); }, // the picture is never faded
   legend: () => datasets().map(d => ({ label: d.label, color: d.color, dash: d.dash })),
   csv: exportRows
 });
@@ -484,11 +510,11 @@ $('erasFilter').addEventListener('input', e => { filter = e.target.value; render
 window.addEventListener('themechange', () => { renderPicker(); draw(true); });
 let lastW = innerWidth; // turning the phone (not the address bar showing or hiding) changes the chart's size
 window.addEventListener('resize', () => { if(innerWidth !== lastW){ lastW = innerWidth; draw(true); } });
-$('erasCanvas').addEventListener('pointermove', e => { if(e.pointerType === 'mouse' && !pinned) setHover(lineUnder(e)); });
-$('erasCanvas').addEventListener('pointerleave', () => setHover(null));
 $('erasCanvas').addEventListener('click', e => { const id = lineUnder(e); setPinned(id); }); // empty space: id is null, which lets go
 $('erasLegend').addEventListener('click', e => { const b = e.target.closest('.lgItem'); if(b) setPinned(b.dataset.id); });
-document.addEventListener('keydown', e => { if(e.key === 'Escape' && (pinned || hover)){ pinned = hover = null; applyFocus(); } });
+document.addEventListener('keydown', e => { if(e.key === 'Escape' && pinned){ pinned = null; applyFocus(); } });
+$('chartTitle').parentNode.insertAdjacentHTML('beforeend', F1Share.BUTTON); // #145: the same button as the other pages, sharing the address (kept current by syncURL)
+$('chartTitle').parentNode.querySelector('.f1c-share').addEventListener('click', e => F1Share.share(e.currentTarget, true));
 F1Common.initPickerToggle();
 renderEraKey();
 

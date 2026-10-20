@@ -53,10 +53,14 @@ const F1Share = (() => {
   window.addEventListener('f1selection', sync);
   window.addEventListener('f1roundchange', sync);
 
-  async function share(btn){
-    sync();
-    await new Promise(r => setTimeout(r, 0));
-    const link = location.origin + url();
+  // The button every page uses (controls.js puts it in the season row; the Eras page, #145, in its chart card).
+  const ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12v7a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-7"/><path d="M12 3v12"/><path d="M8 7l4-4 4 4"/></svg>';
+  const BUTTON = `<button type="button" class="f1c-share" title="Copy a link to exactly this view">${ICON}<span>Share</span></button>`;
+
+  // `plainLink` (#145): a page without controls (Eras) shares its own address, which it keeps current itself.
+  async function share(btn, plainLink){
+    let link = plainLink && location.href;
+    if(!link){ sync(); await new Promise(r => setTimeout(r, 0)); link = location.origin + url(); }
     const label = btn && btn.querySelector('span');
     const say = text => { if(!label) return; label.textContent = text; clearTimeout(btn._t); btn._t = setTimeout(() => { label.textContent = 'Share'; }, 2000); };
     // Phones (and anything with a share sheet and a touch screen) get the share sheet; desktops copy the link.
@@ -68,5 +72,5 @@ const F1Share = (() => {
     catch(e){ window.prompt('Copy this link:', link); }
   }
 
-  return { param, take, register, ids, sameSet, url, sync, share };
+  return { param, take, register, ids, sameSet, url, sync, share, BUTTON };
 })();

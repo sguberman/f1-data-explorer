@@ -486,9 +486,9 @@ drivers or teams in every season from 1950 to the latest, on one chart in the po
 segment at its position (`HALF` = 0.3 of a season either side of the year, a linear year axis), joined to the next season by an angled
 line, a missing season breaking the line; P1 at the top; no markers and no mark for title years (O4); a thin vertical line (`F1Common.hoverLine`)
 and the tooltip at the hovered season.
-**Highlight a line (#135 C2):** hovering with a mouse lights the line nearest the pointer in the season under it (within 14 px; 26 px for a finger);
-a click or tap pins it, as does clicking its legend entry (the legend entries are buttons); clicking the same line or entry again, empty space or
-Escape lets go; while pinned, hovering changes nothing. The lit line is drawn on top and thicker, the others fade to 15% opacity and their legend
+**Highlight a line (#135 C2, #143):** a line is lit by a click or tap only, never by hovering (the tooltip and the vertical hover line stay). A click or tap
+on the line nearest the pointer in the season under it (within 14 px; 26 px for a finger) pins it, as does clicking its legend entry (the legend entries
+are buttons); clicking the same line or entry again, empty space or Escape lets go. The lit line is drawn on top and thicker, the others fade to 15% opacity and their legend
 entries dim. Redraws only (`applyFocus()`); a pin whose line leaves the chart is dropped, and the PNG export lets go of any highlight first.
 **Drivers' titles on the constructors plot (#135 O6):** a ★ on a team's line in each finished season one of its drivers won the drivers' championship (the
 champion's team from the standings file, mapped through the lineage map, so Brawn's 2009 star is on the Mercedes line; a champion who changed team mid-season counts
@@ -522,9 +522,10 @@ down to the worst one shown (to a multiple of 5, at least P5 with ticks 1–5, n
 II 2022–25, current 2026–; a label too long for its band falls back to `short`, then runs sideways) and a key under the chart with
 each era's one-line note. It has no season or round controls and **does not use F1Controls / F1Share**: it reads one file,
 `site/data/eras.json`, with a Retry on failure; it never calls an API. A "Show" dropdown switches Constructors' / Drivers' (**the constructors plot is the default**, #135 O7; the standings only exist from 1958); presets Most titles (3, the default, #135 C1), Top 10, All champions, Top 10 / Top 5 now, Clear (C5; was None);
-a picker with a name filter and Sort by Titles / Name / First season; PNG and CSV (`eras-drivers` / `eras-teams`). Link keys
+a picker with a name filter and Sort by Titles / Name / First season; PNG and CSV; a **Share** button (#145: `F1Share.BUTTON`, the same as the other pages', at the right of the chart card's title row; `F1Share.share(btn, true)` copies or shares the address bar's link, which `syncURL()` keeps current) (`eras-drivers` / `eras-teams`). Link keys
 (kept current with `history.replaceState`, left out at the default): `view=drivers` (an old `view=teams` link still works), `d`, `t`, `era`. The latest season, while it runs, is the
 standings after round N (tooltip says so) and counts for no title yet.
+- **Lineage shown and old names searchable (#144, constructors view):** a team that has had more than one name shows a second muted line in its picker row, "formerly Tyrrell, BAR, Honda, Brawn GP" (phones: the first two and "+N"; the row's tooltip has every name with its years), and the chart card lists each picked team's names with years under the chart ("Mercedes: Tyrrell 1999 → BAR 2000 → … → Mercedes 2010–", from `e.names`, the runs of season names). "Find a name" ignores case and accents and matches a team's current name, short name and every name the line has had (`e.aliases`: lineage member names and the data's, e.g. Lotus-Climax); a match on an earlier name shows "matches Tyrrell" in the row. Drivers match on their full name and surname the same way.
 - **Lineages** (`F1Eras.LINEAGES`): a team's line follows it through renames and owners, each member `{ids, from, to, name, color}`:
   Mercedes = Tyrrell → BAR → Honda (2000+) → Brawn → Mercedes; Alpine = Toleman → Benetton → Renault (1990+) → Lotus F1 → Alpine;
   Aston Martin = Jordan → Midland → Spyker → Force India → Racing Point → Aston Martin; Racing Bulls = Minardi → Toro Rosso → AlphaTauri →
