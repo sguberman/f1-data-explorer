@@ -490,6 +490,13 @@ and the tooltip at the hovered season.
 a click or tap pins it, as does clicking its legend entry (the legend entries are buttons); clicking the same line or entry again, empty space or
 Escape lets go; while pinned, hovering changes nothing. The lit line is drawn on top and thicker, the others fade to 15% opacity and their legend
 entries dim. Redraws only (`applyFocus()`); a pin whose line leaves the chart is dropped, and the PNG export lets go of any highlight first.
+**Phones (#135 O3 + C7):** at ≤600 px the chart is 14 px a season wide (`PX_PER_SEASON`, plus 44 px for the axis) inside a box that scrolls sideways
+(`#erasScroll`), starting at the latest seasons (a new set of picks, not a theme change or resize, resets it); a few seasons (picks that fit the
+screen) don't scroll and show no hint. The position labels are copied onto a canvas that sticks to the box's left edge (`axisPin` plugin; only down
+to the bottom of the plot, so the season labels scroll away normally). The page itself never scrolls sideways. Era labels are never turned sideways
+on phones: the scroll width leaves room for them, and a band too narrow for its short label (the last season alone, "Now") is right-aligned at the edge.
+Desktop is unchanged (fits its box, rotated labels where a band is too narrow). Turning the phone redraws to fit; showing or hiding the address bar doesn't.
+The PNG export is the whole wide chart.
 **The axes fit the picks (#135 O5, `axes()`):** seasons from one before the first to one after the last season any pick raced, positions
 down to the worst one shown (to a multiple of 5, at least P5 with ticks 1–5, never below P20); nothing picked: the whole span and P20. With the **rule eras shaded behind it** and labelled (`F1Eras.ERAS`: front engine 1950–60, 1.5 L 1961–65,
 3 L and wings 1966–76, first ground effect 1977–82, turbo 1983–88, V10 1989–2005, V8 2006–13, turbo hybrid 2014–21, ground effect

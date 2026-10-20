@@ -26,7 +26,14 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
 .erasFilter{font:inherit;font-size:12.5px;background:var(--inset);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:5px 8px;min-width:0;width:150px;}
 #erasPicker{max-height:280px;overflow-y:auto;}
 .pickerEmpty{font-size:12.5px;color:var(--sub);padding:8px 2px;}
-.erasChartWrap{position:relative;width:100%;height:380px;}
+.erasScroll{overflow-x:auto;overscroll-behavior-x:contain;}
+.erasInner{position:relative;height:380px;min-width:100%;}
+.erasChartBox{position:absolute;inset:0;}
+/* #135 O3: on phones the chart is wider than the screen and scrolls sideways; the position labels are copied onto a
+   canvas that stays at the left edge (see axisPin) */
+.erasPin{display:none;position:sticky;left:0;z-index:2;height:100%;pointer-events:none;}
+.erasPin.on{display:block;}
+.erasPin canvas{display:block;}
 .erasLegend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--ink2);margin:0 0 10px;}
 .erasLegend .lgItem{display:inline-flex;align-items:center;gap:6px;font:inherit;color:inherit;background:none;border:none;padding:2px 0;cursor:pointer;border-radius:4px;}
 .erasLegend .lgItem:focus-visible{outline:2px solid var(--line-strong);outline-offset:2px;}
@@ -40,7 +47,7 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
 .eraKey .eraChip{flex:none;width:10px;height:10px;border-radius:3px;background:var(--inset);border:1px solid var(--line-strong);align-self:center;}
 .eraKey .eraChip.alt{background:var(--line);}
 @media (max-width:600px){
-  .erasChartWrap{height:340px;}
+  .erasInner{height:340px;}
   .erasFilter{width:100%;order:9;}
 }
 </style>
@@ -82,7 +89,11 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
  <span style="font-size:12px;color:var(--sub);" id="chartSub"></span>
 </div>
 <div class="erasLegend" id="erasLegend"></div>
-<div class="erasChartWrap"><canvas id="erasCanvas" role="img" aria-label="Championship position of the picked drivers or teams in every season, with the rule eras shaded behind"></canvas></div>
+<div class="erasScroll" id="erasScroll"><div class="erasInner" id="erasInner">
+ <div class="erasPin" id="erasPin" aria-hidden="true"><canvas id="erasPinCanvas"></canvas></div>
+ <div class="erasChartBox"><canvas id="erasCanvas" role="img" aria-label="Championship position of the picked drivers or teams in every season, with the rule eras shaded behind"></canvas></div>
+</div></div>
+<div class="note" id="erasHint" hidden>Swipe the chart sideways to see earlier seasons; the position labels stay in place.</div>
 <div id="erasEmpty" style="font-size:12.5px;color:var(--sub);display:none;margin-top:8px;">Nothing picked.</div>
 <div class="note" id="erasNote"></div>
 <div class="eraKey" id="eraKey"></div>
@@ -165,9 +176,12 @@ function syncURL(){
 }
 
 // ---- chart ----
+let scrolling = false; // phone layout: the chart is wider than its box and scrolls sideways (#135 O3)
+const PX_PER_SEASON = 14, AXIS_PX = 44;
 const bandPlugin = {
   id: 'eraBands',
   beforeDatasetsDraw(ch){
+    ch.$eraLabels = [];
     const { ctx, chartArea: a, scales: { x } } = ch, P = F1Theme.chart();
     ctx.save();
     ctx.beginPath(); ctx.rect(a.left, 0, a.width, a.bottom); ctx.clip();
@@ -179,12 +193,32 @@ const bandPlugin = {
       ctx.strokeStyle = P.grid; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(l, a.top); ctx.lineTo(l, a.bottom); ctx.stroke();
       // the era's label above the plot: sideways when the band is too narrow for its text
       ctx.fillStyle = P.text; ctx.font = `600 10px ${ff}`; ctx.textBaseline = 'middle';
+      // (#135 C7: on a phone the chart is scrolled wide enough for the labels, so nothing is turned sideways there;
+      // a band too narrow even for its short label, i.e. the last season alone, ends flush with the right edge)
       const bw = r - l, fits = t => ctx.measureText(t).width + 6 <= bw;
-      const text = fits(era.label) ? era.label : era.short;
-      if(fits(text)){ ctx.textAlign = 'center'; ctx.fillText(text, (l + r) / 2, a.top - 14); }
-      else { ctx.save(); ctx.translate((l + r) / 2, a.top - 6); ctx.rotate(-Math.PI / 2); ctx.textAlign = 'left'; ctx.fillText(text, 0, 0); ctx.restore(); }
+      const text = fits(era.label) ? era.label : era.short, seen = ch.$eraLabels || (ch.$eraLabels = []);
+      if(fits(text)){ ctx.textAlign = 'center'; ctx.fillText(text, (l + r) / 2, a.top - 14); seen.push({ text, rotated: false }); }
+      else if(scrolling){ if(to >= x.max - 0.5 - 1e-6){ ctx.textAlign = 'right'; ctx.fillText(era.short, r - 2, a.top - 14); seen.push({ text: era.short, rotated: false }); } }
+      else { ctx.save(); ctx.translate((l + r) / 2, a.top - 6); ctx.rotate(-Math.PI / 2); ctx.textAlign = 'left'; ctx.fillText(text, 0, 0); ctx.restore(); seen.push({ text, rotated: true }); }
     });
     ctx.restore();
+  }
+};
+
+// While the chart scrolls sideways, the position labels (the left strip of the canvas) are copied onto a canvas that
+// sticks to the left edge of the scroll box, over the panel colour, so P1…P15 stay readable at any scroll position.
+const axisPin = {
+  id: 'axisPin',
+  afterRender(ch){
+    const pin = $('erasPin'), cv = $('erasPinCanvas');
+    pin.classList.toggle('on', scrolling);
+    if(!scrolling) return;
+    // only down to the bottom of the plot: the season labels below it scroll with the chart, so the first one isn't cut
+    const w = Math.ceil(ch.chartArea.left), h = Math.ceil(ch.chartArea.bottom) + 2, k = ch.canvas.width / ch.width, c = cv.getContext('2d');
+    pin.style.width = w + 'px'; pin.style.height = h + 'px'; cv.style.width = w + 'px'; cv.style.height = h + 'px'; cv.width = Math.round(w * k); cv.height = Math.round(h * k);
+    c.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--panel').trim() || '#fff';
+    c.fillRect(0, 0, cv.width, cv.height);
+    c.drawImage(ch.canvas, 0, 0, cv.width, cv.height, 0, 0, cv.width, cv.height);
   }
 };
 
@@ -258,8 +292,9 @@ function axes(ds){
 }
 const yTicks = yMax => yMax <= 5 ? [1, 2, 3, 4, 5] : [1, ...Array.from({ length: yMax / 5 }, (_, i) => (i + 1) * 5)];
 
-function draw(){
+function draw(keepScroll){
   if(!model) return;
+  const scroller = $('erasScroll'), keep = scroller.scrollLeft;
   const P = F1Theme.chart(), nar = F1Common.isNarrow(), ds = datasets();
   if(chart){ chart.destroy(); chart = null; }
   $('erasEmpty').style.display = ds.length ? 'none' : 'block';
@@ -272,10 +307,14 @@ function draw(){
     + `Positions below P${MAX_POS} run off the bottom.`
     + (model.partial ? ` ${model.partial} is the standings after round ${model.round}, so no title yet.` : '')
     + (view === 'teams' ? ' A team keeps its line through renames and new owners (Tyrrell, BAR, Honda, Brawn and Mercedes are one line); the line takes the colour the team had each season.' : ' The line takes the colour of the team the driver raced for that season.');
+  // #135 O3: on a phone, a wide chart (14 px a season) in a box that scrolls; otherwise it fits its box
+  scrolling = nar && ds.length > 0 && n * PX_PER_SEASON + AXIS_PX > scroller.clientWidth;
+  $('erasInner').style.width = scrolling ? Math.round(n * PX_PER_SEASON + AXIS_PX) + 'px' : '';
+  $('erasHint').hidden = !scrolling;
   Chart.defaults.font.family = ff; Chart.defaults.color = P.text;
   chart = new Chart($('erasCanvas'), {
     type: 'line',
-    plugins: [bandPlugin, hoverPlugin],
+    plugins: [bandPlugin, hoverPlugin, axisPin],
     data: { datasets: ds.map(d => ({
       label: d.label, data: d.data, borderColor: d.color, borderWidth: 2.4, borderDash: d.dash, spanGaps: false, tension: 0,
       pointBackgroundColor: d.colors, pointBorderColor: d.colors, pointRadius: 0, pointHoverRadius: 0,
@@ -306,6 +345,7 @@ function draw(){
       }
     }
   });
+  scroller.scrollLeft = keepScroll ? keep : scroller.scrollWidth; // a new set of picks starts at the latest seasons
 }
 
 function renderEraKey(){
@@ -346,7 +386,9 @@ $('erasPicker').addEventListener('change', e => {
 $('viewSel').addEventListener('change', e => { view = e.target.value; filter = ''; $('erasFilter').value = ''; render(); });
 $('sortSel').addEventListener('change', e => { sortBy = e.target.value; renderPicker(); });
 $('erasFilter').addEventListener('input', e => { filter = e.target.value; renderPicker(); });
-window.addEventListener('themechange', () => { renderPicker(); draw(); });
+window.addEventListener('themechange', () => { renderPicker(); draw(true); });
+let lastW = innerWidth; // turning the phone (not the address bar showing or hiding) changes the chart's size
+window.addEventListener('resize', () => { if(innerWidth !== lastW){ lastW = innerWidth; draw(true); } });
 $('erasCanvas').addEventListener('pointermove', e => { if(e.pointerType === 'mouse' && !pinned) setHover(lineUnder(e)); });
 $('erasCanvas').addEventListener('pointerleave', () => setHover(null));
 $('erasCanvas').addEventListener('click', e => { const id = lineUnder(e); setPinned(id); }); // empty space: id is null, which lets go

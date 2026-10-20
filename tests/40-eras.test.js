@@ -235,6 +235,42 @@ module.exports = async (t, h) => {
   t.check('a link\'s driver picks are applied', (await state()).sets.join() === 'Bob Beta');
   await p.done();
 
+  // #135 O3 + C7: on a phone the chart scrolls sideways, with the position labels pinned and no sideways era labels
+  const ph = await open({ width: 390 }); await wait(ph);
+  const sc = () => ph.evaluate(() => { const box = document.getElementById('erasScroll'), pin = document.getElementById('erasPinCanvas'), c = pin.getContext('2d');
+    const px = c.getImageData(0, 0, pin.width, pin.height).data; let ink = 0; const bg = [px[0], px[1], px[2]];
+    for(let i = 0; i < px.length; i += 4) if(px[i] !== bg[0] || px[i + 1] !== bg[1] || px[i + 2] !== bg[2]) ink++;
+    return { page: document.documentElement.scrollWidth, box: box.clientWidth, content: box.scrollWidth, left: box.scrollLeft,
+      pinLeft: Math.round(pin.getBoundingClientRect().left - box.getBoundingClientRect().left), pinOn: document.getElementById('erasPin').classList.contains('on'), pinW: pin.width, ink,
+      hint: !document.getElementById('erasHint').hidden, labels: chart.$eraLabels, ticks: chart.scales.y.ticks.length }; });
+  let q = await sc();
+  t.check('phone: the chart is wider than the screen and scrolls inside its box (the page itself doesn\'t)', q.content > q.box * 2 && q.page <= 390, JSON.stringify(q));
+  t.check('phone: it starts at the latest seasons (scrolled to the right end)', q.left + q.box >= q.content - 2, JSON.stringify(q));
+  t.check('phone: a hint says to swipe', q.hint && /Swipe/.test(await h.text(ph, '#erasHint')));
+  t.check('phone: the position labels are on a pinned strip (it has drawn ink)', q.pinOn && q.pinW > 0 && q.ink > 20, JSON.stringify({ pinOn: q.pinOn, pinW: q.pinW, ink: q.ink }));
+  t.check('phone: no era label is turned sideways', q.labels.length >= 5 && q.labels.every(l => !l.rotated), JSON.stringify(q.labels));
+  for(const x of [0, 300, 99999]){
+    await ph.evaluate(v => { document.getElementById('erasScroll').scrollLeft = v; }, x); await ph.waitForTimeout(60);
+    const r = await sc();
+    t.check(`phone: the pinned labels stay at the left edge at scroll ${x}`, r.pinLeft === 0, JSON.stringify(r));
+  }
+  await h.screenshot(ph, 'eras-phone-scroll.png');
+  await ph.click('#erasPicker input[data-id="d1"]'); await ph.click('#erasPicker input[data-id="d2"]'); // Gamma only: 2008–2026, narrow enough to fit
+  q = await sc();
+  t.check('phone: few seasons fit without scrolling (no hint, no pinned strip)', q.content <= q.box + 1 && !q.hint && !q.pinOn, JSON.stringify(q));
+  await ph.click('#presetRow [data-preset="top5"]');
+  q = await sc();
+  t.check('phone: a new set of picks starts at the latest seasons again', q.content > q.box * 2 && q.left + q.box >= q.content - 2, JSON.stringify(q));
+  await ph.setViewportSize({ width: 360, height: 1400 }); await ph.waitForTimeout(250);
+  q = await sc();
+  t.check('phone: turning to another width redraws to fit it', q.box < 360 && q.content > q.box * 2 && q.page <= 360, JSON.stringify(q));
+  await ph.done();
+  const dk = await open({ width: 1000 }); await wait(dk);
+  const dq = await dk.evaluate(() => ({ box: document.getElementById('erasScroll').clientWidth, content: document.getElementById('erasScroll').scrollWidth, pin: document.getElementById('erasPin').classList.contains('on'),
+    hint: !document.getElementById('erasHint').hidden, labels: chart.$eraLabels.length }));
+  t.check('desktop: the chart fits its box, no pinned strip, no hint, era labels as before', dq.content <= dq.box + 1 && !dq.pin && !dq.hint && dq.labels >= 5, JSON.stringify(dq));
+  await dk.done();
+
   // dark, phone
   for(const [theme, width] of [['dark', 1000], ['light', 390], ['dark', 390]]){
     const q = await open({ theme, width }); await wait(q);
