@@ -437,7 +437,7 @@ const F1Common = (() => {
      [...r.raceResults, ...(r.sprintResults||[])].forEach(res=>{
        const id=idOf(res);
        if(!info[id]){ info[id]={code:res.code, teamId:res.teamId, teamName:res.teamName}; pos[id]=new Array(seasonRounds.length).fill(null); }
-       pts[id]=(pts[id]||0)+res.points;
+       pts[id]=(pts[id]||0)+(kind==='teams'&&res.teamPoints!==undefined?res.teamPoints:res.points); // #141
      });
      r.raceResults.forEach(res=>{
        if(!res.position) return;
@@ -703,7 +703,7 @@ const F1Common = (() => {
    // Points and Grand Prix finishes (countback) after each round.
    const pts={}, fin={}, after=[];
    rounds.forEach(r=>{
-     [...r.raceResults, ...(r.sprintResults||[])].forEach(res=>{ const id=idOf(res); pts[id]=(pts[id]||0)+res.points; });
+     [...r.raceResults, ...(r.sprintResults||[])].forEach(res=>{ const id=idOf(res); pts[id]=(pts[id]||0)+(kind==='teams'&&res.teamPoints!==undefined?res.teamPoints:res.points); }); // #141
      r.raceResults.forEach(res=>{ if(res.position>=1){ const f=fin[idOf(res)]=fin[idOf(res)]||[]; f[res.position-1]=(f[res.position-1]||0)+1; } });
      after.push({round:r.round, pts:{...pts}, fin:Object.fromEntries(Object.entries(fin).map(([k,v])=>[k,v.slice()]))});
    });
