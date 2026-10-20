@@ -63,7 +63,7 @@ module.exports = async (t, h) => {
   await p.selectOption('.f1c-year', '2026'); await h.loaded(p);
   await p.goto('http://site.test/whatif.html'); await h.loaded(p);
   t.check('switching back to 2026 is kept too', await p.evaluate(() => F1Controls.state.year) === 2026);
-  await p.evaluate(() => localStorage.setItem('f1cache:selectedSeason', '1999'));
+  await p.evaluate(() => localStorage.setItem('f1cache:selectedSeason', '1949'));
   await p.goto('http://site.test/drivers.html'); await h.loaded(p);
   t.check('an unknown saved season falls back to the newest', await p.evaluate(() => F1Controls.state.year) === 2026);
   t.check('navigation: no page errors', p.errors.length === 0, p.errors.join('; '));

@@ -34,7 +34,23 @@ const F1Common = (() => {
   // rounds/sprints per year are a lookup rather than fetched. Its keys are also the seasons offered in
   // the season dropdown (controls.js), so add a row here to add a season.
   const SEASON_META={2026:{rounds:23,sprints:6},2025:{rounds:24,sprints:6},2024:{rounds:24,sprints:6},
-   2023:{rounds:22,sprints:6},2022:{rounds:22,sprints:3},2021:{rounds:22,sprints:3}};
+   2023:{rounds:22,sprints:6},2022:{rounds:22,sprints:3},2021:{rounds:22,sprints:3},
+   // #141: 1950–2020, from the back-filled season files (no sprints)
+   1950:{rounds:7,sprints:0},1951:{rounds:8,sprints:0},1952:{rounds:8,sprints:0},1953:{rounds:9,sprints:0},1954:{rounds:9,sprints:0},
+   1955:{rounds:7,sprints:0},1956:{rounds:8,sprints:0},1957:{rounds:8,sprints:0},1958:{rounds:11,sprints:0},1959:{rounds:9,sprints:0},
+   1960:{rounds:10,sprints:0},1961:{rounds:8,sprints:0},1962:{rounds:9,sprints:0},1963:{rounds:10,sprints:0},1964:{rounds:10,sprints:0},
+   1965:{rounds:10,sprints:0},1966:{rounds:9,sprints:0},1967:{rounds:11,sprints:0},1968:{rounds:12,sprints:0},1969:{rounds:11,sprints:0},
+   1970:{rounds:13,sprints:0},1971:{rounds:11,sprints:0},1972:{rounds:12,sprints:0},1973:{rounds:15,sprints:0},1974:{rounds:15,sprints:0},
+   1975:{rounds:14,sprints:0},1976:{rounds:16,sprints:0},1977:{rounds:17,sprints:0},1978:{rounds:16,sprints:0},1979:{rounds:15,sprints:0},
+   1980:{rounds:14,sprints:0},1981:{rounds:15,sprints:0},1982:{rounds:16,sprints:0},1983:{rounds:15,sprints:0},1984:{rounds:16,sprints:0},
+   1985:{rounds:16,sprints:0},1986:{rounds:16,sprints:0},1987:{rounds:16,sprints:0},1988:{rounds:16,sprints:0},1989:{rounds:16,sprints:0},
+   1990:{rounds:16,sprints:0},1991:{rounds:16,sprints:0},1992:{rounds:16,sprints:0},1993:{rounds:16,sprints:0},1994:{rounds:16,sprints:0},
+   1995:{rounds:17,sprints:0},1996:{rounds:16,sprints:0},1997:{rounds:17,sprints:0},1998:{rounds:16,sprints:0},1999:{rounds:16,sprints:0},
+   2000:{rounds:17,sprints:0},2001:{rounds:17,sprints:0},2002:{rounds:17,sprints:0},2003:{rounds:16,sprints:0},2004:{rounds:18,sprints:0},
+   2005:{rounds:19,sprints:0},2006:{rounds:18,sprints:0},2007:{rounds:17,sprints:0},2008:{rounds:18,sprints:0},2009:{rounds:17,sprints:0},
+   2010:{rounds:19,sprints:0},2011:{rounds:19,sprints:0},2012:{rounds:20,sprints:0},2013:{rounds:19,sprints:0},2014:{rounds:19,sprints:0},
+   2015:{rounds:19,sprints:0},2016:{rounds:21,sprints:0},2017:{rounds:20,sprints:0},2018:{rounds:21,sprints:0},2019:{rounds:21,sprints:0},
+   2020:{rounds:17,sprints:0}};
   function seasonMeta(year){ return SEASON_META[year] || {rounds:24,sprints:6}; }
   const YEARS = Object.keys(SEASON_META).map(Number).sort((a,b)=>b-a); // newest first
 
@@ -59,7 +75,7 @@ const F1Common = (() => {
   // f1api.dev gives nationalities and circuit countries as names; it isn't consistent about country name vs
   // demonym, so both map to the flag file in site/flags/ (ISO 3166 code). Unknown names get no flag.
   const FLAG_CODES={};
-  [['ae','united arab emirates uae abu dhabi emirati'],['ar','argentina argentine argentinian'],['at','austria austrian'],
+  [['ae','united arab emirates uae abu dhabi emirati'],['cl','chile chilean'],['co','colombia colombian'],['cz','czech czechia czechoslovakia'],['hk','hong kong'],['id','indonesia indonesian'],['ie','ireland irish'],['kr','korea south korea korean'],['li','liechtenstein liechtensteiner'],['ma','morocco moroccan'],['my','malaysia malaysian'],['se','sweden swedish swede'],['uy','uruguay uruguayan'],['ve','venezuela venezuelan'],['za','south africa south african'],['ar','argentina argentine argentinian'],['at','austria austrian'],
    ['au','australia australian'],['az','azerbaijan azerbaijani azeri baku'],['be','belgium belgian'],['bh','bahrain bahraini'],
    ['br','brazil brazilian'],['ca','canada canadian'],['ch','switzerland swiss'],['cn','china chinese'],['de','germany german'],
    ['dk','denmark danish dane'],['es','spain spanish spaniard'],['fi','finland finnish finn'],['fr','france french'],
@@ -71,9 +87,9 @@ const F1Common = (() => {
   ].forEach(([code,names])=>{
     FLAG_CODES[code]=code;
     // multi-word names first ("united states", "saudi arabia"), then each single word
-    ['united arab emirates','abu dhabi','great britain','united kingdom','new zealand','new zealander','saudi arabia','united states']
+    ['united arab emirates','abu dhabi','great britain','united kingdom','new zealand','new zealander','saudi arabia','united states','south korea','south africa','south african','hong kong']
       .filter(n=>names.includes(n)).forEach(n=>{ FLAG_CODES[n]=code; });
-    names.split(' ').forEach(n=>{ if(!['united','great','new','saudi','arab','emirates','abu','dhabi','zealand','zealander','kingdom','states','arabia'].includes(n)) FLAG_CODES[n]=code; });
+    names.split(' ').forEach(n=>{ if(!['united','great','new','saudi','arab','emirates','abu','dhabi','zealand','zealander','kingdom','states','arabia','south','african','kong','hong'].includes(n)) FLAG_CODES[n]=code; });
   });
   function flagCode(name){
     if(!name) return null;
