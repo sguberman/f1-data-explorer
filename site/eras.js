@@ -107,6 +107,16 @@ const F1Eras = (() => {
         else { cur.pts += pts; if(pos < cur.pos){ cur.pos = pos; cur.name = L.name; cur.color = L.color; } } // two entries of one lineage in a year
       }
     }
+    // O6: in each finished season, the team (lineage) the drivers' champion raced for; that team's season notes who it was
+    const champions = {};
+    for(const y of years){
+      if(y === partial) continue;
+      const row = data.seasons[y].d.find(r => r[1] === 1);
+      if(!row) continue;
+      const dr = data.drivers[row[0]] || { n: row[0] };
+      champions[y] = { id: row[0], name: dr.n, team: row[3] ? lineageOf(row[3], y, data.teams).id : null };
+    }
+    for(const e of teams.values()) for(const y of Object.keys(e.seasons)) if(champions[y] && champions[y].team === e.id) e.seasons[y].champ = champions[y].name;
     for(const map of [drivers, teams]) for(const e of map.values()){
       const ys = Object.keys(e.seasons).map(Number);
       e.first = Math.min(...ys); e.last = Math.max(...ys); e.count = ys.length;
@@ -123,7 +133,7 @@ const F1Eras = (() => {
     }
     const rank = (a, b) => (b.titles - a.titles) || (a.best - b.best) || (b.count - a.count) || a.name.localeCompare(b.name);
     return { years, partial, round: partial ? data.seasons[partial].round : null, firstTeamYear: 1958,
-      drivers: [...drivers.values()].sort(rank), teams: [...teams.values()].sort(rank),
+      drivers: [...drivers.values()].sort(rank), teams: [...teams.values()].sort(rank), champions,
       generatedAt: data.generatedAt };
   }
 

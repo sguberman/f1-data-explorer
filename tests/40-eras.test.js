@@ -62,6 +62,9 @@ module.exports = async (t, h) => {
   const merc = tm('mercedes');
   t.check('one team line through renames: Tyrrell → BAR → Honda → Brawn → Mercedes', merc && [1999, 2000, 2006, 2009, 2010].every(y => merc.seasons[y]) && merc.titles === 1 && merc.name === 'Mercedes', merc && Object.keys(merc.seasons).join());
   t.check('…and its name each season', merc.seasons[2000].name === 'BAR' && merc.seasons[2009].name === 'Brawn GP');
+  t.check('O6: a team\'s season says which driver won the drivers\' title for it (Mercedes 2009 Alan Alpha, Red Bull 2010 and 2012 Carl Gamma); none in other seasons, and none in the partial year',
+    merc.seasons[2009].champ === 'Alan Alpha' && !merc.seasons[2010].champ && tm('red_bull').seasons[2010].champ === 'Carl Gamma' && tm('red_bull').seasons[2012].champ === 'Carl Gamma' && !tm('red_bull').seasons[2026].champ
+    && m.champions[2009].name === 'Alan Alpha' && m.champions[2009].team === 'mercedes' && !m.champions[2026], JSON.stringify(m.champions));
   t.check('a team\'s swatch colour is its latest one', merc.color === F1Eras.lineageOf('mercedes', 2026, T).color);
   t.check('the Sauber line runs 2005 – 2024 under Sauber, Alfa Romeo, Sauber', tm('audi').seasons[2005].name === 'Sauber' && tm('audi').seasons[2020].name === 'Alfa Romeo' && tm('audi').seasons[2024].name === 'Sauber');
   const two = F1Eras.build({ ...FAKE, seasons: { 2010: S(1, [['d1', 1, 1, 'brawn']], [['brawn', 3, 10], ['mercedes', 2, 12]]) }, partial: null });
@@ -82,8 +85,24 @@ module.exports = async (t, h) => {
     url: location.search, summary: document.getElementById('pickerSummary').textContent,
   }));
   let s = await state();
+  t.check('O7: the page opens on the constructors plot: the select says so, the lines are teams (Red Bull 2 titles, Mercedes 1), the link has no view key',
+    (await p.$eval('#viewSel', e => e.value)) === 'teams' && s.sets.join() === 'Red Bull,Mercedes' && s.url === '' && /Teams shown/.test(await h.text(p, '#pickerLabel')), JSON.stringify(s));
+  t.check('O7: the constructors view comes first in the select', (await p.$$eval('#viewSel option', o => o.map(x => x.value))).join() === 'teams,drivers');
+  // O6: stars on a team's line in the seasons one of its drivers won the drivers' title
+  const marks = () => p.evaluate(() => chart.$champMarks.map(m => `${m.id}@${m.year}:${m.champ}`).sort());
+  t.check('O6: stars at Mercedes 2009 (Brawn, Alan Alpha) and Red Bull 2010 and 2012 (Carl Gamma); nothing for the partial 2026 or for seasons without a constructors table',
+    (await marks()).join() === 'mercedes@2009:Alan Alpha,red_bull@2010:Carl Gamma,red_bull@2012:Carl Gamma', (await marks()).join());
+  const tipTxt = await p.evaluate(() => { const cb = chart.options.plugins.tooltip.callbacks, ds = chart.data.datasets.find(d => d.label === 'Mercedes'), i = ds.data.findIndex(q => Math.round(q.x) === 2009);
+    return { champ: cb.afterLabel({ dataset: ds, raw: ds.data[i] }), none: cb.afterLabel({ dataset: ds, raw: ds.data[ds.data.findIndex(q => Math.round(q.x) === 2010)] }) }; });
+  t.check('O6: the tooltip names the champion in a star season and says nothing in the others', tipTxt.champ === "★ Drivers' champion: Alan Alpha" && tipTxt.none === '', JSON.stringify(tipTxt));
+  t.check('O6: the note explains the star', /★ marks a season in which one of the team's drivers won the drivers' title/.test(await h.text(p, '#erasNote')));
+  const [tdl] = await Promise.all([p.waitForEvent('download'), p.click('#chartCard .exp-csv')]);
+  const tcsv = (await require('fs').promises.readFile(await tdl.path(), 'utf8')).trim().split(/\r?\n/);
+  t.check('O6: the constructors CSV has a drivers\' champion column per team (2009: Mercedes line, Alan Alpha)', /Red Bull drivers' champion/.test(tcsv[0]) && tcsv.some(l => l.startsWith('2009,V8 era,') && l.includes(',Brawn GP,Alan Alpha')) && /eras-teams/.test(tdl.suggestedFilename()), tcsv[0] + ' | ' + tcsv.find(l => l.startsWith('2009')));
+  await p.selectOption('#viewSel', 'drivers'); s = await state();
+  t.check('the drivers view has no stars (a title there is simply P1)', (await marks()).length === 0);
   t.check('default: the drivers with the most titles are picked (Gamma 2, Alpha and Beta 1 each) and charted', s.checked.join() === 'd3,d1,d2' && s.sets.join() === 'Carl Gamma,Alan Alpha,Bob Beta', JSON.stringify(s));
-  t.check('the default preset is highlighted and the URL stays clean', s.active.includes('top3') && s.url === '', JSON.stringify(s));
+  t.check('the default preset is highlighted and the URL stays clean', s.active.includes('top3') && s.url === '?view=drivers', JSON.stringify(s));
   t.check('the picker lists every driver, with titles', s.rows === 3 && /2 titles/.test(await h.text(p, '#erasPicker .pickerRow')));
   const ds = await p.evaluate(() => { const d = chart.data.datasets.find(x => x.label === 'Alan Alpha');
     return { data: d.data, radius: d.pointRadius, colors: d.pointBackgroundColor, n: chart.data.datasets.length, type: chart.options.scales.x.type }; });
@@ -143,7 +162,7 @@ module.exports = async (t, h) => {
   t.check('moving off the line lets go: all normal again', LL.lit === null && LL.widths.every(w => w[1] === 2.4) && LL.fade.every(f => !f[1]) && LL.legend.every(l => l[1] === ''), JSON.stringify(LL));
   pt = await at2009('Bob Beta'); await p.mouse.move(pt.x, pt.y); await p.mouse.down(); await p.mouse.up(); await p.mouse.move(pt.x + 60, pt.y - 100); await p.waitForTimeout(80);
   LL = await lit();
-  t.check('clicking a line pins it: it stays lit after the pointer leaves it, and the link is untouched', LL.lit === d2id && LL.legend.find(l => l[0] === 'Bob Beta')[2] === 'true' && (await state()).url === '', JSON.stringify(LL));
+  t.check('clicking a line pins it: it stays lit after the pointer leaves it, and the link is untouched', LL.lit === d2id && LL.legend.find(l => l[0] === 'Bob Beta')[2] === 'true' && (await state()).url === '?view=drivers', JSON.stringify(LL));
   pt = await at2009('Carl Gamma'); await p.mouse.move(pt.x, pt.y); await p.waitForTimeout(80);
   t.check('while pinned, hovering another line changes nothing', (await lit()).lit === d2id);
   await p.mouse.down(); await p.mouse.up(); await p.waitForTimeout(60);
@@ -185,7 +204,7 @@ module.exports = async (t, h) => {
   await p.click('#eraChips .eraBtn[data-from="2006"]');
   let V = await view2();
   t.check('choosing the V8 era zooms to 2006–2013, fits the position axis to the seasons in view (worst P8 → P10), and goes in the link',
-    V.x0 === 2006 && V.x1 === 2013 && V.ymax === 10.5 && /2006–2013/.test(V.sub) && V.url === '?era=2006', JSON.stringify(V));
+    V.x0 === 2006 && V.x1 === 2013 && V.ymax === 10.5 && /2006–2013/.test(V.sub) && V.url === '?view=drivers&era=2006', JSON.stringify(V));
   ch = await chips();
   t.check('…its chip is on and All is not', ch.find(c => c[0] === 'V8')[2] === 'true' && ch[0][2] === 'false');
   t.check('…and two presets for the era appear', V.presets.includes('Champions of this era') && V.presets.includes('Top 5 of this era'), V.presets.join());
@@ -199,7 +218,7 @@ module.exports = async (t, h) => {
   await p.click('#eraChips .eraBtn[data-from="2014"]');
   V = await view2(); ch = await chips();
   t.check('two eras: the range runs from the first start to the last end (2006–2021), and the presets say "range"',
-    V.x0 === 2006 && V.x1 === 2021 && V.url === '?era=2006,2014' && V.presets.includes('Champions of the range') && ch.find(c => c[0] === 'V8')[2] === 'true' && ch.find(c => c[0] === 'Turbo hybrid')[2] === 'true', JSON.stringify([V, ch]));
+    V.x0 === 2006 && V.x1 === 2021 && V.url === '?view=drivers&era=2006,2014' && V.presets.includes('Champions of the range') && ch.find(c => c[0] === 'V8')[2] === 'true' && ch.find(c => c[0] === 'Turbo hybrid')[2] === 'true', JSON.stringify([V, ch]));
   await p.click('#eraChips .eraBtn[data-from="1989"]');
   await p.click('#eraChips .eraBtn[data-from="2006"]'); // untick V8: it now lies between V10 and turbo hybrid
   ch = await chips();
@@ -214,18 +233,18 @@ module.exports = async (t, h) => {
   // the picks the era presets set, with the zoom gone, are an ordinary set
   await p.click('#presetRow [data-preset="top3"]');
   V = await view2();
-  t.check('the era is a separate choice from the picks: the default picks and a clean link are back', V.checked.join() === 'd3,d1,d2' && V.url === '', JSON.stringify(V));
+  t.check('the era is a separate choice from the picks: the default picks and a clean link are back', V.checked.join() === 'd3,d1,d2' && V.url === '?view=drivers', JSON.stringify(V));
 
   // picking
   await p.click('#presetRow [data-preset="none"]');
   s = await state();
   ax = await axesOf();
   t.check('nothing picked: the whole span and P20', ax.x0 === 1966 && ax.x1 === 2026 && ax.ymax === 20.5 && ax.ticks.join() === '1,5,10,15,20', JSON.stringify(ax));
-  t.check('None clears the chart and puts an empty list in the link', s.sets.length === 0 && s.checked.length === 0 && s.url === '?d=' && s.active.join() === 'none' && /0 of 3 drivers/.test(s.summary), JSON.stringify(s));
+  t.check('None clears the chart and puts an empty list in the link', s.sets.length === 0 && s.checked.length === 0 && s.url === '?view=drivers&d=' && s.active.join() === 'none' && /0 of 3 drivers/.test(s.summary), JSON.stringify(s));
   t.check('nothing picked says so', await p.$eval('#erasEmpty', e => e.style.display !== 'none'));
   await p.click('#erasPicker input[data-id="d2"]');
   s = await state();
-  t.check('ticking a driver adds the line and keeps the link in step', s.checked.join() === 'd2' && s.sets.join() === 'Bob Beta' && s.url === '?d=d2', JSON.stringify(s));
+  t.check('ticking a driver adds the line and keeps the link in step', s.checked.join() === 'd2' && s.sets.join() === 'Bob Beta' && s.url === '?view=drivers&d=d2', JSON.stringify(s));
   await p.click('#erasPicker input[data-id="d2"]'); await p.click('#erasPicker input[data-id="d3"]'); // Gamma only
   ax = await axesOf();
   t.check('one driver (Gamma, 2009–2026, worst P3): seasons from one year before the first to the last, axis P1–P5', ax.x0 === 2008 && ax.x1 === 2026 && ax.ymax === 5.5 && ax.ticks.join() === '1,2,3,4,5' && /2008–2026/.test(ax.sub), JSON.stringify(ax));
@@ -235,7 +254,7 @@ module.exports = async (t, h) => {
   s = await state();
   t.check('"Top 10 now" picks the latest season\'s drivers', s.checked.join() === 'd3,d1', JSON.stringify(s));
   await p.click('#presetRow [data-preset="top3"]');
-  t.check('back on the default preset the link is clean again', (await state()).url === '');
+  t.check('back on the default preset the link has no picks again', (await state()).url === '?view=drivers');
 
   // filter and sort
   await p.fill('#erasFilter', 'gam');
@@ -252,12 +271,12 @@ module.exports = async (t, h) => {
   // constructors
   await p.selectOption('#viewSel', 'teams');
   s = await state();
-  t.check('constructors view: one line per team lineage, link has view=teams', s.url === '?view=teams' && s.sets.length >= 2 && s.sets.includes('Red Bull') && s.sets.includes('Mercedes'), JSON.stringify(s));
+  t.check('constructors view: one line per team lineage, the constructors view needs no link key (it is the default, O7)', s.url === '' && s.sets.length >= 2 && s.sets.includes('Red Bull') && s.sets.includes('Mercedes'), JSON.stringify(s));
   t.check('the note says the constructors\' standings start in 1958 and that a team keeps its line', /start in 1958/.test(await h.text(p, '#erasNote')) && /one line/.test(await h.text(p, '#erasNote')));
   t.check('"Top 5 now" on the constructors view', /Top 5 now/.test(await h.text(p, '#presetRow')));
   await p.click('#erasPicker input[data-id="mercedes"]');
   s = await state();
-  t.check('unticking a team drops its line (the link then lists the rest)', !s.sets.includes('Mercedes') && /^\?view=teams&t=/.test(s.url), JSON.stringify(s));
+  t.check('unticking a team drops its line (the link then lists the rest)', !s.sets.includes('Mercedes') && /^\?t=/.test(s.url), JSON.stringify(s));
   t.check('drivers\' picks are kept when switching back', await (async () => { await p.selectOption('#viewSel', 'drivers'); return (await state()).checked.join() === 'd3,d1,d2'; })());
 
   // export
@@ -279,12 +298,12 @@ module.exports = async (t, h) => {
   V = await view2();
   t.check('a link\'s eras are applied (an unknown start year is dropped): 2006–2021', V.x0 === 2006 && V.x1 === 2021 && V.url === '?era=2006,2014', JSON.stringify(V));
   await p.done();
-  p = await open(); await p.goto('http://site.test/eras.html?d=d2'); await wait(p);
+  p = await open(); await p.goto('http://site.test/eras.html?view=drivers&d=d2'); await wait(p);
   t.check('a link\'s driver picks are applied', (await state()).sets.join() === 'Bob Beta');
   await p.done();
 
   // #135 O3 + C7: on a phone the chart scrolls sideways, with the position labels pinned and no sideways era labels
-  const ph = await open({ width: 390 }); await wait(ph);
+  const ph = await open({ width: 390 }); await ph.goto('http://site.test/eras.html?view=drivers'); await wait(ph);
   const sc = () => ph.evaluate(() => { const box = document.getElementById('erasScroll'), pin = document.getElementById('erasPinCanvas'), c = pin.getContext('2d');
     const px = c.getImageData(0, 0, pin.width, pin.height).data; let ink = 0; const bg = [px[0], px[1], px[2]];
     for(let i = 0; i < px.length; i += 4) if(px[i] !== bg[0] || px[i + 1] !== bg[1] || px[i + 2] !== bg[2]) ink++;
@@ -342,13 +361,13 @@ module.exports = async (t, h) => {
     Object.keys(NAMES).forEach(id => { if(id === 'x3' && i < 4) return; if(id === c) rows.push([id, 1, 100, 'ferrari']); else rows.push([id, pos++, 50 - pos, 'ferrari']); });
     seasons2[2000 + i] = { round: 16, d: rows, t: [] }; });
   const FAKE2 = { v: 1, generatedAt: 0, partial: null, drivers: D2, teams: { ferrari: { n: 'Ferrari' } }, seasons: seasons2 };
-  const big = await h.openPage('eras', { eras: FAKE2 }); await big.waitForSelector('#erasPicker input'); await big.waitForTimeout(200);
+  const big = await h.openPage('eras', { eras: FAKE2 }); await big.goto('http://site.test/eras.html?view=drivers'); await big.waitForSelector('#erasPicker input'); await big.waitForTimeout(200);
   const bs = () => big.evaluate(() => ({ checked: [...document.querySelectorAll('#erasPicker input:checked')].map(i => i.dataset.id),
     order: [...document.querySelectorAll('#erasPicker input')].map(i => i.dataset.id), lines: chart.data.datasets.length,
     many: !document.getElementById('erasMany').hidden, manyText: document.getElementById('erasMany').textContent, url: location.search,
     presets: [...document.querySelectorAll('#presetRow .pill')].map(b => [b.dataset.preset, b.textContent, b.classList.contains('active')]) }));
   let B = await bs();
-  t.check('C1: the default is the three drivers with the most titles (x1 3, then x2 and x3 with 2 each), no hint', B.checked.join() === 'x1,x2,x3' && B.lines === 3 && !B.many && B.url === '', JSON.stringify(B));
+  t.check('C1: the default is the three drivers with the most titles (x1 3, then x2 and x3 with 2 each), no hint', B.checked.join() === 'x1,x2,x3' && B.lines === 3 && !B.many && B.url === '?view=drivers', JSON.stringify(B));
   t.check('C1: the default preset reads "Most titles (3)" and is lit', B.presets.some(x => x[0] === 'top3' && x[1] === 'Most titles (3)' && x[2]), JSON.stringify(B.presets));
   t.check('C5: the clear button is called Clear (not None)', B.presets.some(x => x[0] === 'none' && x[1] === 'Clear') && !B.presets.some(x => x[1] === 'None'));
   await big.click('#presetRow [data-preset="champs"]');
@@ -361,7 +380,7 @@ module.exports = async (t, h) => {
   t.check('…and six lines take it away', !(await bs()).many);
   await big.click('#presetRow [data-preset="none"]');
   B = await bs();
-  t.check('Clear picks nothing and says so, with no hint', B.checked.length === 0 && B.lines === 0 && !B.many && B.url === '?d=', JSON.stringify(B));
+  t.check('Clear picks nothing and says so, with no hint', B.checked.length === 0 && B.lines === 0 && !B.many && B.url === '?view=drivers&d=', JSON.stringify(B));
   await big.click('#presetRow [data-preset="top3"]');
   await big.selectOption('#sortSel', 'name');
   B = await bs();

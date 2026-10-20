@@ -73,9 +73,9 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
 <div class="card">
 <div class="erasHead">
  <span style="font-size:12px;color:var(--sub);">Show</span>
- <select id="viewSel" class="ddSelect" aria-label="Drivers or constructors">
-  <option value="drivers">Drivers' Championship</option>
+ <select id="viewSel" class="ddSelect" aria-label="Constructors or drivers">
   <option value="teams">Constructors' Championship</option>
+  <option value="drivers">Drivers' Championship</option>
  </select>
  <span style="flex:1;"></span>
  <span class="pickerSort" style="font-size:12px;color:var(--sub);">Sort by</span>
@@ -122,7 +122,8 @@ const MANY = 6; // more lines than this gets a hint to pick fewer
 const HALF = 0.3; // half the width of a season's flat segment, in seasons
 const DASHES = [[], [7, 4], [2, 3]]; // teammates in one colour: solid, dashed, dotted
 
-let model = null, view = 'drivers', sortBy = 'titles', filter = '', chart = null;
+let model = null, view = 'teams', // O7: the constructors plot is the default
+     sortBy = 'titles', filter = '', chart = null;
 let eras = []; // #135 O2: start years of the eras zoomed to (none = the whole span)
 const picked = { drivers: null, teams: null };   // arrays of ids; null = the default until the first change
 let linked = null;
@@ -221,7 +222,7 @@ function renderChips(){
 // ---- URL (view, d, t, era) ----
 function syncURL(){
   const p = new URLSearchParams();
-  if(view !== 'drivers') p.set('view', view);
+  if(view !== 'teams') p.set('view', view);
   if(eras.length) p.set('era', eras.join(','));
   ['drivers', 'teams'].forEach(v => {
     if(!picked[v]) return;
@@ -275,6 +276,28 @@ const axisPin = {
     c.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--panel').trim() || '#fff';
     c.fillRect(0, 0, cv.width, cv.height);
     c.drawImage(ch.canvas, 0, 0, cv.width, cv.height, 0, 0, cv.width, cv.height);
+  }
+};
+
+// O6 (constructors view): a star on a team's line in each season one of its drivers won the drivers' championship.
+const starPath = (c, x, y, r) => { c.beginPath(); for(let i = 0; i < 10; i++){ const a = -Math.PI / 2 + i * Math.PI / 5, q = i % 2 ? r * 0.45 : r; c[i ? 'lineTo' : 'moveTo'](x + q * Math.cos(a), y + q * Math.sin(a)); } c.closePath(); };
+const champPlugin = {
+  id: 'champMarks',
+  afterDatasetsDraw(ch){
+    ch.$champMarks = [];
+    if(view !== 'teams') return;
+    const { ctx, chartArea: a, scales: { x, y } } = ch, panel = getComputedStyle(document.documentElement).getPropertyValue('--panel').trim() || '#fff', r = F1Common.isNarrow() ? 5.5 : 7;
+    ctx.save(); ctx.beginPath(); ctx.rect(a.left, a.top, a.width, a.bottom - a.top); ctx.clip();
+    ch.data.datasets.forEach((set, di) => {
+      Object.entries(set._e.seasons).forEach(([yr, k]) => {
+        if(!k.champ || +yr < x.min + 0.5 || +yr > x.max - 0.5 || k.pos > y.max) return;
+        const px = x.getPixelForValue(+yr), py = y.getPixelForValue(k.pos), c = col(k.color);
+        starPath(ctx, px, py, r); ctx.fillStyle = lit() && lit() !== set._e.id ? F1Common.withAlpha(c, 0.15) : c; ctx.fill();
+        ctx.lineWidth = 1.5; ctx.strokeStyle = lit() && lit() !== set._e.id ? F1Common.withAlpha(panel, 0.15) : panel; ctx.stroke();
+        ch.$champMarks.push({ id: set._e.id, year: +yr, pos: k.pos, champ: k.champ });
+      });
+    });
+    ctx.restore();
   }
 };
 
@@ -370,7 +393,7 @@ function draw(keepScroll){
   $('erasNote').textContent = (view === 'teams' ? `Constructors' standings start in ${model.firstTeamYear}. ` : '')
     + `Positions below P${MAX_POS} run off the bottom.`
     + (model.partial ? ` ${model.partial} is the standings after round ${model.round}, so no title yet.` : '')
-    + (view === 'teams' ? ' A team keeps its line through renames and new owners (Tyrrell, BAR, Honda, Brawn and Mercedes are one line); the line takes the colour the team had each season.' : ' The line takes the colour of the team the driver raced for that season.');
+    + (view === 'teams' ? ' A ★ marks a season in which one of the team\'s drivers won the drivers\' title. A team keeps its line through renames and new owners (Tyrrell, BAR, Honda, Brawn and Mercedes are one line); the line takes the colour the team had each season.' : ' The line takes the colour of the team the driver raced for that season.');
   // #135 O3: on a phone, a wide chart (14 px a season) in a box that scrolls; otherwise it fits its box
   scrolling = nar && ds.length > 0 && n * PX_PER_SEASON + AXIS_PX > scroller.clientWidth;
   $('erasInner').style.width = scrolling ? Math.round(n * PX_PER_SEASON + AXIS_PX) + 'px' : '';
@@ -378,7 +401,7 @@ function draw(keepScroll){
   Chart.defaults.font.family = ff; Chart.defaults.color = P.text;
   chart = new Chart($('erasCanvas'), {
     type: 'line',
-    plugins: [bandPlugin, hoverPlugin, axisPin],
+    plugins: [bandPlugin, hoverPlugin, axisPin, champPlugin],
     data: { datasets: ds.map(d => ({
       label: d.label, data: d.data, borderColor: d.color, borderWidth: 2.4, borderDash: d.dash, spanGaps: false, tension: 0,
       pointBackgroundColor: d.colors, pointBorderColor: d.colors, pointRadius: 0, pointHoverRadius: 0,
@@ -403,6 +426,7 @@ function draw(keepScroll){
           callbacks: {
             title(items){ const y = Math.round(items[0].raw.x), era = F1Eras.eraOf(y); return `${y}${era ? ' · ' + era.name : ''}${y === model.partial ? ` (after round ${model.round})` : ''}`; },
             label(it){ const s = it.dataset._e.seasons[Math.round(it.raw.x)]; return `${it.dataset.label}: P${s.pos} · ${Math.round(s.pts * 10) / 10} pts${s.name ? ' · ' + s.name : ''}`; },
+            afterLabel(it){ const k = it.dataset._e.seasons[Math.round(it.raw.x)]; return k && k.champ ? `★ Drivers' champion: ${k.champ}` : ''; },
             labelColor: it => ({ borderColor: it.dataset.borderColor, backgroundColor: it.dataset.pointBackgroundColor[it.dataIndex] || it.dataset.borderColor })
           }
         }
@@ -421,9 +445,10 @@ function render(){ renderChips(); renderPresets(); renderPicker(); draw(); syncU
 // ---- export ----
 function exportRows(){
   const ds = datasets(); if(!ds.length) return null;
-  const rows = [['Season', 'Era', ...ds.flatMap(d => [`${d.label} position`, `${d.label} points`, `${d.label} team`])]];
+  const teams = view === 'teams'; // O6: a teams' file also says which driver, if any, won the drivers' title in a season
+  const rows = [['Season', 'Era', ...ds.flatMap(d => [`${d.label} position`, `${d.label} points`, `${d.label} team`, ...(teams ? [`${d.label} drivers' champion`] : [])])]];
   model.years.forEach(y => { const era = F1Eras.eraOf(y);
-    rows.push([y, era ? era.name : '', ...ds.flatMap(d => { const s = d.e.seasons[y]; return s ? [s.pos, s.pts, s.name] : ['', '', '']; })]); });
+    rows.push([y, era ? era.name : '', ...ds.flatMap(d => { const s = d.e.seasons[y]; return s ? [s.pos, s.pts, s.name, ...(teams ? [s.champ || ''] : [])] : ['', '', '', ...(teams ? [''] : [])]; })]); });
   return rows;
 }
 F1Export.attach($('chartCard'), {
@@ -470,7 +495,7 @@ renderEraKey();
 // ---- load ----
 function applyLink(){
   const q = new URLSearchParams(location.search);
-  if(q.get('view') === 'teams') view = 'teams';
+  if(q.get('view') === 'drivers') view = 'drivers';
   $('viewSel').value = view;
   if(q.get('era')) eras = q.get('era').split(',').map(Number).filter(y => F1Eras.ERAS.some(e => e.from === y)).sort((a, b) => a - b);
   [['drivers', 'd'], ['teams', 't']].forEach(([v, k]) => {

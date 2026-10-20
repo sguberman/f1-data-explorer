@@ -490,6 +490,12 @@ and the tooltip at the hovered season.
 a click or tap pins it, as does clicking its legend entry (the legend entries are buttons); clicking the same line or entry again, empty space or
 Escape lets go; while pinned, hovering changes nothing. The lit line is drawn on top and thicker, the others fade to 15% opacity and their legend
 entries dim. Redraws only (`applyFocus()`); a pin whose line leaves the chart is dropped, and the PNG export lets go of any highlight first.
+**Drivers' titles on the constructors plot (#135 O6):** a ★ on a team's line in each finished season one of its drivers won the drivers' championship (the
+champion's team from the standings file, mapped through the lineage map, so Brawn's 2009 star is on the Mercedes line; a champion who changed team mid-season counts
+for the first team listed). The star is the team's colour for that season with a panel-coloured edge, drawn at the team's own position that season (e.g. McLaren
+2008, P2, Hamilton); the tooltip adds "★ Drivers' champion: NAME", the note explains it, and the constructors CSV has a "drivers' champion" column per team. Fades
+with the other lines when one is lit. The drivers plot has no stars (a title there is P1). `F1Eras.build()` gives each team season `champ` and the model `champions`.
+
 **Fewer lines, easier picking (#135 C1 + C5):** the default is the three with the most titles (`top3`); more than 6 lines (`MANY`) shows a note under the legend
 ("That's a lot of lines. Pick fewer, or click a line or its name to follow it."). The picker lists what's picked first, with a divider before the rest;
 the grouping is taken when the list is rebuilt for a new set of picks (preset, view, era, sort, filter), not on each tick, so a row never moves from
@@ -515,10 +521,9 @@ down to the worst one shown (to a multiple of 5, at least P5 with ticks 1–5, n
 3 L and wings 1966–76, first ground effect 1977–82, turbo 1983–88, V10 1989–2005, V8 2006–13, turbo hybrid 2014–21, ground effect
 II 2022–25, current 2026–; a label too long for its band falls back to `short`, then runs sideways) and a key under the chart with
 each era's one-line note. It has no season or round controls and **does not use F1Controls / F1Share**: it reads one file,
-`site/data/eras.json`, with a Retry on failure; it never calls an API. A "Show" dropdown switches Drivers' / Constructors'
-(constructors' standings only exist from 1958); presets Most titles (3, the default, #135 C1), Top 10, All champions, Top 10 / Top 5 now, Clear (C5; was None);
+`site/data/eras.json`, with a Retry on failure; it never calls an API. A "Show" dropdown switches Constructors' / Drivers' (**the constructors plot is the default**, #135 O7; the standings only exist from 1958); presets Most titles (3, the default, #135 C1), Top 10, All champions, Top 10 / Top 5 now, Clear (C5; was None);
 a picker with a name filter and Sort by Titles / Name / First season; PNG and CSV (`eras-drivers` / `eras-teams`). Link keys
-(kept current with `history.replaceState`, left out at the default): `view=teams`, `d`, `t`. The latest season, while it runs, is the
+(kept current with `history.replaceState`, left out at the default): `view=drivers` (an old `view=teams` link still works), `d`, `t`, `era`. The latest season, while it runs, is the
 standings after round N (tooltip says so) and counts for no title yet.
 - **Lineages** (`F1Eras.LINEAGES`): a team's line follows it through renames and owners, each member `{ids, from, to, name, color}`:
   Mercedes = Tyrrell → BAR → Honda (2000+) → Brawn → Mercedes; Alpine = Toleman → Benetton → Renault (1990+) → Lotus F1 → Alpine;
