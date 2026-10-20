@@ -15,9 +15,20 @@ module.exports = async (t, h) => {
         c4: getComputedStyle(document.querySelector('.pv')).getPropertyValue('--c4').trim(),
       };
     });
-    t.check(`${theme} ${width}px: cards in order drivers, constructors, what-if (#107), positions, simulator, eras (#135)`,
-      JSON.stringify(r.hrefs) === JSON.stringify(['drivers.html','constructors.html','whatif.html','position.html','simulator.html','eras.html']), r.hrefs.join(','));
+    t.check(`${theme} ${width}px: cards in order eras (#142), drivers, constructors, what-if (#107), positions, simulator`,
+      JSON.stringify(r.hrefs) === JSON.stringify(['eras.html','drivers.html','constructors.html','whatif.html','position.html','simulator.html']), r.hrefs.join(','));
     t.check(`${theme} ${width}px: every card has a chart picture`, r.pictures.every(Boolean));
+    // #142: the Eras picture shows era bands with labels, team lines and ★ marks for drivers' titles; its text covers the page's current features
+    const eras = await p.evaluate(() => {
+      const c = document.querySelector('a.card[href="eras.html"]'), svg = c.querySelector('svg.pv');
+      return { bands: svg.querySelectorAll('rect.pshade').length, labels: [...svg.querySelectorAll('text.era')].map(e => e.textContent).filter(x => !/^P\d$/.test(x)),
+        lines: svg.querySelectorAll('path.pl').length, stars: svg.querySelectorAll('polygon.star').length,
+        starFill: getComputedStyle(svg.querySelector('polygon.star')).fill, text: c.querySelector('p').textContent };
+    });
+    t.check(`${theme} ${width}px: Eras picture has shaded era bands with labels, three team lines and stars (#142)`,
+      eras.bands >= 2 && ['V10','V8','Hybrid'].every(l => eras.labels.includes(l)) && eras.lines === 3 && eras.stars >= 3 && eras.starFill !== 'rgb(0, 0, 0)', JSON.stringify(eras));
+    t.check(`${theme} ${width}px: Eras text mentions tracking teams or drivers, lineages, the star and eras (#142)`,
+      /track your favorite teams or drivers through history/i.test(eras.text) && /renames and new owners/.test(eras.text) && eras.text.includes('★') && /Zoom in on an era/.test(eras.text), eras.text);
     t.check(`${theme} ${width}px: cards are laid out vertically, one per row`, r.stacked && r.sameLeft);
     t.check(`${theme} ${width}px: no horizontal scroll`, r.scroll <= width);
     t.check(`${theme} ${width}px: picture colours follow the theme`, r.c4.toLowerCase() === (theme === 'dark' ? '#6a86f0' : '#1b2a6b'), r.c4);
