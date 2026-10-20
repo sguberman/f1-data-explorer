@@ -94,6 +94,19 @@ module.exports = async (t, h) => {
     ds.type === 'linear' && ds.data.length === 2 * 11 && ds.data[idx(2009)].y === ds.data[idx(2009) + 1].y && ds.data[idx(2009)].x < 2009 && ds.data[idx(2009) + 1].x > 2009 && ds.data[idx(2009) + 1].x < 2009.5, JSON.stringify(ds.data.slice(idx(2009), idx(2009) + 2)));
   t.check('no point markers: only the lines (title years are not marked either, #135 O4)', ds.radius === 0);
   t.check('the line changes colour with the team (Brawn 2009, Mercedes 2010)', ds.colors[idx(2009)] !== ds.colors[idx(2010)] && !!ds.colors[idx(2009)]);
+  // the tooltip and hover line snap to the middle of a season's segment, not to its ends
+  const snap = await p.evaluate(async () => {
+    const r = document.getElementById('erasCanvas').getBoundingClientRect(), sc = chart.scales.x, a = chart.chartArea, out = [];
+    for(const x of [2010 - 0.3, 2010 + 0.3, 2010 - 0.1]){
+      const px = sc.getPixelForValue(x);
+      chart.canvas.dispatchEvent(new MouseEvent('mousemove', { clientX: r.left + px, clientY: r.top + (a.top + a.bottom) / 2, bubbles: true }));
+      await new Promise(f => setTimeout(f, 60));
+      out.push({ caret: Math.round(chart.tooltip.caretX), want: Math.round(sc.getPixelForValue(2010)), title: chart.tooltip.title[0] });
+    }
+    return out;
+  });
+  t.check('tooltip snaps to the middle of the season whichever end (or middle) of the segment is hovered',
+    snap.every(x => Math.abs(x.caret - x.want) <= 1 && /^2010/.test(x.title)), JSON.stringify(snap));
   t.check('the era bands are drawn (the plugin is on the chart)', await p.evaluate(() => chart.config.plugins.some(x => x.id === 'eraBands')));
   t.check('the era key lists all eras', await p.$$eval('#eraKey > div', d => d.length) === F1Eras.ERAS.length);
   t.check('the chart axis is P1 at the top', await p.evaluate(() => chart.options.scales.y.reverse === true));

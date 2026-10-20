@@ -185,6 +185,23 @@ const bandPlugin = {
   }
 };
 
+// The hover line and the tooltip sit in the middle of a season's segment (one stop a year), not at its two ends.
+const seasonOf = (ch, el) => Math.round(ch.data.datasets[el.datasetIndex].data[el.index].x);
+const hoverPlugin = {
+  id: 'seasonHover',
+  beforeDatasetsDraw(ch){
+    const tip = ch.tooltip, act = tip && tip.getActiveElements ? tip.getActiveElements() : [];
+    if(!act.length || !tip.opacity) return;
+    const x = Math.round(ch.scales.x.getPixelForValue(seasonOf(ch, act[0]))) + 0.5, a = ch.chartArea, c = ch.ctx;
+    c.save(); c.strokeStyle = F1Theme.chart().label; c.globalAlpha = 0.55; c.lineWidth = 1;
+    c.beginPath(); c.moveTo(x, a.top); c.lineTo(x, a.bottom); c.stroke(); c.restore();
+  }
+};
+Chart.Tooltip.positioners.season = function(items, pos){
+  if(!items.length) return false;
+  return { x: this.chart.scales.x.getPixelForValue(seasonOf(this.chart, items[0])), y: pos.y };
+};
+
 function datasets(){
   const ids = current(), L = list(), byId = new Map(L.map(e => [e.id, e])), seen = {};
   return ids.map(id => byId.get(id)).filter(Boolean).sort((a, b) => L.indexOf(a) - L.indexOf(b)).map(e => {
@@ -223,7 +240,7 @@ function draw(){
   Chart.defaults.font.family = ff; Chart.defaults.color = P.text;
   chart = new Chart($('erasCanvas'), {
     type: 'line',
-    plugins: [bandPlugin, F1Common.hoverLine],
+    plugins: [bandPlugin, hoverPlugin],
     data: { datasets: ds.map(d => ({
       label: d.label, data: d.data, borderColor: d.color, borderWidth: 2.4, borderDash: d.dash, spanGaps: false, tension: 0,
       pointBackgroundColor: d.colors, pointBorderColor: d.colors, pointRadius: 0, pointHoverRadius: 0,
@@ -244,7 +261,7 @@ function draw(){
       plugins: {
         legend: { display: false },
         tooltip: {
-          filter: it => it.raw.y != null, itemSort: (a, b) => a.raw.y - b.raw.y,
+          position: 'season', filter: it => it.raw.y != null, itemSort: (a, b) => a.raw.y - b.raw.y,
           callbacks: {
             title(items){ const y = Math.round(items[0].raw.x), era = F1Eras.eraOf(y); return `${y}${era ? ' · ' + era.name : ''}${y === model.partial ? ` (after round ${model.round})` : ''}`; },
             label(it){ const s = it.dataset._e.seasons[Math.round(it.raw.x)]; return `${it.dataset.label}: P${s.pos} · ${Math.round(s.pts * 10) / 10} pts${s.name ? ' · ' + s.name : ''}`; },
