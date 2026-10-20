@@ -46,7 +46,7 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
 <div class="wrap">
 <div class="theme-bar"><nav id="siteNav" class="site-nav" aria-label="Site"></nav><div id="themeToggle"></div></div>
 <h1>Eras</h1>
-<p class="sub">Where drivers and teams finished in the championship, season by season since 1950, against the rule eras of the sport. Pick the names to compare; a ★ is a title. Positions only, since the points system changed several times.</p>
+<p class="sub">Where drivers and teams finished in the championship, season by season since 1950, against the rule eras of the sport. Pick the names to compare. Positions only, since the points system changed several times.</p>
 <div class="erasStatus" id="erasStatus">Loading the history…</div>
 
 <div class="card">
@@ -90,7 +90,7 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
 const ff = getComputedStyle(document.body).fontFamily;
 const $ = id => document.getElementById(id);
 const esc = t => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
-const MAX_POS = 20; // the chart shows P1–P20; anything lower runs off the bottom
+const MAX_POS = 20; // the chart never goes below P20; anything lower runs off the bottom
 const DASHES = [[], [7, 4], [2, 3]]; // teammates in one colour: solid, dashed, dotted
 
 let model = null, view = 'drivers', sortBy = 'titles', filter = '', chart = null;
@@ -164,13 +164,13 @@ function syncURL(){
 const bandPlugin = {
   id: 'eraBands',
   beforeDatasetsDraw(ch){
-    const { ctx, chartArea: a, scales: { x } } = ch, P = F1Theme.chart(), years = model.years, step = x.width / years.length;
+    const { ctx, chartArea: a, scales: { x } } = ch, P = F1Theme.chart(), years = model.years, step = x.width / (x.max - x.min + 1);
     ctx.save();
     ctx.beginPath(); ctx.rect(a.left, 0, a.width, a.bottom); ctx.clip();
     F1Eras.ERAS.forEach((era, i) => {
-      const i0 = years.indexOf(Math.max(era.from, years[0])), last = Math.min(era.to, years[years.length - 1]);
-      if(i0 < 0 || last < era.from) return;
-      const i1 = years.indexOf(last);
+      const shown = years.map((y, k) => k).filter(k => k >= x.min && k <= x.max && years[k] >= era.from && years[k] <= era.to);
+      if(!shown.length) return; // the era is outside the seasons on show
+      const i0 = shown[0], i1 = shown[shown.length - 1];
       const l = x.getPixelForValue(i0) - step / 2, r = x.getPixelForValue(i1) + step / 2;
       if(i % 2 === 0){ ctx.fillStyle = P.projShade; ctx.fillRect(l, a.top, r - l, a.height); }
       ctx.strokeStyle = P.grid; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(l, a.top); ctx.lineTo(l, a.bottom); ctx.stroke();
@@ -195,17 +195,28 @@ function datasets(){
   });
 }
 
+// #135 (O5): the axes fit the picks: seasons from one before the first to one after the last, positions down to the
+// worst one shown (to a multiple of 5, at least P5, never below P20). Nothing picked: the whole span.
+function axes(ds){
+  let lo = Infinity, hi = -1, worst = 0;
+  ds.forEach(d => d.data.forEach((p, i) => { if(p != null){ lo = Math.min(lo, i); hi = Math.max(hi, i); worst = Math.max(worst, p); } }));
+  const last = model.years.length - 1;
+  if(hi < 0) return { x0: 0, x1: last, yMax: MAX_POS };
+  return { x0: Math.max(0, lo - 1), x1: Math.min(last, hi + 1), yMax: Math.min(MAX_POS, Math.max(5, Math.ceil(worst / 5) * 5)) };
+}
+const yTicks = yMax => yMax <= 5 ? [1, 2, 3, 4, 5] : [1, ...Array.from({ length: yMax / 5 }, (_, i) => (i + 1) * 5)];
+
 function draw(){
   if(!model) return;
   const P = F1Theme.chart(), nar = F1Common.isNarrow(), ds = datasets();
   if(chart){ chart.destroy(); chart = null; }
   $('erasEmpty').style.display = ds.length ? 'none' : 'block';
   $('erasLegend').innerHTML = ds.map(d => `<span style="--c:${d.color}"><i class="${d.dash.length === 0 ? '' : d.dash[0] > 3 ? 'd1' : 'd2'}"></i>${esc(d.label)}</span>`).join('');
-  const first = model.years[0], last = model.years[model.years.length - 1];
-  $('chartSub').textContent = `${view === 'drivers' ? 'drivers' : 'constructors'} · ${first}–${last}`;
+  const ax = axes(ds), n = ax.x1 - ax.x0 + 1, stride = n <= 12 ? 1 : n <= 20 ? (nar ? 2 : 1) : n <= 45 ? 5 : nar ? 10 : 5;
+  $('chartSub').textContent = `${view === 'drivers' ? 'drivers' : 'constructors'} · ${model.years[ax.x0]}–${model.years[ax.x1]}`;
   $('erasNote').textContent = (view === 'teams' ? `Constructors' standings start in ${model.firstTeamYear}. ` : '')
-    + `Positions below P${MAX_POS} run off the bottom. A ★ is a title`
-    + (model.partial ? `; ${model.partial} is the standings after round ${model.round}, so no title yet.` : '.')
+    + `Positions below P${MAX_POS} run off the bottom.`
+    + (model.partial ? ` ${model.partial} is the standings after round ${model.round}, so no title yet.` : '')
     + (view === 'teams' ? ' A team keeps its line through renames and new owners (Tyrrell, BAR, Honda, Brawn and Mercedes are one line); the line takes the colour the team had each season.' : ' The line takes the colour of the team the driver raced for that season.');
   Chart.defaults.font.family = ff; Chart.defaults.color = P.text;
   chart = new Chart($('erasCanvas'), {
@@ -214,8 +225,7 @@ function draw(){
     data: { labels: model.years.map(String), datasets: ds.map(d => ({
       label: d.label, data: d.data, borderColor: d.color, borderWidth: 2.4, borderDash: d.dash, spanGaps: false, tension: 0,
       pointBackgroundColor: d.colors, pointBorderColor: d.colors,
-      pointStyle: d.data.map(p => p === 1 ? 'star' : 'circle'), pointRadius: d.data.map(p => p === 1 ? (nar ? 6 : 8) : (nar ? 1.5 : 2.5)),
-      pointHoverRadius: d.data.map(p => p === 1 ? 9 : 5),
+      pointStyle: 'circle', pointRadius: nar ? 1.5 : 2.5, pointHoverRadius: 5,
       segment: { borderColor: c => d.colors[c.p1DataIndex] || d.color },
       _e: d.e })) },
     options: {
@@ -223,10 +233,10 @@ function draw(){
       layout: { padding: { top: nar ? 40 : 32, right: 6 } },
       interaction: { mode: 'index', intersect: false },
       scales: {
-        x: { grid: { display: false }, ticks: { autoSkip: false, maxRotation: 0, color: P.text,
-          callback(v){ const y = model.years[v]; return y % (nar ? 10 : 5) === 0 ? y : ''; } }, border: { color: P.axis } },
-        y: { reverse: true, min: 0.5, max: MAX_POS, grid: { color: P.grid }, border: { color: P.axis },
-          afterBuildTicks(s){ s.ticks = [1, 5, 10, 15, 20].map(value => ({ value })); },
+        x: { min: ax.x0, max: ax.x1, grid: { display: false }, ticks: { autoSkip: false, maxRotation: 0, color: P.text,
+          callback(v){ const y = model.years[v]; return stride === 1 || y % stride === 0 ? y : ''; } }, border: { color: P.axis } },
+        y: { reverse: true, min: 0.5, max: ax.yMax + 0.5, grid: { color: P.grid }, border: { color: P.axis },
+          afterBuildTicks(s){ s.ticks = yTicks(ax.yMax).map(value => ({ value })); },
           ticks: { color: P.text, callback: v => 'P' + v }, title: { display: !nar, text: 'Championship position', color: P.text } }
       },
       plugins: {
@@ -235,7 +245,7 @@ function draw(){
           filter: it => it.raw != null, itemSort: (a, b) => a.raw - b.raw,
           callbacks: {
             title(items){ const y = model.years[items[0].dataIndex], era = F1Eras.eraOf(y); return `${y}${era ? ' · ' + era.name : ''}${y === model.partial ? ` (after round ${model.round})` : ''}`; },
-            label(it){ const s = it.dataset._e.seasons[model.years[it.dataIndex]]; return `${it.dataset.label}: P${s.pos}${s.pos === 1 ? ' ★' : ''} · ${Math.round(s.pts * 10) / 10} pts${s.name ? ' · ' + s.name : ''}`; },
+            label(it){ const s = it.dataset._e.seasons[model.years[it.dataIndex]]; return `${it.dataset.label}: P${s.pos} · ${Math.round(s.pts * 10) / 10} pts${s.name ? ' · ' + s.name : ''}`; },
             labelColor: it => ({ borderColor: it.dataset.borderColor, backgroundColor: it.dataset.pointBackgroundColor[it.dataIndex] || it.dataset.borderColor })
           }
         }
