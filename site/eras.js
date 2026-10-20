@@ -103,6 +103,8 @@ const F1Eras = (() => {
       }
       for(const [id, pos, pts] of s.t){
         const L = lineageOf(id, y, data.teams), e = touch(teams, L.id, L.lineageName, L.lineageName), cur = e.seasons[y];
+        // #144: every name the line has gone by (the lineage's own and the data's, e.g. Lotus-Climax), for the picker's search
+        (e.aliases || (e.aliases = new Set())).add(L.name).add(cleanName(data.teams && data.teams[id] ? data.teams[id].n : id));
         if(!cur) e.seasons[y] = { pos, pts, name: L.name, color: L.color, lineage: L.id };
         else { cur.pts += pts; if(pos < cur.pos){ cur.pos = pos; cur.name = L.name; cur.color = L.color; } } // two entries of one lineage in a year
       }
@@ -130,6 +132,10 @@ const F1Eras = (() => {
       // The colour of a legend swatch: a driver's most-used team colour, a team's colour in its latest season.
       e.color = map === teams ? e.seasons[e.last].color : Object.entries(e.tally).sort((a, b) => b[1] - a[1])[0][0];
       e.span = e.first === e.last ? String(e.first) : `${e.first}–${e.last}`;
+      // #144: the names a team has had, in order, each with the first and last season it raced under it
+      e.names = [];
+      ys.sort((a, b) => a - b).forEach(y => { const n = e.seasons[y].name, last = e.names[e.names.length - 1];
+        if(last && last.name === n) last.to = y; else e.names.push({ name: n, from: y, to: y }); });
     }
     const rank = (a, b) => (b.titles - a.titles) || (a.best - b.best) || (b.count - a.count) || a.name.localeCompare(b.name);
     return { years, partial, round: partial ? data.seasons[partial].round : null, firstTeamYear: 1958,

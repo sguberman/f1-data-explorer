@@ -153,13 +153,10 @@ module.exports = async (t, h) => {
     legend: [...document.querySelectorAll('#erasLegend .lgItem')].map(b => [b.textContent, b.className.replace('lgItem', '').trim(), b.getAttribute('aria-pressed')]) }));
   let pt = await at2009('Alan Alpha'); await p.mouse.move(pt.x, pt.y); await p.waitForTimeout(80);
   let LL = await lit();
-  t.check('hovering a line lights it: thicker, on top, the others faded; its legend entry bold, the others dimmed',
-    LL.lit === d1id && LL.widths.find(w => w[0] === 'Alan Alpha')[1] > 3 && LL.widths.filter(w => w[0] !== 'Alan Alpha').every(w => w[1] < 2.4)
-    && LL.orders.find(o => o[0] === 'Alan Alpha')[1] < 0 && LL.fade.filter(f => f[0] !== 'Alan Alpha').every(f => f[1]) && !LL.fade.find(f => f[0] === 'Alan Alpha')[1]
-    && LL.legend.find(l => l[0] === 'Alan Alpha')[1] === 'on' && LL.legend.filter(l => l[0] !== 'Alan Alpha').every(l => l[1] === 'dim'), JSON.stringify(LL));
+  t.check('#143: hovering a line lights nothing (the tooltip stays): all lines normal, no legend entry dimmed',
+    LL.lit === null && LL.widths.every(w => w[1] === 2.4) && LL.fade.every(f => !f[1]) && LL.legend.every(l => l[1] === ''), JSON.stringify(LL));
   await p.mouse.move(pt.x, pt.y - 120); await p.waitForTimeout(80);  // up in empty space (above P1)
   LL = await lit();
-  t.check('moving off the line lets go: all normal again', LL.lit === null && LL.widths.every(w => w[1] === 2.4) && LL.fade.every(f => !f[1]) && LL.legend.every(l => l[1] === ''), JSON.stringify(LL));
   pt = await at2009('Bob Beta'); await p.mouse.move(pt.x, pt.y); await p.mouse.down(); await p.mouse.up(); await p.mouse.move(pt.x + 60, pt.y - 100); await p.waitForTimeout(80);
   LL = await lit();
   t.check('clicking a line pins it: it stays lit after the pointer leaves it, and the link is untouched', LL.lit === d2id && LL.legend.find(l => l[0] === 'Bob Beta')[2] === 'true' && (await state()).url === '?view=drivers', JSON.stringify(LL));
@@ -274,6 +271,45 @@ module.exports = async (t, h) => {
   t.check('constructors view: one line per team lineage, the constructors view needs no link key (it is the default, O7)', s.url === '' && s.sets.length >= 2 && s.sets.includes('Red Bull') && s.sets.includes('Mercedes'), JSON.stringify(s));
   t.check('the note says the constructors\' standings start in 1958 and that a team keeps its line', /start in 1958/.test(await h.text(p, '#erasNote')) && /one line/.test(await h.text(p, '#erasNote')));
   t.check('"Top 5 now" on the constructors view', /Top 5 now/.test(await h.text(p, '#presetRow')));
+  // #144: a team's lineage is shown and its earlier names are searchable
+  const mrow = () => p.evaluate(() => { const i = document.querySelector('#erasPicker input[data-id="mercedes"]'), r = i && i.closest('.pickerRow');
+    return r ? { title: r.title, formerly: [...r.querySelectorAll('.erasFormer')].map(x => [x.textContent, x.className, getComputedStyle(x).display]), match: (r.querySelector('.erasMatch') || {}).textContent || null } : null; });
+  const rowsNow = () => p.$$eval('#erasPicker .pickerRow', r => r.map(x => x.querySelector('.pickerCode').firstChild.textContent));
+  let mr = await mrow();
+  t.check('#144: the Mercedes row says "formerly Tyrrell, BAR, Honda, Brawn GP", with every name and its years in the row\'s tooltip',
+    mr.formerly.length === 2 && mr.formerly[0][0] === 'formerly Tyrrell, BAR, Honda, Brawn GP' && mr.title === 'Tyrrell 1999, BAR 2000, Honda 2006, Brawn GP 2009, Mercedes 2010–', JSON.stringify(mr));
+  t.check('#144: a team that never changed its name has no "formerly" line', await p.$$eval('#erasPicker .pickerRow', r => r.filter(x => /Red Bull/.test(x.textContent)).every(x => !x.querySelector('.erasFormer'))));
+  t.check('#144: under the chart, each picked team with several names lists them with the years',
+    /Mercedes: Tyrrell 1999 → BAR 2000 → Honda 2006 → Brawn GP 2009 → Mercedes 2010–/.test(await h.text(p, '#erasLineage')) && !/Red Bull:/.test(await h.text(p, '#erasLineage')), await h.text(p, '#erasLineage'));
+  for(const [q, hint] of [['tyrrell', 'matches Tyrrell'], ['BRAWN', 'matches Brawn GP'], ['honda', 'matches Honda'], ['merc', null]]){
+    await p.fill('#erasFilter', q); mr = await mrow();
+    t.check(`#144: searching "${q}" finds the Mercedes line` + (hint ? ` and says "${hint}"` : ' by its own name, with no hint'), (await rowsNow()).join() === 'Mercedes' && mr.match === hint, JSON.stringify([await rowsNow(), mr && mr.match]));
+  }
+  await p.fill('#erasFilter', 'red bull');
+  t.check('#144: a search on a current name shows no "matches" hint', (await p.$$eval('#erasPicker .erasMatch', e => e.length)) === 0 && (await rowsNow()).includes('Red Bull'));
+  t.check('#144: the search ignores accents and case, on the name and the short name',
+    await p.evaluate(() => norm('Sergio Pérez Ångström') === 'sergio perez angstrom' && matchOf({ name: 'Sergio Pérez', short: 'Pérez' }, 'perez') === '' && matchOf({ name: 'Sergio Pérez', short: 'Pérez' }, 'pérez'.normalize('NFD').replace(/[\u0300-\u036f]/g, '')) === ''
+      && matchOf({ name: 'Mercedes', short: 'Mercedes', aliases: new Set(['Tyrrell']) }, 'tyr') === 'Tyrrell' && matchOf({ name: 'A', short: 'A' }, 'zz') === null));
+  await p.fill('#erasFilter', '');
+  const vp = p.viewportSize(); await p.setViewportSize({ width: 390, height: 900 }); await p.waitForTimeout(250); mr = await mrow();
+  t.check('#144: on a phone the Mercedes row shows its first two earlier names and "+2" (full list stays in the tooltip and under the chart)',
+    mr.formerly.find(f => f[1].includes('short'))[2] === 'block' && mr.formerly.find(f => f[1].includes('full'))[2] === 'none' && mr.formerly.find(f => f[1].includes('short'))[0] === 'formerly Tyrrell, BAR +2', JSON.stringify(mr));
+  await p.setViewportSize(vp); await p.waitForTimeout(250);
+  t.check('#144: the lineage line is for constructors only (the drivers view has none)', await (async () => { await p.selectOption('#viewSel', 'drivers'); const n = await p.$$eval('#erasPicker .erasFormer', e => e.length) + (await h.text(p, '#erasLineage')).length; await p.selectOption('#viewSel', 'teams'); return n === 0; })());
+  await p.selectOption('#viewSel', 'drivers'); await p.fill('#erasFilter', 'bob beta');
+  t.check('#144: drivers are found by their full name', (await rowsNow()).join() === 'Bob Beta');
+  await p.selectOption('#viewSel', 'teams');
+
+  // #145: the Share button, in the chart card, the same as the other pages'
+  await p.evaluate(() => { window.__copied = null; Object.defineProperty(navigator, 'clipboard', { value: { writeText: async s => { window.__copied = s; } }, configurable: true }); });
+  t.check('#145: the chart card has a Share button like the other pages\' (icon and "Share")', await p.$eval('#chartCard .f1c-share', b => !!b.querySelector('svg') && b.querySelector('span').textContent === 'Share'));
+  await p.click('#chartCard .f1c-share'); await p.waitForTimeout(120);
+  const shared = await p.evaluate(() => window.__copied);
+  t.check('#145: Share copies the full link to this view (the address bar\'s, with the picks)', shared === p.url() && shared.startsWith('http://site.test/eras.html'), shared);
+  t.check('#145: Share says the link was copied, then goes back to "Share"', /Link copied/.test(await p.textContent('#chartCard .f1c-share')));
+  await p.click('#erasPicker input[data-id="mercedes"]'); await p.click('#chartCard .f1c-share'); await p.waitForTimeout(120);
+  { const l = await p.evaluate(() => window.__copied); t.check('#145: the link follows the picks (Mercedes unticked is gone from it)', l === p.url() && /[?&]t=/.test(l) && !l.split('t=')[1].split('&')[0].split(',').includes('mercedes'), l); }
+  await p.click('#erasPicker input[data-id="mercedes"]');
   await p.click('#erasPicker input[data-id="mercedes"]');
   s = await state();
   t.check('unticking a team drops its line (the link then lists the rest)', !s.sets.includes('Mercedes') && /^\?t=/.test(s.url), JSON.stringify(s));
