@@ -7,6 +7,10 @@
 //   node tools/history-snapshot.mjs --all      write every season again
 //   node tools/history-snapshot.mjs 1988 1991  only these years
 //
+// #141 (counting): older seasons only counted a driver's best N results and, in 1958–78, a team's best-placed car; see
+// site/counting.js. The files keep what was scored (`awarded`) and what counted (`points`, `teamPoints`).
+//   node tools/history-snapshot.mjs --recount   re-apply the counting rules to the files already written (no fetching)
+//
 // Leaner than a recent season file: no sprints (none before 2021), no circuit times beyond what Jolpica has,
 // and result rows carry only what the pages read. Points are Jolpica's, as awarded (shared drives are split
 // between the drivers; "best N results count" is not applied). A finished season is never fetched twice, and
@@ -14,6 +18,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
+
+const F1Counting = createRequire(import.meta.url)('../site/counting.js'); // how older seasons counted points (best-N results, best car only)
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = path.join(ROOT, 'site', 'data');
@@ -118,7 +125,8 @@ export async function buildHistory(year, fetchImpl, { now = Date.now(), pause = 
     raceResults: rows(race, codes),
     sprintResults: null,
   }));
-  return { v: 1, year, generatedAt: now, complete: rounds.length >= calendar.totalRounds, calendar, rounds, source: 'jolpica' };
+  const counted = F1Counting.apply(year, rounds);
+  return { v: 1, year, generatedAt: now, complete: rounds.length >= calendar.totalRounds, calendar, rounds: counted, source: 'jolpica' };
 }
 
 const sameData = (a, b) => a && b && JSON.stringify([a.calendar, a.rounds, a.complete]) === JSON.stringify([b.calendar, b.rounds, b.complete]);
@@ -127,6 +135,14 @@ async function main(){
   const args = process.argv.slice(2), all = args.includes('--all');
   const years = args.filter(a => /^\d{4}$/.test(a)).map(Number);
   fs.mkdirSync(OUT, { recursive: true });
+  if(args.includes('--recount')){
+    for(let year = FIRST_YEAR; year <= LAST_YEAR; year++){
+      const file = path.join(OUT, `${year}.json`); if(!fs.existsSync(file)) continue;
+      const old = JSON.parse(fs.readFileSync(file, 'utf8')), rounds = F1Counting.apply(year, old.rounds);
+      if(JSON.stringify(rounds) !== JSON.stringify(old.rounds)){ fs.writeFileSync(file, JSON.stringify({ ...old, rounds })); console.log(`${year}: recounted`); }
+    }
+    return;
+  }
   let changed = 0;
   for(let year = FIRST_YEAR; year <= LAST_YEAR; year++){
     if(years.length && !years.includes(year)) continue;

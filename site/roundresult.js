@@ -46,7 +46,7 @@ const F1RoundResult = (() => {
       + `<td class="rr-pos">${r.position != null ? r.position : 'NC'}</td>`
       + `<td class="rr-who">${teamDot(r.teamId)}${F1Common.flagHTML(F1Common.nationalityOf('drivers', r.driverId))}<span class="rr-long">${esc(r.name || r.code)}</span><span class="rr-short">${esc(r.code || r.name)}</span></td>`
       + `<td class="rr-team">${esc(F1Common.shortTeamName(r.teamId, r.teamName))}</td>`
-      + `<td class="rr-pts">${pts(r.points)}</td></tr>`).join('');
+      + `<td class="rr-pts">${r.awarded !== undefined && r.awarded !== r.points ? `${pts(r.awarded)}<span class="rr-drop" title="Not every result counted this season: this one added ${pts(r.points)} to the championship"> → ${pts(r.points)}</span>` : pts(r.points)}</td></tr>`).join('');
     return { head: '<tr><th class="rr-pos">Pos</th><th class="rr-who">Driver</th><th class="rr-team">Team</th><th class="rr-pts">Pts</th></tr>',
       body, more: all > shown.length || expanded && all > TOP + 2 ? all : 0 };
   }

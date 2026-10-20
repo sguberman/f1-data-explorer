@@ -97,4 +97,72 @@ module.exports = async (t, h) => {
   t.check('the Drivers view links the drivers\' championship', (await links())[0][1] === 'drivers.html?season=1988' && /Drivers/.test((await links())[0][0]), JSON.stringify(await links()));
   t.check('the tooltip points at the link', await e.evaluate(() => { const cb = chart.options.plugins.tooltip.callbacks; return /Open 1988/.test(cb.footer([{ raw: { x: 1988 } }])); }));
   await e.done();
+
+  // ---- #141: counting rules (best-N results, best-placed car only) ----
+  const F1Counting = require('../site/counting.js');
+  const row = (driverId, teamId, points, position) => ({ driverId, code: driverId.toUpperCase().slice(0, 3), name: driverId, teamId, teamName: teamId, nationality: 'British', teamNationality: 'British', number: null, position, points, session: 'race' });
+  const season = [[['a', 'x', 9, 1], ['b', 'x', 6, 2], ['c', 'y', 4, 3]], [['a', 'x', 4, 3], ['b', 'x', 9, 1], ['c', 'y', 6, 2]], [['a', 'x', 6, 2], ['b', 'x', 0, null], ['c', 'y', 9, 1]]]
+    .map((rows, i) => ({ round: i + 1, raceName: 'GP ' + (i + 1), country: null, raceResults: rows.map(r => row(...r)), sprintResults: null }));
+  t.check('increments: best 2 of 3 — a running total that never falls and ends on the best-2 sum',
+    JSON.stringify(F1Counting.increments([9, 4, 6], [1, 2, 3], [[3, 2]])) === '[9,4,2]' && JSON.stringify(F1Counting.increments([4, 9, 6], [1, 2, 3], [[3, 2]])) === '[4,9,2]');
+  t.check('increments: two segments (best 1 of the first 2, best 1 of the last 2)', JSON.stringify(F1Counting.increments([3, 5, 2, 1], [1, 2, 3, 4], [[2, 1], [4, 1]])) === '[3,2,2,0]');
+  t.check('a season with no rule comes back untouched', F1Counting.apply(2005, season) === season);
+  // 1966: best 5 of 9 — use a 3-round fake with the rule swapped in
+  const saved = F1Counting.DRIVERS[1961]; F1Counting.DRIVERS[1961] = [[3, 2]];
+  const savedT = F1Counting.TEAMS[1961]; F1Counting.TEAMS[1961] = { bestCar: true, rule: [[3, 2]] };
+  const cnt = F1Counting.apply(1961, season);
+  const sumBy = (rounds, key, f) => { const o = {}; rounds.forEach(r => r.raceResults.forEach(x => { o[x[key]] = (o[x[key]] || 0) + f(x); })); return o; };
+  const dTot = sumBy(cnt, 'driverId', x => x.points), tTot = sumBy(cnt, 'teamId', x => x.teamPoints);
+  t.check('drivers: totals are the best 2 results (a 15, b 15, c 15), the dropped result adds 0 and keeps `awarded`',
+    dTot.a === 15 && dTot.b === 15 && dTot.c === 15 && cnt[2].raceResults[0].awarded === 6 && cnt[2].raceResults[0].points === 2 && cnt[1].raceResults[0].awarded === 4 && cnt[1].raceResults[0].points === 4, JSON.stringify(dTot));
+  t.check('teams: only the best-placed car scores for the team (the other row is 0), then the best 2 rounds count',
+    tTot.x === 18 && tTot.y === 15 && cnt[0].raceResults[1].teamPoints === 0 && cnt[0].raceResults[0].teamPoints === 9 && cnt[2].raceResults[1].teamPoints === 0, JSON.stringify(tTot));
+  t.check('applying it again changes nothing', JSON.stringify(F1Counting.apply(1961, cnt)) === JSON.stringify(cnt));
+  if(saved) F1Counting.DRIVERS[1961] = saved; else delete F1Counting.DRIVERS[1961];
+  if(savedT) F1Counting.TEAMS[1961] = savedT; else delete F1Counting.TEAMS[1961];
+  t.check('1958–59 teams score by finishing position alone (no fastest-lap point for teams)', (() => {
+    const fl = [[['a', 'x', 9, 1], ['b', 'x', 0.5, 6]]].map((rows, i) => ({ round: 1, raceName: 'GP', country: null, raceResults: rows.map(r => row(...r)), sprintResults: null }));
+    return F1Counting.apply(1959, fl)[0].raceResults[0].teamPoints === 8; })());
+  t.check('the notes say what counted', /only a driver's best 6 results counted/.test(F1Counting.note(1958, 'drivers')) && /best-placed car/.test(F1Counting.note(1960, 'teams'))
+    && /best 4 from the first 7 rounds and best 4 from rounds 8–15/.test(F1Counting.note(1979, 'drivers')) && /15-point penalty/.test(F1Counting.note(2020, 'teams'))
+    && F1Counting.note(2005, 'drivers') === '' && F1Counting.note(1985, 'teams') === '' && /scores a new result as awarded/.test(F1Counting.asAwardedNote(1979)) && F1Counting.asAwardedNote(2005) === '', F1Counting.note(1979, 'drivers'));
+
+  // The real back-filled files against Jolpica's official final standings (site/data/eras.json): every driver's counted
+  // total and every team's. The few that differ are listed (shared drives in 1955–56; Maserati 1958), so a wrong rule can't hide.
+  const fs = require('fs'), path = require('path');
+  const dataDir = path.join(__dirname, '..', 'site', 'data'), official = JSON.parse(fs.readFileSync(path.join(dataDir, 'eras.json'))).seasons;
+  const known = new Set(['1955 d trintignant', '1955 d farina', '1956 d fangio', '1958 t maserati']), diffs = [];
+  let compared = 0;
+  for(let y = FIRST_YEAR; y <= LAST_YEAR; y++){
+    const d = JSON.parse(fs.readFileSync(path.join(dataDir, y + '.json')));
+    const dt = sumBy(d.rounds, 'driverId', x => x.points), tt = sumBy(d.rounds, 'teamId', x => x.teamPoints !== undefined ? x.teamPoints : x.points);
+    official[y].d.forEach(([id, , pts]) => { compared++; if(Math.abs((dt[id] || 0) - pts) > 1e-6) diffs.push(`${y} d ${id}`); });
+    (official[y].t || []).forEach(([id, , pts]) => { compared++; if(Math.abs((tt[id] || 0) - pts) > 1e-6) diffs.push(`${y} t ${id}`); });
+  }
+  t.check(`all ${compared} official driver and team totals 1950–2020 are reproduced, except the known ones`, compared > 2000 && diffs.length === known.size && diffs.every(x => known.has(x)), diffs.join(', '));
+  t.check('every season file is complete, in the pages\' shape, and 71 of them', Array.from({ length: 71 }, (_, i) => JSON.parse(fs.readFileSync(path.join(dataDir, (1950 + i) + '.json')))).every(d => d.v === 1 && d.complete && d.rounds.length === d.calendar.totalRounds));
+
+  // ---- the pages: contributions where only the best car scored; round results; notes ----
+  const cp = await h.openPage('constructors', { snapshots: { 1960: JSON.parse(fs.readFileSync(path.join(dataDir, '1960.json'))) } });
+  await cp.goto('http://site.test/constructors.html?season=1960'); await h.loaded(cp);
+  const contrib = await cp.evaluate(() => {
+    const last = currentSeasonRounds.length, c = contributions(currentSeasonRounds, last, ['cooper-climax']);
+    const t = c[0]; return { total: t.total, sum: t.drivers.reduce((s, d) => s + d.points, 0), zero: t.drivers.filter(d => d.points === 0).length, n: t.drivers.length,
+      note: document.getElementById('countNote').textContent, hidden: document.getElementById('countNote').hidden };
+  });
+  t.check('constructors 1960: the driver contributions add up to the team total (Cooper: the official 48), and a driver who never scored for the team contributes 0',
+    Math.abs(contrib.total - contrib.sum) < 1e-9 && contrib.total === 48, JSON.stringify(contrib));
+  t.check('…with the note about the best-placed car', !contrib.hidden && /best-placed car/.test(contrib.note) && /best 6/.test(contrib.note), contrib.note);
+  await cp.done();
+  const dp = await h.openPage('drivers', { snapshots: { 1988: JSON.parse(fs.readFileSync(path.join(dataDir, '1988.json'))) } });
+  await dp.goto('http://site.test/drivers.html?season=1988'); await h.loaded(dp);
+  const d88 = await dp.evaluate(() => ({ note: document.getElementById('countNote').textContent, last: F1Common.standingsOrder(currentSeasonRounds, 16, 'drivers').slice(0, 2),
+    senna: currentSeasonRounds.flatMap(r => r.raceResults).filter(x => x.driverId === 'senna').reduce((s, x) => s + x.points, 0) }));
+  t.check('drivers 1988: the note says best 11 counted, and the standings put Senna (90 counted, 94 scored) ahead of Prost (87 counted, 105 scored)',
+    /best 11 results counted/.test(d88.note) && d88.senna === 90 && d88.last.join() === 'senna,prost', JSON.stringify(d88));
+  await dp.done();
+  const wp = await h.openPage('whatif', { snapshots: { 1988: JSON.parse(fs.readFileSync(path.join(dataDir, '1988.json'))) } });
+  await wp.goto('http://site.test/whatif.html?season=1988'); await h.loaded(wp);
+  t.check('what-if 1988: says it scores as awarded', /scores a new result as awarded/.test(await wp.$eval('#countNote', e => e.textContent)));
+  await wp.done();
 };

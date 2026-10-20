@@ -350,7 +350,7 @@ const F1Data = (() => {
         drivers[dk].rounds.push({round:r.round,session:res.session,points:res.points});
         const tk = res.teamId;
         if(!teams[tk]) teams[tk]={teamId:tk,teamName:res.teamName,nationality:res.teamNationality,rounds:[]};
-        teams[tk].rounds.push({round:r.round,session:res.session,points:res.points});
+        teams[tk].rounds.push({round:r.round,session:res.session,points:res.teamPoints!==undefined?res.teamPoints:res.points}); // #141: teamPoints = what counted for the team (best car only, best-N)
       });
     });
     return { drivers, teams, roundsLoaded: upto.length };

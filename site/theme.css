@@ -201,7 +201,8 @@ html.f1-loading .f1-skel::after{content:"";position:absolute;inset:0;z-index:6;b
 .rr-table td{padding:3px 6px;border-bottom:1px solid var(--line);}
 .rr-table tr:last-child td{border-bottom:none;}
 .rr-table .rr-pos{width:28px;text-align:right;color:var(--sub);}
-.rr-table .rr-pts{width:36px;text-align:right;}
+.rr-table .rr-pts{width:36px;text-align:right;white-space:nowrap;}
+.rr-drop{color:var(--sub);font-size:.92em;}
 .rr-table td.rr-who{color:var(--ink);white-space:nowrap;}
 .rr-table .rr-team{color:var(--sub);}
 .rr-pick td{font-weight:700;}

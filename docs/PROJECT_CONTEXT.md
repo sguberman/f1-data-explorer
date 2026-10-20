@@ -41,6 +41,7 @@ site/                 The website (deployed as the site root, so URLs are unchan
   eras.html / eras.js Eras (#135): championship position per season since 1950 against rule eras; F1Eras = lineage map + model.
   whatif.html         What-if: drag a finishing order for a round, see both championships after it, with the title race (#85).
   common.js           F1Common: helpers shared by the chart pages (issue #44 and later).
+  counting.js         F1Counting (#141): how older seasons counted points (best-N results, best car only) and the notes about it.
   data.js             F1Data: fetch, cache (localStorage), normalize f1api.dev data; SPRINT_OVERRIDES.
   controls.js         F1Controls: shared season dropdown + "as of round" slider; emits events.
   theme.js            Light/dark/system theme (dropdown in .theme-bar) + canvas color palette (F1Theme).
@@ -125,9 +126,20 @@ Move something into `common.js` only once it's genuinely identical on every page
   (`/{year}/results.json`, pages of 100 rows ~350 ms apart, retries on 429/5xx, plus `/{year}.json` for the calendar) in the
   same shape as the recent seasons, so every page opens them with no change to `loadSeason()`: `complete` seasons make no
   f1api.dev request (there is none for those years). They are leaner: no sprints (`sprintResults: null`, `calendar.sprintRounds: []`),
-  and result rows carry only what the pages read. Points are **as awarded** (Jolpica's: shared drives are split between the
-  drivers; "best N results count" rules are not applied, so a champion's total can read higher than the official one). The
-  constructors' totals are the sum of both cars (before 1979 only a team's best-placed car counted officially). Drivers
+  and result rows carry only what the pages read. **What counted (`site/counting.js`, `F1Counting`):** before 1991 only a driver's best N
+  results counted (sometimes N from each half of the season) and in 1958–78 only a team's best-placed car scored for the team in a race
+  (1958–59: by finishing position alone, no fastest-lap point). A season with a rule has, on every result row, `awarded` (what was scored)
+  and `points` (the rise in the driver's counting total that round: never negative, 0 for a dropped result, so the running total ends on
+  the official figure) and `teamPoints` (what the row added to its team: the best-placed car carries the round's figure, the other car 0;
+  1979–90 teams counted every car, so `teamPoints` = `awarded`). Pages total `points` for drivers and `teamPoints ?? points` for teams
+  (`cumulative()`, `standingsByRound()`, `titleRace()`, the contributions card, What-If); round results show `awarded` ("6 → 0" when it
+  added less); the talking points' points streak uses `awarded`. Racing Point's 15-point deduction in 2020 is a `teamPoints` adjustment from
+  round 5. The rules are **inferred, not from a rule book**: the simplest rule that reproduces Jolpica's official final standings
+  (`eras.json`) for every driver and team; where several fit, the one that matches the historical rule. `tests/42-history` checks all
+  2,183 official totals; four differ and are listed there (shared drives in 1955–56, Maserati 1958). Seasons 1967–76 and 1981–84 need no
+  rule (nobody's total changes). `node tools/history-snapshot.mjs --recount` re-applies the rules to the files with no fetching. The
+  championship pages show a note under the points chart (`F1Counting.note()`); What-If and the Simulator score new results as awarded and
+  drop nothing, and say so (`asAwardedNote()`, GitHub #148 to discuss). Constructors' totals before 1979 are therefore the official ones.
   before 2000s have no three-letter code: it is the surname's first three letters, a clash gets the first name's initial
   and two letters (`codeFor()`). Not-classified = a `positionText` that isn't a number. A finished season is never fetched
   again (`--all` or listing years rebuilds); the workflow runs it before `eras-snapshot.mjs`.

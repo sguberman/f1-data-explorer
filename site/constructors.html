@@ -11,6 +11,7 @@
 <script src="theme.js"></script>
 <script src="nav.js"></script>
 <script src="common.js"></script>
+<script src="counting.js"></script>
 <script src="data.js"></script>
 <script src="share.js"></script>
 <script src="export.js"></script>
@@ -79,6 +80,7 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
 </div>
 <div id="endLegend" class="endLegend"></div>
 <div id="sm" style="font-size:12px;color:var(--muted);line-height:1.6;margin:10px 2px 2px;"></div>
+<div id="countNote" hidden style="font-size:12px;color:var(--muted);line-height:1.6;margin:2px 2px 2px;"></div>
 </div>
 <div class="card" style="margin-bottom:16px;" id="contribCard">
 <div style="display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px;margin:0 0 10px;">
@@ -273,6 +275,7 @@ function recompute(round){
  const year = currentYear, seasonRounds = currentSeasonRounds;
  const cum = F1Data.cumulative(seasonRounds, round);
  const meta = F1Common.seasonMeta(year);
+ { const cn=document.getElementById('countNote'); cn.textContent=F1Counting.note(year,'teams'); cn.hidden=!cn.textContent; } // #141
  const cal = currentCalendar;
  const haveCalendar = cal && cal.totalRounds > 0;
  L = round;
@@ -447,7 +450,8 @@ function contributions(seasonRounds, round, teamIds){
  seasonRounds.filter(r=>r.round<=round).forEach(r=>[...r.raceResults, ...(r.sprintResults||[])].forEach(res=>{
    const t = teams[res.teamId] || (teams[res.teamId]={teamId:res.teamId, teamName:res.teamName, total:0, drivers:{}});
    const d = t.drivers[res.driverId] || (t.drivers[res.driverId]={driverId:res.driverId, code:res.code||res.driverId, name:res.name, nationality:res.nationality, points:0});
-   d.points += res.points||0; t.total += res.points||0;
+   const v = res.teamPoints!==undefined ? res.teamPoints : res.points||0; // #141: where only the best car scored for the team, the other driver adds 0
+   d.points += v; t.total += v;
  }));
  return teamIds.filter(id=>teams[id]).map(id=>{
    const t=teams[id];

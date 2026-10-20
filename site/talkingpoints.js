@@ -117,7 +117,7 @@ const F1TalkingPoints = (() => {
         if(pos === 1) count.win[id]++;
         if(pos != null && pos <= 3) count.pod[id]++;
         if(gp && pos == null) count.nc[id]++;
-        const hit = { win: pos === 1, pod: pos != null && pos <= 3, pts: ((gp ? gp.points : 0) + (sp ? sp.points : 0)) > 0 };
+        const hit = { win: pos === 1, pod: pos != null && pos <= 3, pts: ((gp ? (gp.awarded !== undefined ? gp.awarded : gp.points) : 0) + (sp ? sp.points : 0)) > 0 }; // #141: a dropped result still scored
         Object.keys(hit).forEach(k => {
           cur[id][k] = hit[k] ? cur[id][k] + 1 : 0;
           if(cur[id][k] > run[k][id].n) run[k][id] = { n:cur[id][k], to:r.round };

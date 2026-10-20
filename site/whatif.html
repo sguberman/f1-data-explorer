@@ -11,6 +11,7 @@
 <script src="theme.js"></script>
 <script src="nav.js"></script>
 <script src="common.js"></script>
+<script src="counting.js"></script>
 <script src="racemodel.js"></script>
 <script src="data.js"></script>
 <script src="share.js"></script>
@@ -120,6 +121,7 @@ tr.champ td{background:var(--inset);}
   <div id="emptyMsg" hidden></div>
   <div class="orders" id="orders"></div>
   <div class="note" id="orderNote"></div>
+  <div class="note" id="countNote" hidden></div>
 </div>
 
 <div class="card" id="resultCard">
@@ -153,6 +155,7 @@ let dataWindow=WINDOW_DEFAULT, simNote='';
 
 async function buildFromSelection(detail){
  year=detail.year; seasonRounds=detail.seasonRounds; PTS_GP=F1Common.scoring(year).gp;
+ { const cn=document.getElementById('countNote'); cn.textContent=F1Counting.asAwardedNote(year); cn.hidden=!cn.textContent; } // #141
  calendar = seasonRounds.length ? await F1Data.getCalendar(year) : null;
  // #31: a shared link's keys, first season only
  const link = F1Share.take();
@@ -293,7 +296,7 @@ function roundsWith(o){
 function totals(rounds, kind){
  const t={};
  rounds.forEach(r=>[...r.raceResults, ...(r.sprintResults||[])].forEach(res=>{
-   const id = kind==='teams' ? res.teamId : res.driverId; t[id]=(t[id]||0)+res.points;
+   const id = kind==='teams' ? res.teamId : res.driverId; t[id]=(t[id]||0)+(kind==='teams'&&res.teamPoints!==undefined?res.teamPoints:res.points);
  }));
  return t;
 }
