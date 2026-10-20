@@ -172,6 +172,50 @@ module.exports = async (t, h) => {
   await p.click('#erasLegend .lgItem >> nth=0'); await p.click('#erasPicker input[data-id="d1"]');
   t.check('a pinned line that leaves the chart lets go with it', (await lit()).lit === null);
 
+  // #135 O2 + C4: zoom to eras, era presets
+  await p.click('#presetRow [data-preset="top5"]');
+  const chips = () => p.evaluate(() => [...document.querySelectorAll('#eraChips .eraBtn')].map(b => [b.textContent.replace(/\d{4}–(\d{4}|now)$/, ''), b.className.replace('eraBtn', '').trim(), b.getAttribute('aria-pressed')]));
+  const view2 = () => p.evaluate(() => { const sc = chart.options.scales; return { x0: Math.round(sc.x.min + 0.5), x1: Math.round(sc.x.max - 0.5), ymax: sc.y.max, sub: document.getElementById('chartSub').textContent,
+    url: location.search, presets: [...document.querySelectorAll('#presetRow .pill')].map(b => b.textContent), checked: [...document.querySelectorAll('#erasPicker input:checked')].map(i => i.dataset.id),
+    rows: [...document.querySelectorAll('#erasPicker .pickerRow')].map(r => r.textContent.replace(/\s+/g, ' ').trim()),
+    empty: document.getElementById('erasEmpty').style.display !== 'none' ? document.getElementById('erasEmpty').textContent : '' }; });
+  let ch = await chips();
+  t.check('era chips: All, then one per era; All is on', ch.length === 11 && ch[0][0] === 'All' && ch[0][2] === 'true' && ch.slice(1).every(c => c[2] === 'false'), JSON.stringify(ch));
+  t.check('no era presets while the whole span shows', !(await view2()).presets.some(x => /Champions of|Top 5 of/.test(x)));
+  await p.click('#eraChips .eraBtn[data-from="2006"]');
+  let V = await view2();
+  t.check('choosing the V8 era zooms to 2006–2013, fits the position axis to the seasons in view (worst P8 → P10), and goes in the link',
+    V.x0 === 2006 && V.x1 === 2013 && V.ymax === 10.5 && /2006–2013/.test(V.sub) && V.url === '?era=2006', JSON.stringify(V));
+  ch = await chips();
+  t.check('…its chip is on and All is not', ch.find(c => c[0] === 'V8')[2] === 'true' && ch[0][2] === 'false');
+  t.check('…and two presets for the era appear', V.presets.includes('Champions of this era') && V.presets.includes('Top 5 of this era'), V.presets.join());
+  await p.click('#presetRow .pill:has-text("Champions of this era")');
+  V = await view2();
+  t.check('Champions of this era: who won a title in those seasons (Gamma 2010 and 2012, Alpha 2009), the zoom kept', V.checked.join() === 'd3,d1' && V.x0 === 2006 && V.x1 === 2013, JSON.stringify(V));
+  t.check('the picker shows titles in the era (Gamma 2, Alpha 1), not overall', /Carl Gamma.*2 titles/.test(V.rows[0]) && /Alan Alpha.*1 title\b/.test(V.rows[1]), V.rows.join(' | '));
+  await p.click('#presetRow .pill:has-text("Top 5 of this era")');
+  V = await view2();
+  t.check('Top 5 of this era: everyone who raced then, best first (only three did)', V.checked.join() === 'd3,d1,d2', JSON.stringify(V));
+  await p.click('#eraChips .eraBtn[data-from="2014"]');
+  V = await view2(); ch = await chips();
+  t.check('two eras: the range runs from the first start to the last end (2006–2021), and the presets say "range"',
+    V.x0 === 2006 && V.x1 === 2021 && V.url === '?era=2006,2014' && V.presets.includes('Champions of the range') && ch.find(c => c[0] === 'V8')[2] === 'true' && ch.find(c => c[0] === 'Turbo hybrid')[2] === 'true', JSON.stringify([V, ch]));
+  await p.click('#eraChips .eraBtn[data-from="1989"]');
+  await p.click('#eraChips .eraBtn[data-from="2006"]'); // untick V8: it now lies between V10 and turbo hybrid
+  ch = await chips();
+  t.check('…V8 between V10 and turbo hybrid, not chosen: dashed', /between/.test(ch.find(c => c[0] === 'V8')[1]) && ch.find(c => c[0] === 'V8')[2] === 'false', JSON.stringify(ch));
+  await p.click('#eraChips .eraBtn[data-from="1989"]'); await p.click('#eraChips .eraBtn[data-from="2014"]');
+  await p.click('#eraChips .eraBtn[data-from="1977"]');
+  V = await view2();
+  t.check('an era where none of the picks raced: says so, keeps the picks listed (marked not in these years)', /None of these drivers raced in these years/.test(V.empty) && V.rows.length === 3 && V.rows.every(r => /not in these years/.test(r)) && V.x0 === 1977 && V.x1 === 1982, JSON.stringify(V));
+  await p.click('#eraChips .eraBtn[data-from=""]');
+  V = await view2(); ch = await chips();
+  t.check('All clears the zoom: whole span, no era in the link, the era presets go', V.x0 === 1966 && V.x1 === 2026 && !/era/.test(V.url) && !V.presets.some(x => /of this era/.test(x)) && ch[0][2] === 'true', JSON.stringify(V));
+  // the picks the era presets set, with the zoom gone, are an ordinary set
+  await p.click('#presetRow [data-preset="top5"]');
+  V = await view2();
+  t.check('the era is a separate choice from the picks: the default picks and a clean link are back', V.checked.join() === 'd3,d1,d2' && V.url === '', JSON.stringify(V));
+
   // picking
   await p.click('#presetRow [data-preset="none"]');
   s = await state();
@@ -230,6 +274,10 @@ module.exports = async (t, h) => {
   p = await open({ }); await p.goto('http://site.test/eras.html?view=teams&t=red_bull,nope'); await wait(p);
   s = await state();
   t.check('a link\'s view and picks are applied (unknown ids dropped)', s.checked.join() === 'red_bull' && (await p.$eval('#viewSel', e => e.value)) === 'teams', JSON.stringify(s));
+  await p.done();
+  p = await open(); await p.goto('http://site.test/eras.html?era=1999,2006,2014'); await wait(p);
+  V = await view2();
+  t.check('a link\'s eras are applied (an unknown start year is dropped): 2006–2021', V.x0 === 2006 && V.x1 === 2021 && V.url === '?era=2006,2014', JSON.stringify(V));
   await p.done();
   p = await open(); await p.goto('http://site.test/eras.html?d=d2'); await wait(p);
   t.check('a link\'s driver picks are applied', (await state()).sets.join() === 'Bob Beta');

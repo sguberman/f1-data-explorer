@@ -34,6 +34,16 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
 .erasPin{display:none;position:sticky;left:0;z-index:2;height:100%;pointer-events:none;}
 .erasPin.on{display:block;}
 .erasPin canvas{display:block;}
+.eraChips{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0 0 12px;}
+.eraChips .lbl{font-size:12px;color:var(--sub);margin-right:2px;}
+.eraBtn{background:var(--inset);color:var(--ink2);border:1px solid var(--line);border-radius:6px;padding:4px 9px;font:inherit;font-size:11.5px;cursor:pointer;}
+.eraBtn:hover{border-color:var(--ink2);}
+.eraBtn:focus-visible{outline:2px solid var(--line-strong);outline-offset:2px;}
+.eraBtn.on{background:var(--ink);color:var(--on-ink);border-color:var(--ink);}
+.eraBtn.between{border-style:dashed;border-color:var(--ink2);}
+.eraBtn .yrs{color:var(--sub);margin-left:5px;font-variant-numeric:tabular-nums;}
+.eraBtn.on .yrs{color:inherit;opacity:.75;}
+@media (max-width:600px){ .eraBtn .yrs{display:none;} }
 .erasLegend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--ink2);margin:0 0 10px;}
 .erasLegend .lgItem{display:inline-flex;align-items:center;gap:6px;font:inherit;color:inherit;background:none;border:none;padding:2px 0;cursor:pointer;border-radius:4px;}
 .erasLegend .lgItem:focus-visible{outline:2px solid var(--line-strong);outline-offset:2px;}
@@ -88,6 +98,7 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
  <span style="font-size:13px;font-weight:600;color:var(--ink);" id="chartTitle">Championship position by season</span>
  <span style="font-size:12px;color:var(--sub);" id="chartSub"></span>
 </div>
+<div class="eraChips" id="eraChips" role="group" aria-label="Zoom to eras"></div>
 <div class="erasLegend" id="erasLegend"></div>
 <div class="erasScroll" id="erasScroll"><div class="erasInner" id="erasInner">
  <div class="erasPin" id="erasPin" aria-hidden="true"><canvas id="erasPinCanvas"></canvas></div>
@@ -109,11 +120,28 @@ const HALF = 0.3; // half the width of a season's flat segment, in seasons
 const DASHES = [[], [7, 4], [2, 3]]; // teammates in one colour: solid, dashed, dotted
 
 let model = null, view = 'drivers', sortBy = 'titles', filter = '', chart = null;
+let eras = []; // #135 O2: start years of the eras zoomed to (none = the whole span)
 const picked = { drivers: null, teams: null };   // arrays of ids; null = the default until the first change
 let linked = null;
 
 const list = () => view === 'drivers' ? model.drivers : model.teams;
 const col = c => F1Theme.team(c);
+
+// ---- eras (O2): zoom to the chosen eras; the range is from the start of the first to the end of the last ----
+const erasOn = () => F1Eras.ERAS.filter(e => eras.includes(e.from));
+function range(){
+  const on = erasOn(); if(!on.length) return null;
+  const ys = model.years;
+  return { y0: Math.max(ys[0], Math.min(...on.map(e => e.from))), y1: Math.min(ys[ys.length - 1], Math.max(...on.map(e => e.to))), count: on.length };
+}
+// A driver's or team's titles, best finish and seasons within the range (all of them with no range). A title needs a finished season.
+function stats(e){
+  const R = range(); if(!R) return { titles: e.titles, best: e.best, count: e.count };
+  let titles = 0, best = 99, count = 0;
+  Object.entries(e.seasons).forEach(([y, k]) => { y = +y; if(y < R.y0 || y > R.y1) return; count++; best = Math.min(best, k.pos); if(k.pos === 1 && y !== model.partial) titles++; });
+  return { titles, best, count };
+}
+const rankIn = (a, b) => { const A = stats(a), B = stats(b); return (B.titles - A.titles) || (A.best - B.best) || (B.count - A.count) || a.name.localeCompare(b.name); };
 
 // ---- presets ----
 const sets = () => {
@@ -121,13 +149,22 @@ const sets = () => {
   const latest = model.years[model.years.length - 1];
   const now = L.filter(e => e.seasons[latest] && e.seasons[latest].pos <= (view === 'drivers' ? 10 : 5)).sort((a, b) => a.seasons[latest].pos - b.seasons[latest].pos).map(e => e.id);
   const s = { top5: top(5), top10: top(10), champs: L.filter(e => e.titles > 0).map(e => e.id), now, none: [] };
+  if(range()){ // C4: the champions and the best of the period in view
+    const inr = L.filter(e => stats(e).count > 0).sort(rankIn);
+    s.eraChamps = inr.filter(e => stats(e).titles > 0).map(e => e.id);
+    s.eraTop5 = inr.slice(0, 5).map(e => e.id);
+  }
   return s;
 };
 const defaultIds = () => sets().top5;
 const current = () => picked[view] || defaultIds();
 const PRESETS = () => [['top5', 'Most titles (5)', 'The five with the most titles'], ['top10', 'Top 10', 'The ten with the most titles'],
   ['champs', 'All champions', 'Everyone who has won the title'],
-  ['now', model && view === 'drivers' ? 'Top 10 now' : 'Top 5 now', 'The best of the latest season'], ['none', 'None', '']];
+  ['now', model && view === 'drivers' ? 'Top 10 now' : 'Top 5 now', 'The best of the latest season'],
+  ...(model && range() ? (() => { const one = range().count === 1, what = one ? 'this era' : 'range'; // C4
+    return [['eraChamps', `Champions of ${what === 'range' ? 'the range' : what}`, 'Everyone who won the title in the seasons in view'],
+      ['eraTop5', `Top 5 of ${what === 'range' ? 'the range' : what}`, 'The five with the most titles in the seasons in view (then the best finish)']]; })() : []),
+  ['none', 'None', '']];
 
 function renderPresets(){
   $('presetRow').innerHTML = PRESETS().map(([k, label, tip]) => `<button type="button" class="pill" data-preset="${k}" title="${esc(tip)}">${label}</button>`).join('');
@@ -143,7 +180,9 @@ function markPresets(){
 
 // ---- picker ----
 function sorted(){
-  const L = [...list()];
+  let L = [...list()];
+  if(range()){ const cur = new Set(current()); L = L.filter(e => stats(e).count > 0 || cur.has(e.id)); } // only who raced in the period (and anything still picked)
+  if(sortBy === 'titles' && range()) L.sort(rankIn);
   if(sortBy === 'name') L.sort((a, b) => a.short.localeCompare(b.short));
   else if(sortBy === 'first') L.sort((a, b) => a.first - b.first || b.titles - a.titles);
   const f = filter.trim().toLowerCase();
@@ -153,7 +192,7 @@ function renderPicker(){
   const cur = new Set(current()), rows = sorted();
   $('pickerLabel').textContent = view === 'drivers' ? 'Drivers shown' : 'Teams shown';
   $('erasPicker').innerHTML = rows.map(e => {
-    const on = cur.has(e.id), t = e.titles ? `${e.titles} ${e.titles === 1 ? 'title' : 'titles'}` : `best P${e.best}`;
+    const on = cur.has(e.id), st = stats(e), t = st.count === 0 ? 'not in these years' : st.titles ? `${st.titles} ${st.titles === 1 ? 'title' : 'titles'}` : `best P${st.best}`;
     return `<label class="pickerRow"><input type="checkbox" data-id="${esc(e.id)}" ${on ? 'checked' : ''}>
       <span class="pickerDot" style="background:${col(e.color)}"></span>
       <span class="pickerCode${on ? '' : ' off'}">${esc(e.name)}<span class="pickerCodeTag">${e.span}</span></span>
@@ -163,10 +202,19 @@ function renderPicker(){
   markPresets();
 }
 
-// ---- URL (view, d, t) ----
+function renderChips(){
+  const R = range();
+  $('eraChips').innerHTML = '<span class="lbl">Eras</span>'
+    + `<button type="button" class="eraBtn${R ? '' : ' on'}" data-from="" aria-pressed="${!R}" title="The whole span, 1950 to now">All</button>`
+    + F1Eras.ERAS.map(e => { const on = eras.includes(e.from), between = !on && R && e.from >= R.y0 && e.to <= R.y1; // inside the range, not chosen
+      return `<button type="button" class="eraBtn${on ? ' on' : between ? ' between' : ''}" data-from="${e.from}" aria-pressed="${on}" title="${esc(e.name)}, ${e.from}–${e.to === 9999 ? 'now' : e.to}">${esc(e.label)}<span class="yrs">${e.from}–${e.to === 9999 ? 'now' : e.to}</span></button>`; }).join('');
+}
+
+// ---- URL (view, d, t, era) ----
 function syncURL(){
   const p = new URLSearchParams();
   if(view !== 'drivers') p.set('view', view);
+  if(eras.length) p.set('era', eras.join(','));
   ['drivers', 'teams'].forEach(v => {
     if(!picked[v]) return;
     p.set(v === 'drivers' ? 'd' : 't', picked[v].join(','));
@@ -284,11 +332,15 @@ function datasets(){
 // #135 (O5): the axes fit the picks: seasons from one before the first to one after the last, positions down to the
 // worst one shown (to a multiple of 5, at least P5, never below P20). Nothing picked: the whole span.
 function axes(ds){
-  const ys = model.years, first = ys[0], last = ys[ys.length - 1];
+  const ys = model.years, first = ys[0], last = ys[ys.length - 1], R = range();
   let lo = Infinity, hi = -1, worst = 0;
-  ds.forEach(d => Object.entries(d.e.seasons).forEach(([y, k]) => { lo = Math.min(lo, +y); hi = Math.max(hi, +y); worst = Math.max(worst, k.pos); }));
-  if(hi < 0) return { x0: first, x1: last, yMax: MAX_POS };
-  return { x0: Math.max(first, lo - 1), x1: Math.min(last, hi + 1), yMax: Math.min(MAX_POS, Math.max(5, Math.ceil(worst / 5) * 5)) };
+  ds.forEach(d => Object.entries(d.e.seasons).forEach(([y, k]) => {
+    if(R && (+y < R.y0 || +y > R.y1)) return; // O2: only the seasons in view count
+    lo = Math.min(lo, +y); hi = Math.max(hi, +y); worst = Math.max(worst, k.pos); }));
+  const yMax = hi < 0 ? MAX_POS : Math.min(MAX_POS, Math.max(5, Math.ceil(worst / 5) * 5));
+  if(R) return { x0: R.y0, x1: R.y1, yMax, none: ds.length > 0 && hi < 0 };
+  if(hi < 0) return { x0: first, x1: last, yMax };
+  return { x0: Math.max(first, lo - 1), x1: Math.min(last, hi + 1), yMax };
 }
 const yTicks = yMax => yMax <= 5 ? [1, 2, 3, 4, 5] : [1, ...Array.from({ length: yMax / 5 }, (_, i) => (i + 1) * 5)];
 
@@ -297,11 +349,14 @@ function draw(keepScroll){
   const scroller = $('erasScroll'), keep = scroller.scrollLeft;
   const P = F1Theme.chart(), nar = F1Common.isNarrow(), ds = datasets();
   if(chart){ chart.destroy(); chart = null; }
-  $('erasEmpty').style.display = ds.length ? 'none' : 'block';
+
   $('erasLegend').innerHTML = ds.map(d => `<button type="button" class="lgItem" data-id="${esc(d.e.id)}" aria-pressed="false" title="Highlight this line" style="--c:${d.color}"><i class="${d.dash.length === 0 ? '' : d.dash[0] > 3 ? 'd1' : 'd2'}"></i>${esc(d.label)}</button>`).join('');
   if(pinned && !ds.some(d => d.e.id === pinned)) pinned = null; // its line is gone
   hover = null;
-  const ax = axes(ds), n = ax.x1 - ax.x0 + 1, stride = n <= 12 ? 1 : n <= 20 ? (nar ? 2 : 1) : n <= 45 ? 5 : nar ? 10 : 5;
+  const ax = axes(ds);
+  $('erasEmpty').style.display = !ds.length || ax.none ? 'block' : 'none';
+  $('erasEmpty').textContent = !ds.length ? 'Nothing picked.' : `None of these ${view === 'drivers' ? 'drivers' : 'teams'} ${view === 'drivers' ? 'raced' : 'competed'} in these years.`;
+  const n = ax.x1 - ax.x0 + 1, stride = n <= 12 ? 1 : n <= 20 ? (nar ? 2 : 1) : n <= 45 ? 5 : nar ? 10 : 5;
   $('chartSub').textContent = `${view === 'drivers' ? 'drivers' : 'constructors'} · ${ax.x0}–${ax.x1}`;
   $('erasNote').textContent = (view === 'teams' ? `Constructors' standings start in ${model.firstTeamYear}. ` : '')
     + `Positions below P${MAX_POS} run off the bottom.`
@@ -352,7 +407,7 @@ function renderEraKey(){
   $('eraKey').innerHTML = F1Eras.ERAS.map((e, i) => `<div><span class="eraChip${i % 2 ? ' alt' : ''}"></span><span><b>${e.from}–${e.to === 9999 ? 'now' : e.to} ${esc(e.name)}.</b> ${esc(e.note)}</span></div>`).join('');
 }
 
-function render(){ renderPresets(); renderPicker(); draw(); syncURL(); }
+function render(){ renderChips(); renderPresets(); renderPicker(); draw(); syncURL(); }
 
 // ---- export ----
 function exportRows(){
@@ -374,6 +429,12 @@ F1Export.attach($('chartCard'), {
 // ---- events ----
 const isDefault = ids => ids.length === defaultIds().length && ids.every((x, i) => x === defaultIds()[i]);
 function setPicked(ids){ picked[view] = isDefault(ids) ? null : ids; render(); } // the default needs no link key
+$('eraChips').addEventListener('click', e => {
+  const b = e.target.closest('.eraBtn'); if(!b) return;
+  const from = b.dataset.from;
+  if(from === '') eras = []; else { const y = +from; eras = eras.includes(y) ? eras.filter(x => x !== y) : [...eras, y].sort((a, b) => a - b); }
+  render();
+});
 $('presetRow').addEventListener('click', e => { const b = e.target.closest('.pill'); if(b) setPicked([...sets()[b.dataset.preset]]); });
 $('erasPicker').addEventListener('change', e => {
   const id = e.target.dataset.id; if(!id) return;
@@ -402,6 +463,7 @@ function applyLink(){
   const q = new URLSearchParams(location.search);
   if(q.get('view') === 'teams') view = 'teams';
   $('viewSel').value = view;
+  if(q.get('era')) eras = q.get('era').split(',').map(Number).filter(y => F1Eras.ERAS.some(e => e.from === y)).sort((a, b) => a - b);
   [['drivers', 'd'], ['teams', 't']].forEach(([v, k]) => {
     if(q.get(k) == null) return;
     const valid = new Set((v === 'drivers' ? model.drivers : model.teams).map(e => e.id));

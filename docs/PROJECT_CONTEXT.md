@@ -490,6 +490,14 @@ and the tooltip at the hovered season.
 a click or tap pins it, as does clicking its legend entry (the legend entries are buttons); clicking the same line or entry again, empty space or
 Escape lets go; while pinned, hovering changes nothing. The lit line is drawn on top and thicker, the others fade to 15% opacity and their legend
 entries dim. Redraws only (`applyFocus()`); a pin whose line leaves the chart is dropped, and the PNG export lets go of any highlight first.
+**Eras zoom (#135 O2 + C4):** a row of chips above the legend ("All" plus one per era). Choosing eras zooms the x-axis to the range from the start of the
+first chosen era to the end of the last (chips lying inside the range but not chosen get a dashed border); the position axis then fits the seasons in
+view only. The link key is `era=` (start years, `era=2006,2014`; unknown years dropped; left out for All). While a range is on, the picker lists only
+those who raced in it (and anything still picked, marked "not in these years") and shows titles/best finish **in the range**, sorted by them; two
+presets appear: **Champions of this era / the range** (everyone who won a title in the seasons in view) and **Top 5 of this era / the range** (most titles in
+view, then best finish, then most seasons). They set the picks as any preset does; clearing the zoom (All) doesn't change the picks. Picks with no season in
+the range show "None of these drivers raced in these years." Redraws only; no fetch.
+
 **Phones (#135 O3 + C7):** at ≤600 px the chart is 14 px a season wide (`PX_PER_SEASON`, plus 44 px for the axis) inside a box that scrolls sideways
 (`#erasScroll`), starting at the latest seasons (a new set of picks, not a theme change or resize, resets it); a few seasons (picks that fit the
 screen) don't scroll and show no hint. The position labels are copied onto a canvas that sticks to the box's left edge (`axisPin` plugin; only down
