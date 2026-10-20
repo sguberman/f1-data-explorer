@@ -95,7 +95,6 @@ module.exports = async (t, h) => {
   t.check('…and follows the pointer to 1988', (await links())[0][1] === 'constructors.html?season=1988');
   await e.selectOption('#viewSel', 'drivers'); await e.waitForTimeout(150);
   t.check('the Drivers view links the drivers\' championship', (await links())[0][1] === 'drivers.html?season=1988' && /Drivers/.test((await links())[0][0]), JSON.stringify(await links()));
-  t.check('the tooltip says where to click', await e.evaluate(() => { const cb = chart.options.plugins.tooltip.callbacks; return /Click 1988 on the axis to open it/.test(cb.footer([{ raw: { x: 1988 } }])); }));
 
   // clicking a year on the axis goes straight to the season's championship page (the Drivers view here)
   const axisAt = year => e.evaluate(y => { const r = chart.canvas.getBoundingClientRect(), a = chart.chartArea; return { x: r.left + chart.scales.x.getPixelForValue(y), y: r.top + a.bottom + 12 }; }, year);
@@ -111,7 +110,7 @@ module.exports = async (t, h) => {
   const links2 = () => e2.$$eval('#erasOpen a', as => as.map(a => a.getAttribute('href')));
   pt = await plotAt(1988); await e2.mouse.click(pt.x, pt.y); await e2.waitForTimeout(80);   // near the bottom of the plot: empty space
   t.check('a click in empty space inside the plot locks that year: the links are 1988\'s and the page didn\'t navigate',
-    (await links2())[0] === 'constructors.html?season=1988' && e2.url().endsWith('/eras.html') && await e2.evaluate(() => lockedYear) === 1988 && /locked/.test(await e2.$eval('#erasOpen', el => el.textContent)));
+    (await links2())[0] === 'constructors.html?season=1988' && e2.url().endsWith('/eras.html') && await e2.evaluate(() => lockedYear) === 1988);
   pt = await plotAt(1989); await e2.mouse.move(pt.x, pt.y); await e2.waitForTimeout(80);
   t.check('…and hovering another year no longer changes them', (await links2())[0] === 'constructors.html?season=1988');
   const px = await e2.evaluate(() => { const c = chart.canvas, d = c.getContext('2d').getImageData(0, 0, c.width, c.height); return !!d; });
@@ -124,10 +123,9 @@ module.exports = async (t, h) => {
   await e2.keyboard.press('Escape'); await e2.waitForTimeout(50);
   t.check('the next Escape releases the locked year', await e2.evaluate(() => lockedYear === null));
   pt = await plotAt(1988); await e2.mouse.click(pt.x, pt.y); await e2.waitForTimeout(60);
-  await e2.click('#erasOpen .erasUnlock'); await e2.waitForTimeout(60);
-  t.check('the × next to the links also releases it, and hovering works again', await e2.evaluate(() => lockedYear === null));
-  pt = await plotAt(1989); await e2.mouse.move(pt.x, pt.y); await e2.waitForTimeout(80);
-  t.check('…the links follow the pointer again', (await links2())[0] === 'constructors.html?season=1989');
+  pt = await plotAt(1989); await e2.mouse.click(pt.x, pt.y); await e2.waitForTimeout(60);
+  t.check('clicking another year just moves the lock there (no button needed)', (await links2())[0] === 'constructors.html?season=1989' && await e2.evaluate(() => lockedYear) === 1989);
+  t.check('there is no unlock button and the tooltip has no hint footer', !(await e2.$('#erasOpen .erasUnlock')) && await e2.evaluate(() => { const f = chart.options.plugins.tooltip.callbacks.footer; return !f || !(f([{ raw: { x: 1988 } }]) || []).length; }));
   await e2.done();
 
 

@@ -56,7 +56,6 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
 .erasOpen{margin:8px 0 2px;font-size:13px;color:var(--muted);}
 .erasOpen a{color:var(--ink);font-weight:600;text-decoration:underline;text-underline-offset:2px;}
 .erasOpen .sep{margin:0 6px;opacity:.5;}
-.erasOpen .erasUnlock{font:inherit;font-size:12px;color:var(--ink2);background:var(--inset);border:1px solid var(--line);border-radius:10px;padding:0 8px;cursor:pointer;}
 .erasLegend .lgItem{display:inline-flex;align-items:center;gap:6px;font:inherit;color:inherit;background:none;border:none;padding:2px 0;cursor:pointer;border-radius:4px;}
 .erasLegend .lgItem:focus-visible{outline:2px solid var(--line-strong);outline-offset:2px;}
 .erasLegend .lgItem.dim{opacity:.4;}
@@ -459,7 +458,6 @@ function draw(keepScroll){
             title(items){ const y = Math.round(items[0].raw.x), era = F1Eras.eraOf(y); return `${y}${era ? ' · ' + era.name : ''}${y === model.partial ? ` (after round ${model.round})` : ''}`; },
             label(it){ const s = it.dataset._e.seasons[Math.round(it.raw.x)]; return `${it.dataset.label}: P${s.pos} · ${Math.round(s.pts * 10) / 10} pts${s.name ? ' · ' + s.name : ''}`; },
             afterLabel(it){ const k = it.dataset._e.seasons[Math.round(it.raw.x)]; return k && k.champ ? `★ Drivers' champion: ${k.champ}` : ''; },
-            footer(items){ const y = Math.round(items[0].raw.x); return `Click ${y} on the axis to open it · click here to lock it`; },
             labelColor: it => ({ borderColor: it.dataset.borderColor, backgroundColor: it.dataset.pointBackgroundColor[it.dataIndex] || it.dataset.borderColor })
           }
         }
@@ -527,7 +525,7 @@ $('erasCanvas').addEventListener('click', e => {
 // #141: open a season on the other pages. Clicking a year on the x-axis opens that season's drivers' or constructors' page
 // (no round in the link: it lands on the end of the season). Clicking inside the plot, on a line or in empty space, locks that
 // year (a vertical highlight, like the round shading on the championship pages): the links under the chart then stay on it
-// until Escape or the × lets go. Without a lock they follow the season under the pointer or finger.
+// until Escape lets go. Without a lock they follow the season under the pointer or finger.
 let openYear = null, lockedYear = null;
 const mainPage = () => view === 'drivers' ? ['drivers.html', "Drivers' championship"] : ['constructors.html', "Constructors' championship"];
 const seasonUrl = (page, y) => `${page}?season=${y}`;
@@ -535,7 +533,7 @@ function renderOpen(){
   const y = lockedYear !== null ? lockedYear : openYear, el = $('erasOpen');
   if(y === null || !model || !model.years.includes(y)){ el.hidden = true; el.innerHTML = ''; return; }
   const main = mainPage(), link = (page, label) => `<a href="${seasonUrl(page, y)}">${label}</a>`;
-  el.innerHTML = `Open ${y}${lockedYear !== null ? ' <button type="button" class="erasUnlock" title="Let go of the locked year (Esc)" aria-label="Let go of the locked year">× locked</button>' : ''}: ${link(main[0], main[1] + ' →')}<span class="sep">·</span>`
+  el.innerHTML = `Open ${y}: ${link(main[0], main[1] + ' →')}<span class="sep">·</span>`
     + [['position.html', 'Positions'], ['whatif.html', 'What-if'], ['simulator.html', 'Simulator']].map(([pg, l]) => link(pg, l)).join('<span class="sep">·</span>');
   el.hidden = false;
 }
@@ -553,7 +551,6 @@ function pointAt(ev){
 }
 $('erasCanvas').addEventListener('pointermove', e => { const p = pointAt(e); if(p) setOpenYear(p.year); e.currentTarget.style.cursor = p && p.zone === 'axis' ? 'pointer' : ''; });
 $('erasCanvas').addEventListener('pointerdown', e => { const p = pointAt(e); if(p && p.zone === 'plot') setOpenYear(p.year); });
-$('erasOpen').addEventListener('click', e => { if(e.target.closest('.erasUnlock')) unlockYear(); });
 // A locked year is shaded and marked with a vertical line, behind the lines.
 const lockPlugin = {
   id: 'lockedSeason',
