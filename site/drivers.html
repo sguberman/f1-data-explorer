@@ -294,10 +294,11 @@ function recompute(round){
  });
 
  // Exact remaining-points calc when we have the real calendar; falls back to the old estimate otherwise.
+ const sc = F1Common.scoring(year), gpTop = sc.gp[0], spTop = sc.sprint[0]||0;
  const rem = haveCalendar
-   ? (r => 25*(N-r) + 8*cal.sprintRounds.filter(x=>x>r).length)
+   ? (r => gpTop*(N-r) + spTop*cal.sprintRounds.filter(x=>x>r).length)
    : (r => { const left=N-r; const sprintsSoFar=seasonRounds.filter(x=>x.round<=L && x.sprintResults).length;
-       return 25*left + 8*Math.min(Math.max(0,meta.sprints-sprintsSoFar), left); });
+       return gpTop*left + spTop*Math.min(Math.max(0,meta.sprints-sprintsSoFar), left); });
 
  // Per-driver cumulative + rest-of-season projection for the currently selected/displayed drivers.
  function projectedFull(dr){

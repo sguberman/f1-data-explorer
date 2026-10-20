@@ -8,19 +8,8 @@
      its own lineage, named as in the data and coloured by a stable hash.
    Colours are F1's own team colours, darkened where they'd vanish on white (theme.js lightens the dark ones). */
 const F1Eras = (() => {
-  // Rule eras: first and last season (inclusive), a short label for the chart and a plain-language note.
-  const ERAS = [
-    { from: 1950, to: 1960, label: 'Front engine', short: 'FE', name: 'Front-engined cars', note: 'Front-engined cars; the first world championship seasons' },
-    { from: 1961, to: 1965, label: '1.5 L', short: '1.5L', name: '1.5-litre formula', note: 'Rear-engined cars with 1.5-litre engines' },
-    { from: 1966, to: 1976, label: '3 L, wings', short: '3L', name: '3-litre and wings', note: '3-litre engines, the Cosworth V8, wings and slick tyres' },
-    { from: 1977, to: 1982, label: 'Ground effect I', short: 'GE I', name: 'First ground effect', note: 'Ground-effect cars (Lotus 78 onwards), until they were banned after 1982' },
-    { from: 1983, to: 1988, label: 'Turbo', short: 'Turbo', name: 'Turbo era', note: 'Flat-bottomed cars; turbo engines of 1,000 hp and more until they were banned after 1988' },
-    { from: 1989, to: 2005, label: 'V10', short: 'V10', name: 'V10 era', note: 'Naturally aspirated engines; the V10 became the standard' },
-    { from: 2006, to: 2013, label: 'V8', short: 'V8', name: 'V8 era', note: '2.4-litre V8 engines, with KERS from 2009' },
-    { from: 2014, to: 2021, label: 'Turbo hybrid', short: 'Hybrid', name: 'Turbo-hybrid era', note: '1.6-litre V6 turbo hybrid power units' },
-    { from: 2022, to: 2025, label: 'Ground effect II', short: 'GE II', name: 'Ground effect returns', note: 'Ground-effect cars again, with 18-inch wheels and a cost cap' },
-    { from: 2026, to: 9999, label: 'Current', short: 'Now', name: 'Current era', note: 'Lighter cars with active aero and a 50/50 electric and combustion power unit' },
-  ];
+  // Rule eras (shared with the season picker): F1Common.ERAS.
+  const ERAS = (typeof F1Common !== 'undefined' ? F1Common : require('./common.js')).ERAS;
   const eraOf = year => ERAS.find(e => year >= e.from && year <= e.to);
 
   const M = (ids, name, color, from, to) => ({ ids: [].concat(ids), name, color, from: from || 0, to: to || 9999 });

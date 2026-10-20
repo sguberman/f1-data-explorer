@@ -12,7 +12,7 @@ issues that were still open to their GitHub numbers. When citing a legacy issue 
 
 ## What it is
 
-A static, multi-page Formula 1 statistics site for the 2026 season (earlier seasons 2021–2025 also load).
+A static, multi-page Formula 1 statistics site for the 2026 season (every earlier season back to 1950 also loads, #141).
 It is hosted by the owner on **GitHub Pages** and fetches live race data in the browser from the public
 API at <https://f1api.dev/docs>. There is no server, no build step and no framework: plain HTML, CSS and
 vanilla JavaScript, plus Chart.js 4.4.1 from cdnjs.
@@ -59,6 +59,7 @@ site/                 The website (deployed as the site root, so URLs are unchan
                       tests.yml runs tests/ on PRs (a new push cancels the PR's older run, #137). snapshot.yml refreshes site/data/ (#13).
 tools/                snapshot.mjs: builds site/data/{year}.json from f1api.dev (run by snapshot.yml).
                       eras-snapshot.mjs (#135): builds site/data/eras.json (standings since 1950) from Jolpica (same workflow).
+                      history-snapshot.mjs (#141): builds site/data/{1950..2020}.json (per-round results) from Jolpica (same workflow).
 tests/                Browser tests, run on every PR (see "Tests" below). Not deployed.
 docs/                 Project docs (not deployed): PROJECT_CONTEXT.md (this file), DONE.md (archive of
                       legacy issues #1–#55), TODO.md (legacy → GitHub issue numbers).
@@ -120,6 +121,21 @@ Move something into `common.js` only once it's genuinely identical on every page
   season data, optionally "all"), and on pushes that change the generator or `data.js`. It commits
   `issue #13: update season data (automated)` and, on `main`, starts the Pages deploy itself (commits made
   by a workflow don't trigger other workflows).
+- **Back-filled seasons (#141, `tools/history-snapshot.mjs`):** `site/data/{1950..2020}.json` are written from Jolpica
+  (`/{year}/results.json`, pages of 100 rows ~350 ms apart, retries on 429/5xx, plus `/{year}.json` for the calendar) in the
+  same shape as the recent seasons, so every page opens them with no change to `loadSeason()`: `complete` seasons make no
+  f1api.dev request (there is none for those years). They are leaner: no sprints (`sprintResults: null`, `calendar.sprintRounds: []`),
+  and result rows carry only what the pages read. Points are **as awarded** (Jolpica's: shared drives are split between the
+  drivers; "best N results count" rules are not applied, so a champion's total can read higher than the official one). The
+  constructors' totals are the sum of both cars (before 1979 only a team's best-placed car counted officially). Drivers
+  before 2000s have no three-letter code: it is the surname's first three letters, a clash gets the first name's initial
+  and two letters (`codeFor()`). Not-classified = a `positionText` that isn't a number. A finished season is never fetched
+  again (`--all` or listing years rebuilds); the workflow runs it before `eras-snapshot.mjs`.
+- **Scoring by season (#141, `F1Common.scoring(year)`):** `{gp: [places that scored], sprint: [...], fl}`: 1950–59 8-6-4-3-2 (1960
+  adds a sixth place), 1961–90 9-6-4-3-2-1, 1991–2002 10-6-4-3-2-1, 2003–09 10-8-6-5-4-3-2-1, 2010 on 25-18-15-12-10-8-6-4-2-1;
+  sprints 3-2-1 in 2021, 8-1 from 2022, none before; `fl` = the most a fastest lap added (1950–58 and 2019–24). Used by
+  `maxWeekendPoints()` (title race), the drivers'/constructors' knockout line (`gp[0]` + `sprint[0]` per weekend; teams both
+  cars), the Simulator (`PTS_GP` / `PTS_SPRINT`, its title-decided card) and What-If (its drag lists).
 - **Daily check (#60):** the check of f1api.dev for rounds newer than the season file runs at most once a
   day per season, across the whole site. A clean check is kept as `f1cache:v2:{year}/checked` =
   `{firstLive, rounds}` (the rounds it found from `firstLive` on; with no season file, the whole season) for
@@ -193,7 +209,8 @@ Move something into `common.js` only once it's genuinely identical on every page
 ## Shared controls (`controls.js`, global `F1Controls`)
 
 `F1Controls.mount(containerId, {defaultYear})` renders the season dropdown (the years in
-`F1Common.SEASON_META`, newest first — add a row there to add a season) and round slider,
+`F1Common.SEASON_META`, newest first — add a row there to add a season; #141: 1950–2026, grouped in `<optgroup>`s by the Eras page's rule
+eras, `F1Common.ERAS`, labelled "Turbo era · 1983–1988") and round slider,
 persists the season in `localStorage` (`f1cache:selectedSeason`), and dispatches on `window`. The saved
 season wins over `defaultYear`, so moving between pages keeps it (#62; pages pass no `defaultYear`, which
 falls back to the newest season):
@@ -490,6 +507,11 @@ and the tooltip at the hovered season.
 on the line nearest the pointer in the season under it (within 14 px; 26 px for a finger) pins it, as does clicking its legend entry (the legend entries
 are buttons); clicking the same line or entry again, empty space or Escape lets go. The lit line is drawn on top and thicker, the others fade to 15% opacity and their legend
 entries dim. Redraws only (`applyFocus()`); a pin whose line leaves the chart is dropped, and the PNG export lets go of any highlight first.
+**Open a season (#141):** under the chart, a line "Open 1988: Constructors' championship → · Positions · What-if · Simulator" follows the season under the
+pointer or finger (pointermove / pointerdown on the chart; the last season touched stays), each link `page.html?season=Y` with no `round`, so
+it lands on the end of that season; the main link follows the view (drivers → `drivers.html`, constructors → `constructors.html`). A canvas tooltip can't
+be clicked, so the tooltip's footer ("Open 1988 → link below the chart") points at the line instead. The rule eras themselves live in `F1Common.ERAS`
+(also the season dropdown's groups); `F1Eras.ERAS` is the same list.
 **Drivers' titles on the constructors plot (#135 O6):** a ★ on a team's line in each finished season one of its drivers won the drivers' championship (the
 champion's team from the standings file, mapped through the lineage map, so Brawn's 2009 star is on the Mercedes line; a champion who changed team mid-season counts
 for the first team listed). The star is the team's colour for that season with a panel-coloured edge, drawn at the team's own position that season (e.g. McLaren
