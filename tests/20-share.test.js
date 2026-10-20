@@ -32,7 +32,7 @@ module.exports = async (t, h) => {
   await h.setRound(p, 12); await p.selectOption('#sortSeg', 'team'); await p.selectOption('#posView', 'actual'); await p.waitForTimeout(80);
   t.check('drivers: defaults are left out of the URL', p.url().endsWith('/drivers.html?season=2026'), p.url());
   // Junk is ignored: unknown ids dropped, bad values fall back.
-  await go(p, 'drivers.html?season=1999&round=99&d=nobody,d0_0&sort=zzz');
+  await go(p, 'drivers.html?season=1949&round=99&d=nobody,d0_0&sort=zzz');
   t.check('drivers: a bad link falls back sensibly (season, round, unknown ids, bad sort)',
     await p.evaluate(() => [F1Controls.state.year, F1Controls.state.round].join()) === '2026,12'
     && JSON.stringify(await checked(p)) === '["d0_0"]' && await p.$eval('#sortSeg', s => s.value) === 'team', p.url());
