@@ -56,6 +56,7 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
 .erasOpen{margin:8px 0 2px;font-size:13px;color:var(--muted);}
 .erasOpen a{color:var(--ink);font-weight:600;text-decoration:underline;text-underline-offset:2px;}
 .erasOpen .sep{margin:0 6px;opacity:.5;}
+.erasOpen .erasUnlock{font:inherit;font-size:12px;color:var(--ink2);background:var(--inset);border:1px solid var(--line);border-radius:10px;padding:0 8px;cursor:pointer;}
 .erasLegend .lgItem{display:inline-flex;align-items:center;gap:6px;font:inherit;color:inherit;background:none;border:none;padding:2px 0;cursor:pointer;border-radius:4px;}
 .erasLegend .lgItem:focus-visible{outline:2px solid var(--line-strong);outline-offset:2px;}
 .erasLegend .lgItem.dim{opacity:.4;}
@@ -412,6 +413,7 @@ function draw(keepScroll){
 
   $('erasLegend').innerHTML = ds.map(d => `<button type="button" class="lgItem" data-id="${esc(d.e.id)}" aria-pressed="false" title="Highlight this line" style="--c:${d.color}"><i class="${d.dash.length === 0 ? '' : d.dash[0] > 3 ? 'd1' : 'd2'}"></i>${esc(d.label)}</button>`).join('');
   if(pinned && !ds.some(d => d.e.id === pinned)) pinned = null; // its line is gone
+  if(lockedYear !== null && !model.years.includes(lockedYear)) lockedYear = null;
   const ax = axes(ds);
   $('erasMany').hidden = ds.length <= MANY; // C1
   $('erasEmpty').style.display = !ds.length || ax.none ? 'block' : 'none';
@@ -431,7 +433,7 @@ function draw(keepScroll){
   Chart.defaults.font.family = ff; Chart.defaults.color = P.text;
   chart = new Chart($('erasCanvas'), {
     type: 'line',
-    plugins: [bandPlugin, hoverPlugin, axisPin, champPlugin],
+    plugins: [bandPlugin, lockPlugin, hoverPlugin, axisPin, champPlugin],
     data: { datasets: ds.map(d => ({
       label: d.label, data: d.data, borderColor: d.color, borderWidth: 2.4, borderDash: d.dash, spanGaps: false, tension: 0,
       pointBackgroundColor: d.colors, pointBorderColor: d.colors, pointRadius: 0, pointHoverRadius: 0,
@@ -457,7 +459,7 @@ function draw(keepScroll){
             title(items){ const y = Math.round(items[0].raw.x), era = F1Eras.eraOf(y); return `${y}${era ? ' · ' + era.name : ''}${y === model.partial ? ` (after round ${model.round})` : ''}`; },
             label(it){ const s = it.dataset._e.seasons[Math.round(it.raw.x)]; return `${it.dataset.label}: P${s.pos} · ${Math.round(s.pts * 10) / 10} pts${s.name ? ' · ' + s.name : ''}`; },
             afterLabel(it){ const k = it.dataset._e.seasons[Math.round(it.raw.x)]; return k && k.champ ? `★ Drivers' champion: ${k.champ}` : ''; },
-            footer(items){ const y = Math.round(items[0].raw.x); return `Open ${y} → link below the chart`; },
+            footer(items){ const y = Math.round(items[0].raw.x); return `Click ${y} on the axis to open it · click here to lock it`; },
             labelColor: it => ({ borderColor: it.dataset.borderColor, backgroundColor: it.dataset.pointBackgroundColor[it.dataIndex] || it.dataset.borderColor })
           }
         }
@@ -509,32 +511,61 @@ $('erasPicker').addEventListener('change', e => {
   if(isDefault(picked[view])) picked[view] = null;
   renderPicker(false); draw(); syncURL();
 });
-$('viewSel').addEventListener('change', e => { view = e.target.value; { const y = openYear; openYear = null; setOpenYear(y); } filter = ''; $('erasFilter').value = ''; render(); });
+$('viewSel').addEventListener('change', e => { view = e.target.value; renderOpen(); filter = ''; $('erasFilter').value = ''; render(); });
 $('sortSel').addEventListener('change', e => { sortBy = e.target.value; renderPicker(); });
 $('erasFilter').addEventListener('input', e => { filter = e.target.value; renderPicker(); });
 window.addEventListener('themechange', () => { renderPicker(); draw(true); });
 let lastW = innerWidth; // turning the phone (not the address bar showing or hiding) changes the chart's size
 window.addEventListener('resize', () => { if(innerWidth !== lastW){ lastW = innerWidth; draw(true); } });
-$('erasCanvas').addEventListener('click', e => { const id = lineUnder(e); setPinned(id); }); // empty space: id is null, which lets go
+$('erasCanvas').addEventListener('click', e => {
+  const p = pointAt(e);
+  if(p && p.zone === 'axis'){ location.href = seasonUrl(mainPage()[0], p.year); return; } // a year on the axis: straight to its championship page
+  if(p) lockYear(p.year); // inside the plot (a line or empty space): lock that year for the links under the chart
+  setPinned(lineUnder(e)); // …and a line under the pointer is lit as before (empty space: id is null, which lets go)
+});
 
-// #141: open a season on the other pages. The link sits under the chart (a canvas tooltip can't be clicked) and follows
-// the season under the pointer or finger; it lands on the end of that season (no round in the link).
-let openYear = null;
-function setOpenYear(y){
-  if(!model || !y || !model.years.includes(y) || y === openYear) return;
-  openYear = y;
-  const main = view === 'drivers' ? ['drivers.html', "Drivers' championship"] : ['constructors.html', "Constructors' championship"];
-  const link = (page, label) => `<a href="${page}?season=${y}">${label}</a>`;
-  $('erasOpen').innerHTML = `Open ${y}: ${link(main[0], main[1] + ' →')}<span class="sep">·</span>`
+// #141: open a season on the other pages. Clicking a year on the x-axis opens that season's drivers' or constructors' page
+// (no round in the link: it lands on the end of the season). Clicking inside the plot, on a line or in empty space, locks that
+// year (a vertical highlight, like the round shading on the championship pages): the links under the chart then stay on it
+// until Escape or the × lets go. Without a lock they follow the season under the pointer or finger.
+let openYear = null, lockedYear = null;
+const mainPage = () => view === 'drivers' ? ['drivers.html', "Drivers' championship"] : ['constructors.html', "Constructors' championship"];
+const seasonUrl = (page, y) => `${page}?season=${y}`;
+function renderOpen(){
+  const y = lockedYear !== null ? lockedYear : openYear, el = $('erasOpen');
+  if(y === null || !model || !model.years.includes(y)){ el.hidden = true; el.innerHTML = ''; return; }
+  const main = mainPage(), link = (page, label) => `<a href="${seasonUrl(page, y)}">${label}</a>`;
+  el.innerHTML = `Open ${y}${lockedYear !== null ? ' <button type="button" class="erasUnlock" title="Let go of the locked year (Esc)" aria-label="Let go of the locked year">× locked</button>' : ''}: ${link(main[0], main[1] + ' →')}<span class="sep">·</span>`
     + [['position.html', 'Positions'], ['whatif.html', 'What-if'], ['simulator.html', 'Simulator']].map(([pg, l]) => link(pg, l)).join('<span class="sep">·</span>');
-  $('erasOpen').hidden = false;
+  el.hidden = false;
 }
-const seasonAt = ev => { if(!chart) return null; const r = $('erasCanvas').getBoundingClientRect(), mx = ev.clientX - r.left, a = chart.chartArea;
-  return mx < a.left || mx > a.right ? null : Math.round(chart.scales.x.getValueForPixel(mx)); };
-$('erasCanvas').addEventListener('pointermove', e => setOpenYear(seasonAt(e)));
-$('erasCanvas').addEventListener('pointerdown', e => setOpenYear(seasonAt(e)));
+function setOpenYear(y){ if(lockedYear !== null || !model || !y || !model.years.includes(y) || y === openYear) return; openYear = y; renderOpen(); }
+function lockYear(y){ if(!model || !y || !model.years.includes(y)) return; lockedYear = y; renderOpen(); chart && chart.draw(); }
+function unlockYear(){ if(lockedYear === null) return; lockedYear = null; renderOpen(); chart && chart.draw(); }
+// Which season is under the pointer, and whether it's on the plot or on the axis labels below it (null: outside both).
+function pointAt(ev){
+  if(!chart) return null;
+  const r = $('erasCanvas').getBoundingClientRect(), mx = ev.clientX - r.left, my = ev.clientY - r.top, a = chart.chartArea;
+  if(mx < a.left || mx > a.right || my < a.top - 2) return null;
+  const year = Math.round(chart.scales.x.getValueForPixel(mx));
+  if(!model.years.includes(year)) return null;
+  return { year, zone: my <= a.bottom + 2 ? 'plot' : 'axis' };
+}
+$('erasCanvas').addEventListener('pointermove', e => { const p = pointAt(e); if(p) setOpenYear(p.year); e.currentTarget.style.cursor = p && p.zone === 'axis' ? 'pointer' : ''; });
+$('erasCanvas').addEventListener('pointerdown', e => { const p = pointAt(e); if(p && p.zone === 'plot') setOpenYear(p.year); });
+$('erasOpen').addEventListener('click', e => { if(e.target.closest('.erasUnlock')) unlockYear(); });
+// A locked year is shaded and marked with a vertical line, behind the lines.
+const lockPlugin = {
+  id: 'lockedSeason',
+  beforeDatasetsDraw(ch){
+    if(lockedYear === null) return;
+    const sc = ch.scales.x, a = ch.chartArea, c = ch.ctx, x0 = sc.getPixelForValue(lockedYear - 0.5), x1 = sc.getPixelForValue(lockedYear + 0.5), mid = Math.round((x0 + x1) / 2) + 0.5;
+    c.save(); c.fillStyle = F1Common.withAlpha(F1Theme.chart().label, 0.1); c.fillRect(Math.max(a.left, x0), a.top, Math.min(a.right, x1) - Math.max(a.left, x0), a.bottom - a.top);
+    c.strokeStyle = F1Theme.chart().label; c.globalAlpha = 0.75; c.lineWidth = 1.5; c.beginPath(); c.moveTo(mid, a.top); c.lineTo(mid, a.bottom); c.stroke(); c.restore();
+  }
+};
 $('erasLegend').addEventListener('click', e => { const b = e.target.closest('.lgItem'); if(b) setPinned(b.dataset.id); });
-document.addEventListener('keydown', e => { if(e.key === 'Escape' && pinned){ pinned = null; applyFocus(); } });
+document.addEventListener('keydown', e => { if(e.key !== 'Escape') return; if(pinned){ pinned = null; applyFocus(); } else unlockYear(); });
 $('chartTitle').parentNode.insertAdjacentHTML('beforeend', F1Share.BUTTON); // #145: the same button as the other pages, sharing the address (kept current by syncURL)
 $('chartTitle').parentNode.querySelector('.f1c-share').addEventListener('click', e => F1Share.share(e.currentTarget, true));
 F1Common.initPickerToggle();
