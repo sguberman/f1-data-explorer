@@ -28,7 +28,10 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
 .pickerEmpty{font-size:12.5px;color:var(--sub);padding:8px 2px;}
 .erasChartWrap{position:relative;width:100%;height:380px;}
 .erasLegend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--ink2);margin:0 0 10px;}
-.erasLegend span{display:inline-flex;align-items:center;gap:6px;}
+.erasLegend .lgItem{display:inline-flex;align-items:center;gap:6px;font:inherit;color:inherit;background:none;border:none;padding:2px 0;cursor:pointer;border-radius:4px;}
+.erasLegend .lgItem:focus-visible{outline:2px solid var(--line-strong);outline-offset:2px;}
+.erasLegend .lgItem.dim{opacity:.4;}
+.erasLegend .lgItem.on{font-weight:600;color:var(--ink);}
 .erasLegend i{display:inline-block;width:20px;height:0;border-top:3px solid var(--c);}
 .erasLegend i.d1{border-top-style:dashed;} .erasLegend i.d2{border-top-style:dotted;}
 .eraKey{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:6px 16px;margin-top:12px;font-size:11.5px;color:var(--sub);line-height:1.4;}
@@ -202,6 +205,36 @@ Chart.Tooltip.positioners.season = function(items, pos){
   return { x: this.chart.scales.x.getPixelForValue(seasonOf(this.chart, items[0])), y: pos.y };
 };
 
+// #135 (C2): highlight a line. Hovering with a mouse lights the line under the pointer; a click or tap (or a click on
+// its legend entry) pins it; clicking empty space, the same line or legend entry again, or Escape lets go. Everything else
+// fades and the lit line is drawn on top and thicker. Redraws only; nothing is fetched.
+let pinned = null, hover = null; // the lit line's id (a driver id or a team lineage id)
+const lit = () => pinned || hover;
+const shade = (d, color) => lit() && lit() !== d.e.id ? F1Common.withAlpha(color, 0.15) : color;
+function applyFocus(){
+  if(!chart) return;
+  chart.data.datasets.forEach(set => { const on = lit() === set._e.id;
+    set.order = on ? -1 : 0; set.borderWidth = !lit() ? 2.4 : on ? 3.6 : 1.8; });
+  chart.update('none');
+  document.querySelectorAll('#erasLegend .lgItem').forEach(b => {
+    b.classList.toggle('on', !!lit() && lit() === b.dataset.id); b.classList.toggle('dim', !!lit() && lit() !== b.dataset.id);
+    b.setAttribute('aria-pressed', String(pinned === b.dataset.id));
+  });
+}
+// The line nearest the pointer in the season under it, if it's close enough (a finger needs more room).
+function lineUnder(ev){
+  if(!chart) return null;
+  const r = $('erasCanvas').getBoundingClientRect(), mx = ev.clientX - r.left, my = ev.clientY - r.top, a = chart.chartArea;
+  if(mx < a.left || mx > a.right || my < a.top - 2 || my > a.bottom + 2) return null;
+  const year = Math.round(chart.scales.x.getValueForPixel(mx));
+  let best = null, bd = ev.pointerType === 'touch' ? 26 : 14;
+  chart.data.datasets.forEach(d => { const k = d._e.seasons[year]; if(!k) return;
+    const dy = Math.abs(chart.scales.y.getPixelForValue(k.pos) - my); if(dy <= bd){ bd = dy; best = d._e.id; } });
+  return best;
+}
+function setHover(id){ if(id !== hover){ hover = id; applyFocus(); } }
+function setPinned(id){ pinned = pinned === id ? null : id; hover = null; applyFocus(); }
+
 function datasets(){
   const ids = current(), L = list(), byId = new Map(L.map(e => [e.id, e])), seen = {};
   return ids.map(id => byId.get(id)).filter(Boolean).sort((a, b) => L.indexOf(a) - L.indexOf(b)).map(e => {
@@ -230,7 +263,9 @@ function draw(){
   const P = F1Theme.chart(), nar = F1Common.isNarrow(), ds = datasets();
   if(chart){ chart.destroy(); chart = null; }
   $('erasEmpty').style.display = ds.length ? 'none' : 'block';
-  $('erasLegend').innerHTML = ds.map(d => `<span style="--c:${d.color}"><i class="${d.dash.length === 0 ? '' : d.dash[0] > 3 ? 'd1' : 'd2'}"></i>${esc(d.label)}</span>`).join('');
+  $('erasLegend').innerHTML = ds.map(d => `<button type="button" class="lgItem" data-id="${esc(d.e.id)}" aria-pressed="false" title="Highlight this line" style="--c:${d.color}"><i class="${d.dash.length === 0 ? '' : d.dash[0] > 3 ? 'd1' : 'd2'}"></i>${esc(d.label)}</button>`).join('');
+  if(pinned && !ds.some(d => d.e.id === pinned)) pinned = null; // its line is gone
+  hover = null;
   const ax = axes(ds), n = ax.x1 - ax.x0 + 1, stride = n <= 12 ? 1 : n <= 20 ? (nar ? 2 : 1) : n <= 45 ? 5 : nar ? 10 : 5;
   $('chartSub').textContent = `${view === 'drivers' ? 'drivers' : 'constructors'} · ${ax.x0}–${ax.x1}`;
   $('erasNote').textContent = (view === 'teams' ? `Constructors' standings start in ${model.firstTeamYear}. ` : '')
@@ -244,7 +279,7 @@ function draw(){
     data: { datasets: ds.map(d => ({
       label: d.label, data: d.data, borderColor: d.color, borderWidth: 2.4, borderDash: d.dash, spanGaps: false, tension: 0,
       pointBackgroundColor: d.colors, pointBorderColor: d.colors, pointRadius: 0, pointHoverRadius: 0,
-      segment: { borderColor: c => d.colors[c.p1DataIndex] || d.color },
+      segment: { borderColor: c => shade(d, d.colors[c.p1DataIndex] || d.color) },
       _e: d.e })) },
     options: {
       animation: false, responsive: true, maintainAspectRatio: false, parsing: false,
@@ -291,7 +326,7 @@ F1Export.attach($('chartCard'), {
   get name(){ return 'eras-' + view; },
   title: () => view === 'drivers' ? "Drivers' Championship by era" : "Constructors' Championship by era",
   subtitle: () => `Championship position by season, ${model.years[0]}–${model.years[model.years.length - 1]}`,
-  canvas: () => $('erasCanvas'),
+  canvas: () => { pinned = hover = null; applyFocus(); return $('erasCanvas'); }, // the picture is never faded
   legend: () => datasets().map(d => ({ label: d.label, color: d.color, dash: d.dash })),
   csv: exportRows
 });
@@ -312,6 +347,11 @@ $('viewSel').addEventListener('change', e => { view = e.target.value; filter = '
 $('sortSel').addEventListener('change', e => { sortBy = e.target.value; renderPicker(); });
 $('erasFilter').addEventListener('input', e => { filter = e.target.value; renderPicker(); });
 window.addEventListener('themechange', () => { renderPicker(); draw(); });
+$('erasCanvas').addEventListener('pointermove', e => { if(e.pointerType === 'mouse' && !pinned) setHover(lineUnder(e)); });
+$('erasCanvas').addEventListener('pointerleave', () => setHover(null));
+$('erasCanvas').addEventListener('click', e => { const id = lineUnder(e); setPinned(id); }); // empty space: id is null, which lets go
+$('erasLegend').addEventListener('click', e => { const b = e.target.closest('.lgItem'); if(b) setPinned(b.dataset.id); });
+document.addEventListener('keydown', e => { if(e.key === 'Escape' && (pinned || hover)){ pinned = hover = null; applyFocus(); } });
 F1Common.initPickerToggle();
 renderEraKey();
 

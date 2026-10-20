@@ -486,6 +486,10 @@ drivers or teams in every season from 1950 to the latest, on one chart in the po
 segment at its position (`HALF` = 0.3 of a season either side of the year, a linear year axis), joined to the next season by an angled
 line, a missing season breaking the line; P1 at the top; no markers and no mark for title years (O4); a thin vertical line (`F1Common.hoverLine`)
 and the tooltip at the hovered season.
+**Highlight a line (#135 C2):** hovering with a mouse lights the line nearest the pointer in the season under it (within 14 px; 26 px for a finger);
+a click or tap pins it, as does clicking its legend entry (the legend entries are buttons); clicking the same line or entry again, empty space or
+Escape lets go; while pinned, hovering changes nothing. The lit line is drawn on top and thicker, the others fade to 15% opacity and their legend
+entries dim. Redraws only (`applyFocus()`); a pin whose line leaves the chart is dropped, and the PNG export lets go of any highlight first.
 **The axes fit the picks (#135 O5, `axes()`):** seasons from one before the first to one after the last season any pick raced, positions
 down to the worst one shown (to a multiple of 5, at least P5 with ticks 1–5, never below P20); nothing picked: the whole span and P20. With the **rule eras shaded behind it** and labelled (`F1Eras.ERAS`: front engine 1950–60, 1.5 L 1961–65,
 3 L and wings 1966–76, first ground effect 1977–82, turbo 1983–88, V10 1989–2005, V8 2006–13, turbo hybrid 2014–21, ground effect

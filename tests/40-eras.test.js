@@ -124,6 +124,54 @@ module.exports = async (t, h) => {
   t.check('tooltip: season and era, then position, points and team', /^2010 · V8 era$/.test(tip.title) && tip.lines.some(l => /Carl Gamma: P1 · 255 pts · Red Bull/.test(l)), JSON.stringify(tip));
   t.check('tooltip: the partial season says after which round', await p.evaluate(() => chart.options.plugins.tooltip.callbacks.title([{ raw: { x: 2025.7, y: 1 } }])) === '2026 · Current era (after round 5)');
 
+  const d1id = 'd1', d2id = 'd2', d3id = 'd3';
+  // #135 C2: highlight a line
+  const at2009 = who => p.evaluate(w => { const r = chart.canvas.getBoundingClientRect(), d = chart.data.datasets.find(x => x.label === w), k = d._e.seasons[2009];
+    return { x: r.left + chart.scales.x.getPixelForValue(2009), y: r.top + chart.scales.y.getPixelForValue(k.pos) }; }, who);
+  const lit = () => p.evaluate(() => ({ lit: typeof lit === 'function' ? lit() : null,
+    widths: chart.data.datasets.map(d => [d.label, d.borderWidth]), orders: chart.data.datasets.map(d => [d.label, d.order]),
+    fade: chart.data.datasets.map(d => [d.label, /rgba\(.*,\s*0\.15\)|\/ 0\.15/.test(d.segment.borderColor({ p1DataIndex: 20 }))]),
+    legend: [...document.querySelectorAll('#erasLegend .lgItem')].map(b => [b.textContent, b.className.replace('lgItem', '').trim(), b.getAttribute('aria-pressed')]) }));
+  let pt = await at2009('Alan Alpha'); await p.mouse.move(pt.x, pt.y); await p.waitForTimeout(80);
+  let LL = await lit();
+  t.check('hovering a line lights it: thicker, on top, the others faded; its legend entry bold, the others dimmed',
+    LL.lit === d1id && LL.widths.find(w => w[0] === 'Alan Alpha')[1] > 3 && LL.widths.filter(w => w[0] !== 'Alan Alpha').every(w => w[1] < 2.4)
+    && LL.orders.find(o => o[0] === 'Alan Alpha')[1] < 0 && LL.fade.filter(f => f[0] !== 'Alan Alpha').every(f => f[1]) && !LL.fade.find(f => f[0] === 'Alan Alpha')[1]
+    && LL.legend.find(l => l[0] === 'Alan Alpha')[1] === 'on' && LL.legend.filter(l => l[0] !== 'Alan Alpha').every(l => l[1] === 'dim'), JSON.stringify(LL));
+  await p.mouse.move(pt.x, pt.y - 120); await p.waitForTimeout(80);  // up in empty space (above P1)
+  LL = await lit();
+  t.check('moving off the line lets go: all normal again', LL.lit === null && LL.widths.every(w => w[1] === 2.4) && LL.fade.every(f => !f[1]) && LL.legend.every(l => l[1] === ''), JSON.stringify(LL));
+  pt = await at2009('Bob Beta'); await p.mouse.move(pt.x, pt.y); await p.mouse.down(); await p.mouse.up(); await p.mouse.move(pt.x + 60, pt.y - 100); await p.waitForTimeout(80);
+  LL = await lit();
+  t.check('clicking a line pins it: it stays lit after the pointer leaves it, and the link is untouched', LL.lit === d2id && LL.legend.find(l => l[0] === 'Bob Beta')[2] === 'true' && (await state()).url === '', JSON.stringify(LL));
+  pt = await at2009('Carl Gamma'); await p.mouse.move(pt.x, pt.y); await p.waitForTimeout(80);
+  t.check('while pinned, hovering another line changes nothing', (await lit()).lit === d2id);
+  await p.mouse.down(); await p.mouse.up(); await p.waitForTimeout(60);
+  t.check('clicking another line moves the pin to it', (await lit()).lit === d3id);
+  await p.click('#erasLegend .lgItem >> nth=1'); await p.waitForTimeout(60);
+  LL = await lit();
+  t.check('a legend entry pins its line (Alan is second in the list); clicking it again lets go', LL.lit === d1id && LL.legend[1][2] === 'true');
+  await p.click('#erasLegend .lgItem >> nth=1'); await p.waitForTimeout(60);
+  t.check('…again: all normal', (await lit()).lit === null);
+  const empty = await p.evaluate(() => { const r = chart.canvas.getBoundingClientRect(), a = chart.chartArea; return { x: r.left + a.left + a.width / 2, y: r.top + a.bottom - 8 }; });
+  await p.click('#erasLegend .lgItem >> nth=0'); await p.mouse.move(empty.x, empty.y); await p.mouse.down(); await p.mouse.up(); await p.waitForTimeout(60);
+  t.check('clicking empty space lets go of a pin', (await lit()).lit === null);
+  await p.click('#erasLegend .lgItem >> nth=0'); await p.keyboard.press('Escape'); await p.waitForTimeout(60);
+  t.check('Escape lets go of a pin', (await lit()).lit === null);
+  // a finger: a tap near a line pins it (wider reach than a mouse); no hover for touch
+  pt = await at2009('Carl Gamma');
+  await p.evaluate(({ x, y }) => { const c = chart.canvas; const ev = (type) => new PointerEvent(type, { clientX: x, clientY: y + 22, pointerType: 'touch', bubbles: true });
+    c.dispatchEvent(ev('pointermove')); c.dispatchEvent(new PointerEvent('click', { clientX: x, clientY: y + 22, pointerType: 'touch', bubbles: true })); }, pt);
+  await p.waitForTimeout(60);
+  t.check('a tap 22px from a line (touch reach) pins it; the touch move alone lit nothing', (await lit()).lit === d3id);
+  await p.keyboard.press('Escape');
+  await p.click('#erasLegend .lgItem >> nth=0'); await p.waitForTimeout(40);
+  const png = p.waitForEvent('download'); await p.click('#chartCard .exp-png'); await png;
+  t.check('the PNG export is never faded: it lets go of a pin first', (await lit()).lit === null);
+  await p.click('#presetRow [data-preset="none"]'); await p.click('#erasPicker input[data-id="d1"]');
+  await p.click('#erasLegend .lgItem >> nth=0'); await p.click('#erasPicker input[data-id="d1"]');
+  t.check('a pinned line that leaves the chart lets go with it', (await lit()).lit === null);
+
   // picking
   await p.click('#presetRow [data-preset="none"]');
   s = await state();
