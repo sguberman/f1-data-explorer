@@ -86,33 +86,36 @@ module.exports = async (t, h) => {
   t.check('the default preset is highlighted and the URL stays clean', s.active.includes('top5') && s.url === '', JSON.stringify(s));
   t.check('the picker lists every driver, with titles', s.rows === 3 && /2 titles/.test(await h.text(p, '#erasPicker .pickerRow')));
   const ds = await p.evaluate(() => { const d = chart.data.datasets.find(x => x.label === 'Alan Alpha');
-    return { data: d.data, years: chart.data.labels, style: d.pointStyle, radius: d.pointRadius, colors: d.pointBackgroundColor, n: chart.data.datasets.length }; });
-  const at = y => ds.years.indexOf(String(y));
-  t.check('a driver has a position in the seasons they raced and none in the others', ds.data[at(2009)] === 1 && ds.data[at(2010)] === 4 && ds.data[at(2012)] === 8 && ds.data[at(2005)] === null);
-  t.check('no special marker for a title season (#135 O4): every point is the same circle', ds.style === 'circle' && ds.radius === 2.5);
-  t.check('the line changes colour with the team (Brawn 2009, Mercedes 2010)', ds.colors[at(2009)] !== ds.colors[at(2010)] && !!ds.colors[at(2009)]);
+    return { data: d.data, radius: d.pointRadius, colors: d.pointBackgroundColor, n: chart.data.datasets.length, type: chart.options.scales.x.type }; });
+  const idx = y => ds.data.findIndex(q => Math.round(q.x) === y);
+  const pos = y => { const q = ds.data[idx(y)]; return q ? q.y : undefined; };
+  t.check('a driver has a position in the seasons they raced and none in the others', pos(2009) === 1 && pos(2010) === 4 && pos(2012) === 8 && pos(2005) === null);
+  t.check('O1: each season is a flat segment (two points a little either side of the year, same position), on a linear year axis',
+    ds.type === 'linear' && ds.data.length === 2 * 11 && ds.data[idx(2009)].y === ds.data[idx(2009) + 1].y && ds.data[idx(2009)].x < 2009 && ds.data[idx(2009) + 1].x > 2009 && ds.data[idx(2009) + 1].x < 2009.5, JSON.stringify(ds.data.slice(idx(2009), idx(2009) + 2)));
+  t.check('no point markers: only the lines (title years are not marked either, #135 O4)', ds.radius === 0);
+  t.check('the line changes colour with the team (Brawn 2009, Mercedes 2010)', ds.colors[idx(2009)] !== ds.colors[idx(2010)] && !!ds.colors[idx(2009)]);
   t.check('the era bands are drawn (the plugin is on the chart)', await p.evaluate(() => chart.config.plugins.some(x => x.id === 'eraBands')));
   t.check('the era key lists all eras', await p.$$eval('#eraKey > div', d => d.length) === F1Eras.ERAS.length);
   t.check('the chart axis is P1 at the top', await p.evaluate(() => chart.options.scales.y.reverse === true));
   t.check('the note no longer mentions stars', !/★/.test(await h.text(p, '#erasNote')) && !/★/.test(await h.text(p, '.sub')));
   // #135 (O5): the axes fit the picks
-  const axesOf = () => p.evaluate(() => { const sc = chart.options.scales; return { x0: chart.data.labels[sc.x.min], x1: chart.data.labels[sc.x.max], ymax: sc.y.max, ticks: chart.scales.y.ticks.map(k => k.value), sub: document.getElementById('chartSub').textContent }; });
+  const axesOf = () => p.evaluate(() => { const sc = chart.options.scales; return { x0: Math.round(sc.x.min + 0.5), x1: Math.round(sc.x.max - 0.5), ymax: sc.y.max, ticks: chart.scales.y.ticks.map(k => k.value), sub: document.getElementById('chartSub').textContent }; });
   let ax = await axesOf();
-  t.check('default picks (Gamma, Alpha, Beta): the whole span 1966–2026, worst finish P15 → axis to P15', ax.x0 === '1966' && ax.x1 === '2026' && ax.ymax === 15.5 && ax.ticks.join() === '1,5,10,15', JSON.stringify(ax));
+  t.check('default picks (Gamma, Alpha, Beta): the whole span 1966–2026, worst finish P15 → axis to P15', ax.x0 === 1966 && ax.x1 === 2026 && ax.ymax === 15.5 && ax.ticks.join() === '1,5,10,15', JSON.stringify(ax));
   t.check('the legend names the picked drivers', /Carl Gamma/.test(await h.text(p, '#erasLegend')) && /Bob Beta/.test(await h.text(p, '#erasLegend')));
 
   // tooltip text for 2010
-  const tip = await p.evaluate(() => { const tt = chart.options.plugins.tooltip.callbacks, i = chart.data.labels.indexOf('2010');
-    const items = chart.data.datasets.map((d, di) => ({ dataset: d, dataIndex: i, datasetIndex: di, raw: d.data[i] })).filter(x => x.raw != null);
+  const tip = await p.evaluate(() => { const tt = chart.options.plugins.tooltip.callbacks;
+    const items = chart.data.datasets.map((d, di) => { const i = d.data.findIndex(q => Math.round(q.x) === 2010); return { dataset: d, dataIndex: i, datasetIndex: di, raw: d.data[i] }; }).filter(x => x.raw.y != null);
     return { title: tt.title(items), lines: items.map(x => tt.label(x)) }; });
   t.check('tooltip: season and era, then position, points and team', /^2010 · V8 era$/.test(tip.title) && tip.lines.some(l => /Carl Gamma: P1 · 255 pts · Red Bull/.test(l)), JSON.stringify(tip));
-  t.check('tooltip: the partial season says after which round', await p.evaluate(() => chart.options.plugins.tooltip.callbacks.title([{ dataIndex: chart.data.labels.indexOf('2026') }])) === '2026 · Current era (after round 5)');
+  t.check('tooltip: the partial season says after which round', await p.evaluate(() => chart.options.plugins.tooltip.callbacks.title([{ raw: { x: 2025.7, y: 1 } }])) === '2026 · Current era (after round 5)');
 
   // picking
   await p.click('#presetRow [data-preset="none"]');
   s = await state();
   ax = await axesOf();
-  t.check('nothing picked: the whole span and P20', ax.x0 === '1966' && ax.x1 === '2026' && ax.ymax === 20.5 && ax.ticks.join() === '1,5,10,15,20', JSON.stringify(ax));
+  t.check('nothing picked: the whole span and P20', ax.x0 === 1966 && ax.x1 === 2026 && ax.ymax === 20.5 && ax.ticks.join() === '1,5,10,15,20', JSON.stringify(ax));
   t.check('None clears the chart and puts an empty list in the link', s.sets.length === 0 && s.checked.length === 0 && s.url === '?d=' && s.active.join() === 'none' && /0 of 3 drivers/.test(s.summary), JSON.stringify(s));
   t.check('nothing picked says so', await p.$eval('#erasEmpty', e => e.style.display !== 'none'));
   await p.click('#erasPicker input[data-id="d2"]');
@@ -120,7 +123,7 @@ module.exports = async (t, h) => {
   t.check('ticking a driver adds the line and keeps the link in step', s.checked.join() === 'd2' && s.sets.join() === 'Bob Beta' && s.url === '?d=d2', JSON.stringify(s));
   await p.click('#erasPicker input[data-id="d2"]'); await p.click('#erasPicker input[data-id="d3"]'); // Gamma only
   ax = await axesOf();
-  t.check('one driver (Gamma, 2009–2026, worst P3): seasons from one before the first to the last, axis P1–P5', ax.x0 === '2006' && ax.x1 === '2026' && ax.ymax === 5.5 && ax.ticks.join() === '1,2,3,4,5' && /2006–2026/.test(ax.sub), JSON.stringify(ax));
+  t.check('one driver (Gamma, 2009–2026, worst P3): seasons from one year before the first to the last, axis P1–P5', ax.x0 === 2008 && ax.x1 === 2026 && ax.ymax === 5.5 && ax.ticks.join() === '1,2,3,4,5' && /2008–2026/.test(ax.sub), JSON.stringify(ax));
   await p.click('#presetRow [data-preset="champs"]');
   t.check('All champions picks everyone who won a title', (await state()).checked.join() === 'd3,d1,d2');
   await p.click('#presetRow [data-preset="now"]');

@@ -91,6 +91,7 @@ const ff = getComputedStyle(document.body).fontFamily;
 const $ = id => document.getElementById(id);
 const esc = t => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
 const MAX_POS = 20; // the chart never goes below P20; anything lower runs off the bottom
+const HALF = 0.3; // half the width of a season's flat segment, in seasons
 const DASHES = [[], [7, 4], [2, 3]]; // teammates in one colour: solid, dashed, dotted
 
 let model = null, view = 'drivers', sortBy = 'titles', filter = '', chart = null;
@@ -164,14 +165,13 @@ function syncURL(){
 const bandPlugin = {
   id: 'eraBands',
   beforeDatasetsDraw(ch){
-    const { ctx, chartArea: a, scales: { x } } = ch, P = F1Theme.chart(), years = model.years, step = x.width / (x.max - x.min + 1);
+    const { ctx, chartArea: a, scales: { x } } = ch, P = F1Theme.chart();
     ctx.save();
     ctx.beginPath(); ctx.rect(a.left, 0, a.width, a.bottom); ctx.clip();
     F1Eras.ERAS.forEach((era, i) => {
-      const shown = years.map((y, k) => k).filter(k => k >= x.min && k <= x.max && years[k] >= era.from && years[k] <= era.to);
-      if(!shown.length) return; // the era is outside the seasons on show
-      const i0 = shown[0], i1 = shown[shown.length - 1];
-      const l = x.getPixelForValue(i0) - step / 2, r = x.getPixelForValue(i1) + step / 2;
+      const from = Math.max(era.from, x.min + 0.5), to = Math.min(era.to, x.max - 0.5);
+      if(from > to) return; // the era is outside the seasons on show
+      const l = x.getPixelForValue(from - 0.5), r = x.getPixelForValue(to + 0.5);
       if(i % 2 === 0){ ctx.fillStyle = P.projShade; ctx.fillRect(l, a.top, r - l, a.height); }
       ctx.strokeStyle = P.grid; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(l, a.top); ctx.lineTo(l, a.bottom); ctx.stroke();
       // the era's label above the plot: sideways when the band is too narrow for its text
@@ -189,20 +189,22 @@ function datasets(){
   const ids = current(), L = list(), byId = new Map(L.map(e => [e.id, e])), seen = {};
   return ids.map(id => byId.get(id)).filter(Boolean).sort((a, b) => L.indexOf(a) - L.indexOf(b)).map(e => {
     const n = (seen[e.color] = (seen[e.color] || 0) + 1) - 1;
-    const colors = model.years.map(y => e.seasons[y] ? col(e.seasons[y].color) : null);
-    return { e, label: e.name, dash: DASHES[Math.min(n, 2)], colors, color: col(e.color),
-      data: model.years.map(y => e.seasons[y] ? e.seasons[y].pos : null) };
+    // O1: each season is a flat segment at its position (two points, a little either side of the year);
+    // consecutive seasons are joined by an angled line, as on the position charts. A missing season breaks the line.
+    const at = f => model.years.flatMap(y => { const k = e.seasons[y]; return [f(k, y - HALF), f(k, y + HALF)]; });
+    return { e, label: e.name, dash: DASHES[Math.min(n, 2)], color: col(e.color),
+      colors: at(k => k ? col(k.color) : null), data: at((k, x) => ({ x, y: k ? k.pos : null })) };
   });
 }
 
 // #135 (O5): the axes fit the picks: seasons from one before the first to one after the last, positions down to the
 // worst one shown (to a multiple of 5, at least P5, never below P20). Nothing picked: the whole span.
 function axes(ds){
+  const ys = model.years, first = ys[0], last = ys[ys.length - 1];
   let lo = Infinity, hi = -1, worst = 0;
-  ds.forEach(d => d.data.forEach((p, i) => { if(p != null){ lo = Math.min(lo, i); hi = Math.max(hi, i); worst = Math.max(worst, p); } }));
-  const last = model.years.length - 1;
-  if(hi < 0) return { x0: 0, x1: last, yMax: MAX_POS };
-  return { x0: Math.max(0, lo - 1), x1: Math.min(last, hi + 1), yMax: Math.min(MAX_POS, Math.max(5, Math.ceil(worst / 5) * 5)) };
+  ds.forEach(d => Object.entries(d.e.seasons).forEach(([y, k]) => { lo = Math.min(lo, +y); hi = Math.max(hi, +y); worst = Math.max(worst, k.pos); }));
+  if(hi < 0) return { x0: first, x1: last, yMax: MAX_POS };
+  return { x0: Math.max(first, lo - 1), x1: Math.min(last, hi + 1), yMax: Math.min(MAX_POS, Math.max(5, Math.ceil(worst / 5) * 5)) };
 }
 const yTicks = yMax => yMax <= 5 ? [1, 2, 3, 4, 5] : [1, ...Array.from({ length: yMax / 5 }, (_, i) => (i + 1) * 5)];
 
@@ -213,7 +215,7 @@ function draw(){
   $('erasEmpty').style.display = ds.length ? 'none' : 'block';
   $('erasLegend').innerHTML = ds.map(d => `<span style="--c:${d.color}"><i class="${d.dash.length === 0 ? '' : d.dash[0] > 3 ? 'd1' : 'd2'}"></i>${esc(d.label)}</span>`).join('');
   const ax = axes(ds), n = ax.x1 - ax.x0 + 1, stride = n <= 12 ? 1 : n <= 20 ? (nar ? 2 : 1) : n <= 45 ? 5 : nar ? 10 : 5;
-  $('chartSub').textContent = `${view === 'drivers' ? 'drivers' : 'constructors'} · ${model.years[ax.x0]}–${model.years[ax.x1]}`;
+  $('chartSub').textContent = `${view === 'drivers' ? 'drivers' : 'constructors'} · ${ax.x0}–${ax.x1}`;
   $('erasNote').textContent = (view === 'teams' ? `Constructors' standings start in ${model.firstTeamYear}. ` : '')
     + `Positions below P${MAX_POS} run off the bottom.`
     + (model.partial ? ` ${model.partial} is the standings after round ${model.round}, so no title yet.` : '')
@@ -221,20 +223,20 @@ function draw(){
   Chart.defaults.font.family = ff; Chart.defaults.color = P.text;
   chart = new Chart($('erasCanvas'), {
     type: 'line',
-    plugins: [bandPlugin],
-    data: { labels: model.years.map(String), datasets: ds.map(d => ({
+    plugins: [bandPlugin, F1Common.hoverLine],
+    data: { datasets: ds.map(d => ({
       label: d.label, data: d.data, borderColor: d.color, borderWidth: 2.4, borderDash: d.dash, spanGaps: false, tension: 0,
-      pointBackgroundColor: d.colors, pointBorderColor: d.colors,
-      pointStyle: 'circle', pointRadius: nar ? 1.5 : 2.5, pointHoverRadius: 5,
+      pointBackgroundColor: d.colors, pointBorderColor: d.colors, pointRadius: 0, pointHoverRadius: 0,
       segment: { borderColor: c => d.colors[c.p1DataIndex] || d.color },
       _e: d.e })) },
     options: {
-      animation: false, responsive: true, maintainAspectRatio: false,
+      animation: false, responsive: true, maintainAspectRatio: false, parsing: false,
       layout: { padding: { top: nar ? 40 : 32, right: 6 } },
       interaction: { mode: 'index', intersect: false },
       scales: {
-        x: { min: ax.x0, max: ax.x1, grid: { display: false }, ticks: { autoSkip: false, maxRotation: 0, color: P.text,
-          callback(v){ const y = model.years[v]; return stride === 1 || y % stride === 0 ? y : ''; } }, border: { color: P.axis } },
+        x: { type: 'linear', min: ax.x0 - 0.5, max: ax.x1 + 0.5, grid: { display: false }, border: { color: P.axis },
+          afterBuildTicks(sc){ sc.ticks = []; for(let y = ax.x0; y <= ax.x1; y++) if(stride === 1 || y % stride === 0) sc.ticks.push({ value: y }); },
+          ticks: { autoSkip: false, maxRotation: 0, color: P.text, callback: v => v } },
         y: { reverse: true, min: 0.5, max: ax.yMax + 0.5, grid: { color: P.grid }, border: { color: P.axis },
           afterBuildTicks(s){ s.ticks = yTicks(ax.yMax).map(value => ({ value })); },
           ticks: { color: P.text, callback: v => 'P' + v }, title: { display: !nar, text: 'Championship position', color: P.text } }
@@ -242,10 +244,10 @@ function draw(){
       plugins: {
         legend: { display: false },
         tooltip: {
-          filter: it => it.raw != null, itemSort: (a, b) => a.raw - b.raw,
+          filter: it => it.raw.y != null, itemSort: (a, b) => a.raw.y - b.raw.y,
           callbacks: {
-            title(items){ const y = model.years[items[0].dataIndex], era = F1Eras.eraOf(y); return `${y}${era ? ' · ' + era.name : ''}${y === model.partial ? ` (after round ${model.round})` : ''}`; },
-            label(it){ const s = it.dataset._e.seasons[model.years[it.dataIndex]]; return `${it.dataset.label}: P${s.pos} · ${Math.round(s.pts * 10) / 10} pts${s.name ? ' · ' + s.name : ''}`; },
+            title(items){ const y = Math.round(items[0].raw.x), era = F1Eras.eraOf(y); return `${y}${era ? ' · ' + era.name : ''}${y === model.partial ? ` (after round ${model.round})` : ''}`; },
+            label(it){ const s = it.dataset._e.seasons[Math.round(it.raw.x)]; return `${it.dataset.label}: P${s.pos} · ${Math.round(s.pts * 10) / 10} pts${s.name ? ' · ' + s.name : ''}`; },
             labelColor: it => ({ borderColor: it.dataset.borderColor, backgroundColor: it.dataset.pointBackgroundColor[it.dataIndex] || it.dataset.borderColor })
           }
         }

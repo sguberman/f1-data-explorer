@@ -482,7 +482,10 @@ Title race (#85, see "Title race on What-If" above): a box above the lists with 
 line above each table and a 🏆 Champion tag on the champion's row as you drag.
 
 **eras.html (#135, `eras.js` = global `F1Eras`)** — Championship **position** (not points: scoring changed too often) of the picked
-drivers or teams in every season from 1950 to the latest, on one line chart (P1 at the top; no marker for title years, #135 O4).
+drivers or teams in every season from 1950 to the latest, on one chart in the position trackers' style (#135 O1): each season is a flat
+segment at its position (`HALF` = 0.3 of a season either side of the year, a linear year axis), joined to the next season by an angled
+line, a missing season breaking the line; P1 at the top; no markers and no mark for title years (O4); a thin vertical line (`F1Common.hoverLine`)
+and the tooltip at the hovered season.
 **The axes fit the picks (#135 O5, `axes()`):** seasons from one before the first to one after the last season any pick raced, positions
 down to the worst one shown (to a multiple of 5, at least P5 with ticks 1–5, never below P20); nothing picked: the whole span and P20. With the **rule eras shaded behind it** and labelled (`F1Eras.ERAS`: front engine 1950–60, 1.5 L 1961–65,
 3 L and wings 1966–76, first ground effect 1977–82, turbo 1983–88, V10 1989–2005, V8 2006–13, turbo hybrid 2014–21, ground effect
