@@ -95,8 +95,41 @@ module.exports = async (t, h) => {
   t.check('…and follows the pointer to 1988', (await links())[0][1] === 'constructors.html?season=1988');
   await e.selectOption('#viewSel', 'drivers'); await e.waitForTimeout(150);
   t.check('the Drivers view links the drivers\' championship', (await links())[0][1] === 'drivers.html?season=1988' && /Drivers/.test((await links())[0][0]), JSON.stringify(await links()));
-  t.check('the tooltip points at the link', await e.evaluate(() => { const cb = chart.options.plugins.tooltip.callbacks; return /Open 1988/.test(cb.footer([{ raw: { x: 1988 } }])); }));
+  t.check('the tooltip says where to click', await e.evaluate(() => { const cb = chart.options.plugins.tooltip.callbacks; return /Click 1988 on the axis to open it/.test(cb.footer([{ raw: { x: 1988 } }])); }));
+
+  // clicking a year on the axis goes straight to the season's championship page (the Drivers view here)
+  const axisAt = year => e.evaluate(y => { const r = chart.canvas.getBoundingClientRect(), a = chart.chartArea; return { x: r.left + chart.scales.x.getPixelForValue(y), y: r.top + a.bottom + 12 }; }, year);
+  pt = await axisAt(1989); await e.mouse.move(pt.x, pt.y); await e.waitForTimeout(80);
+  t.check('over the axis the cursor is a pointer', await e.$eval('#erasCanvas', c => c.style.cursor) === 'pointer');
+  await Promise.all([e.waitForURL(/drivers\.html\?season=1989$/), e.mouse.click(pt.x, pt.y)]);
+  t.check('clicking 1989 on the axis opens drivers.html?season=1989 (the Drivers view)', /\/drivers\.html\?season=1989$/.test(e.url()), e.url());
   await e.done();
+
+  // clicking inside the plot — on a line or in empty space — locks that year for the links under the chart
+  const e2 = await h.openPage('eras', { eras: ERAS }); await e2.waitForSelector('#erasPicker input'); await e2.waitForTimeout(200);
+  const plotAt = (year, dy = 0) => e2.evaluate(([y, d]) => { const r = chart.canvas.getBoundingClientRect(), a = chart.chartArea; return { x: r.left + chart.scales.x.getPixelForValue(y), y: r.top + a.bottom - 6 + d }; }, [year, dy]);
+  const links2 = () => e2.$$eval('#erasOpen a', as => as.map(a => a.getAttribute('href')));
+  pt = await plotAt(1988); await e2.mouse.click(pt.x, pt.y); await e2.waitForTimeout(80);   // near the bottom of the plot: empty space
+  t.check('a click in empty space inside the plot locks that year: the links are 1988\'s and the page didn\'t navigate',
+    (await links2())[0] === 'constructors.html?season=1988' && e2.url().endsWith('/eras.html') && await e2.evaluate(() => lockedYear) === 1988 && /locked/.test(await e2.$eval('#erasOpen', el => el.textContent)));
+  pt = await plotAt(1989); await e2.mouse.move(pt.x, pt.y); await e2.waitForTimeout(80);
+  t.check('…and hovering another year no longer changes them', (await links2())[0] === 'constructors.html?season=1988');
+  const px = await e2.evaluate(() => { const c = chart.canvas, d = c.getContext('2d').getImageData(0, 0, c.width, c.height); return !!d; });
+  t.check('the locked year is highlighted (the plugin is on the chart)', px && await e2.evaluate(() => chart.config.plugins.some(p => p.id === 'lockedSeason')));
+  const onLine = await e2.evaluate(() => { const r = chart.canvas.getBoundingClientRect(), d = chart.data.datasets[0], k = d._e.seasons[1989]; return { x: r.left + chart.scales.x.getPixelForValue(1989), y: r.top + chart.scales.y.getPixelForValue(k.pos) }; });
+  await e2.mouse.click(onLine.x, onLine.y); await e2.waitForTimeout(80);
+  t.check('a click on a line locks its year (1989) and lights the line', (await links2())[0] === 'constructors.html?season=1989' && await e2.evaluate(() => lockedYear === 1989 && lit() !== null));
+  await e2.keyboard.press('Escape'); await e2.waitForTimeout(50);   // first Escape lets go of the lit line
+  t.check('Escape first lets go of the lit line, the lock stays', await e2.evaluate(() => lit() === null && lockedYear === 1989));
+  await e2.keyboard.press('Escape'); await e2.waitForTimeout(50);
+  t.check('the next Escape releases the locked year', await e2.evaluate(() => lockedYear === null));
+  pt = await plotAt(1988); await e2.mouse.click(pt.x, pt.y); await e2.waitForTimeout(60);
+  await e2.click('#erasOpen .erasUnlock'); await e2.waitForTimeout(60);
+  t.check('the × next to the links also releases it, and hovering works again', await e2.evaluate(() => lockedYear === null));
+  pt = await plotAt(1989); await e2.mouse.move(pt.x, pt.y); await e2.waitForTimeout(80);
+  t.check('…the links follow the pointer again', (await links2())[0] === 'constructors.html?season=1989');
+  await e2.done();
+
 
   // ---- #141: counting rules (best-N results, best-placed car only) ----
   const F1Counting = require('../site/counting.js');

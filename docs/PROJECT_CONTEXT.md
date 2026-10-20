@@ -519,10 +519,12 @@ and the tooltip at the hovered season.
 on the line nearest the pointer in the season under it (within 14 px; 26 px for a finger) pins it, as does clicking its legend entry (the legend entries
 are buttons); clicking the same line or entry again, empty space or Escape lets go. The lit line is drawn on top and thicker, the others fade to 15% opacity and their legend
 entries dim. Redraws only (`applyFocus()`); a pin whose line leaves the chart is dropped, and the PNG export lets go of any highlight first.
-**Open a season (#141):** under the chart, a line "Open 1988: Constructors' championship → · Positions · What-if · Simulator" follows the season under the
-pointer or finger (pointermove / pointerdown on the chart; the last season touched stays), each link `page.html?season=Y` with no `round`, so
-it lands on the end of that season; the main link follows the view (drivers → `drivers.html`, constructors → `constructors.html`). A canvas tooltip can't
-be clicked, so the tooltip's footer ("Open 1988 → link below the chart") points at the line instead. The rule eras themselves live in `F1Common.ERAS`
+**Open a season (#141):** **a year on the x-axis** is a link: clicking (or tapping) it goes straight to that season's drivers' (Drivers view) or constructors' (Constructors
+view) page, `page.html?season=Y` with no `round`, so it lands on the end of the season; the cursor turns to a pointer over the axis labels. **A click inside the plot**, on a
+line or in empty space, **locks that year**: a shaded band with a vertical line marks it (`lockPlugin`, like the round shading on the championship pages) and the line under
+the chart, "Open 1988 [× locked]: Constructors' championship → · Positions · What-if · Simulator", stays on it (links `page.html?season=Y`) until Escape or the ×
+lets go. A click on a line also lights it as before; Escape lets go of a lit line first, then the lock. Without a lock that line follows the season under the pointer or finger
+(pointermove / pointerdown). The tooltip's footer says "Click 1988 on the axis to open it · click here to lock it". The rule eras themselves live in `F1Common.ERAS`
 (also the season dropdown's groups); `F1Eras.ERAS` is the same list.
 **Drivers' titles on the constructors plot (#135 O6):** a ★ on a team's line in each finished season one of its drivers won the drivers' championship (the
 champion's team from the standings file, mapped through the lineage map, so Brawn's 2009 star is on the Mercedes line; a champion who changed team mid-season counts
