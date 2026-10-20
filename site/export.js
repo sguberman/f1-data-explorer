@@ -27,12 +27,13 @@ const F1Export = (() => {
 
   // #75: on a phone (touch screen) that can share files, a file goes to the share sheet (Save Image / Save to
   // Files / Messages…); anywhere else, or if the browser refuses, it downloads.
-  async function deliver(blob, filename){
+  // #149: `text` (the view's link) goes in the share message along with the file.
+  async function deliver(blob, filename, text){
     const file = new File([blob], filename, { type: blob.type.split(';')[0] });
     if(navigator.canShare && navigator.share && matchMedia('(pointer:coarse)').matches){
       let ok = false; try{ ok = navigator.canShare({ files: [file] }); }catch(e){}
       if(ok){
-        try{ await navigator.share({ files: [file], title: filename }); return 'shared'; }
+        try{ await navigator.share(text ? { files: [file], title: filename, text } : { files: [file], title: filename }); return 'shared'; }
         catch(e){ if(e && e.name === 'AbortError') return 'cancelled'; } // anything else: download instead
       }
     }
@@ -109,9 +110,9 @@ const F1Export = (() => {
     if(opts.noPng){ row.querySelector('.exp-png').nextSibling.remove(); row.querySelector('.exp-png').remove(); }
     card.appendChild(row);
     const png = row.querySelector('.exp-png');
-    if(png) png.addEventListener('click', () => {
-      const cv = picture(opts);
-      cv.toBlob(b => b && deliver(b, fileBase(opts) + '.png'), 'image/png');
+    if(png) png.addEventListener('click', async () => {
+      const cv = picture(opts), link = typeof F1Share !== 'undefined' ? await F1Share.link() : '';
+      cv.toBlob(b => b && deliver(b, fileBase(opts) + '.png', link), 'image/png');
     });
     const csvLink = (btn, fn, suffix) => btn && btn.addEventListener('click', () => {
       const rows = fn(); if(!rows || rows.length < 2) return;

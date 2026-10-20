@@ -211,6 +211,7 @@ Move something into `common.js` only once it's genuinely identical on every page
     bottom-right corner (#76).
   - On a touch device that can share files (`navigator.canShare`), PNG and CSV open the share sheet (#75); anywhere
     else, or if sharing is refused, they download.
+    The PNG's share also carries the same link as the Share button (`F1Share.link()`) as its message text (#149).
   - The CSV is the data behind the chart: points and projection per round with the knockout line (in the gap view, #83:
     the gaps, the leader at each round and the points still available; the files are then named `…-gap-…`), projected
     totals, positions per round, driver contributions per team (#84), finishing-position counts, finishes per round

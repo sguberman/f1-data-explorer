@@ -74,6 +74,15 @@ module.exports = async (t, h) => {
   const open = (opts = {}) => h.openPage('eras', { eras: FAKE, ...opts });
   const wait = async p => { await p.waitForSelector('#erasPicker input'); await p.waitForTimeout(200); };
   let p = await open(); await wait(p);
+  // #149: on a phone, the PNG goes to the share sheet with the page's own address as the message text (no controls here)
+  const pp = await open(); await wait(pp);
+  await pp.evaluate(() => { window.__shared = []; const mm = window.matchMedia.bind(window);
+    window.matchMedia = q => /coarse/.test(q) ? { matches: true, media: q, addEventListener(){} } : mm(q);
+    navigator.canShare = () => true; navigator.share = async d => { window.__shared.push(d.text); }; });
+  await pp.click('.exp-png'); await pp.waitForTimeout(400);
+  const pngText = await pp.evaluate(() => [window.__shared, location.href]);
+  t.check('phone: the PNG share carries the page address as its text', pngText[0].length === 1 && pngText[0][0] === pngText[1], JSON.stringify(pngText));
+  await pp.done();
   t.check('no page errors, and nothing fetched from f1api.dev', p.errors.length === 0 && p.apiHits.length === 0, p.errors.join('; ') + p.apiHits.join());
   t.check('the Pages menu names the page', await h.text(p, '#siteNav .nav-current') === 'Eras');
   t.check('status says how many seasons and that the last is partial', /11 seasons · 1966–2026 \(2026 so far\)/.test(await h.text(p, '#erasStatus')), await h.text(p, '#erasStatus'));
