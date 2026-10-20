@@ -490,6 +490,11 @@ and the tooltip at the hovered season.
 a click or tap pins it, as does clicking its legend entry (the legend entries are buttons); clicking the same line or entry again, empty space or
 Escape lets go; while pinned, hovering changes nothing. The lit line is drawn on top and thicker, the others fade to 15% opacity and their legend
 entries dim. Redraws only (`applyFocus()`); a pin whose line leaves the chart is dropped, and the PNG export lets go of any highlight first.
+**Fewer lines, easier picking (#135 C1 + C5):** the default is the three with the most titles (`top3`); more than 6 lines (`MANY`) shows a note under the legend
+("That's a lot of lines. Pick fewer, or click a line or its name to follow it."). The picker lists what's picked first, with a divider before the rest;
+the grouping is taken when the list is rebuilt for a new set of picks (preset, view, era, sort, filter), not on each tick, so a row never moves from
+under the pointer when it's ticked or unticked.
+
 **Eras zoom (#135 O2 + C4):** a row of chips above the legend ("All" plus one per era). Choosing eras zooms the x-axis to the range from the start of the
 first chosen era to the end of the last (chips lying inside the range but not chosen get a dashed border); the position axis then fits the seasons in
 view only. The link key is `era=` (start years, `era=2006,2014`; unknown years dropped; left out for All). While a range is on, the picker lists only
@@ -511,7 +516,7 @@ down to the worst one shown (to a multiple of 5, at least P5 with ticks 1–5, n
 II 2022–25, current 2026–; a label too long for its band falls back to `short`, then runs sideways) and a key under the chart with
 each era's one-line note. It has no season or round controls and **does not use F1Controls / F1Share**: it reads one file,
 `site/data/eras.json`, with a Retry on failure; it never calls an API. A "Show" dropdown switches Drivers' / Constructors'
-(constructors' standings only exist from 1958); presets Most titles (5, the default), Top 10, All champions, Top 10 / Top 5 now, None;
+(constructors' standings only exist from 1958); presets Most titles (3, the default, #135 C1), Top 10, All champions, Top 10 / Top 5 now, Clear (C5; was None);
 a picker with a name filter and Sort by Titles / Name / First season; PNG and CSV (`eras-drivers` / `eras-teams`). Link keys
 (kept current with `history.replaceState`, left out at the default): `view=teams`, `d`, `t`. The latest season, while it runs, is the
 standings after round N (tooltip says so) and counts for no title yet.

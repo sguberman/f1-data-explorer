@@ -25,6 +25,7 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
 .erasHead{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:10px;}
 .erasFilter{font:inherit;font-size:12.5px;background:var(--inset);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:5px 8px;min-width:0;width:150px;}
 #erasPicker{max-height:280px;overflow-y:auto;}
+.pickerRow.restFirst{border-top:1px solid var(--line-strong);}
 .pickerEmpty{font-size:12.5px;color:var(--sub);padding:8px 2px;}
 .erasScroll{overflow-x:auto;overscroll-behavior-x:contain;}
 .erasInner{position:relative;height:380px;min-width:100%;}
@@ -105,6 +106,7 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
  <div class="erasChartBox"><canvas id="erasCanvas" role="img" aria-label="Championship position of the picked drivers or teams in every season, with the rule eras shaded behind"></canvas></div>
 </div></div>
 <div class="note" id="erasHint" hidden>Swipe the chart sideways to see earlier seasons; the position labels stay in place.</div>
+<div class="note" id="erasMany" hidden>That's a lot of lines. Pick fewer, or click a line or its name to follow it.</div>
 <div id="erasEmpty" style="font-size:12.5px;color:var(--sub);display:none;margin-top:8px;">Nothing picked.</div>
 <div class="note" id="erasNote"></div>
 <div class="eraKey" id="eraKey"></div>
@@ -116,6 +118,7 @@ const ff = getComputedStyle(document.body).fontFamily;
 const $ = id => document.getElementById(id);
 const esc = t => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
 const MAX_POS = 20; // the chart never goes below P20; anything lower runs off the bottom
+const MANY = 6; // more lines than this gets a hint to pick fewer
 const HALF = 0.3; // half the width of a season's flat segment, in seasons
 const DASHES = [[], [7, 4], [2, 3]]; // teammates in one colour: solid, dashed, dotted
 
@@ -148,7 +151,7 @@ const sets = () => {
   const L = list(), top = n => L.filter(e => e.titles > 0).slice(0, n).map(e => e.id);
   const latest = model.years[model.years.length - 1];
   const now = L.filter(e => e.seasons[latest] && e.seasons[latest].pos <= (view === 'drivers' ? 10 : 5)).sort((a, b) => a.seasons[latest].pos - b.seasons[latest].pos).map(e => e.id);
-  const s = { top5: top(5), top10: top(10), champs: L.filter(e => e.titles > 0).map(e => e.id), now, none: [] };
+  const s = { top3: top(3), top10: top(10), champs: L.filter(e => e.titles > 0).map(e => e.id), now, none: [] };
   if(range()){ // C4: the champions and the best of the period in view
     const inr = L.filter(e => stats(e).count > 0).sort(rankIn);
     s.eraChamps = inr.filter(e => stats(e).titles > 0).map(e => e.id);
@@ -156,15 +159,15 @@ const sets = () => {
   }
   return s;
 };
-const defaultIds = () => sets().top5;
+const defaultIds = () => sets().top3; // C1: three lines by default, so the first view reads clearly on any screen
 const current = () => picked[view] || defaultIds();
-const PRESETS = () => [['top5', 'Most titles (5)', 'The five with the most titles'], ['top10', 'Top 10', 'The ten with the most titles'],
+const PRESETS = () => [['top3', 'Most titles (3)', 'The three with the most titles'], ['top10', 'Top 10', 'The ten with the most titles'],
   ['champs', 'All champions', 'Everyone who has won the title'],
   ['now', model && view === 'drivers' ? 'Top 10 now' : 'Top 5 now', 'The best of the latest season'],
   ...(model && range() ? (() => { const one = range().count === 1, what = one ? 'this era' : 'range'; // C4
     return [['eraChamps', `Champions of ${what === 'range' ? 'the range' : what}`, 'Everyone who won the title in the seasons in view'],
       ['eraTop5', `Top 5 of ${what === 'range' ? 'the range' : what}`, 'The five with the most titles in the seasons in view (then the best finish)']]; })() : []),
-  ['none', 'None', '']];
+  ['none', 'Clear', 'Pick nothing']];
 
 function renderPresets(){
   $('presetRow').innerHTML = PRESETS().map(([k, label, tip]) => `<button type="button" class="pill" data-preset="${k}" title="${esc(tip)}">${label}</button>`).join('');
@@ -188,12 +191,17 @@ function sorted(){
   const f = filter.trim().toLowerCase();
   return f ? L.filter(e => e.name.toLowerCase().includes(f)) : L;
 }
-function renderPicker(){
-  const cur = new Set(current()), rows = sorted();
+// C5: what's picked is listed first. The grouping is taken when the list is rebuilt for a new set of picks (a preset, view, era,
+// sort or filter), not on every tick, so ticking or unticking a row never moves it from under the pointer.
+let topSet = new Set();
+function renderPicker(regroup = true){
+  const cur = new Set(current());
+  if(regroup) topSet = new Set(cur);
+  const all = sorted(), rows = [...all.filter(e => topSet.has(e.id)), ...all.filter(e => !topSet.has(e.id))], firstRest = rows.findIndex(e => !topSet.has(e.id));
   $('pickerLabel').textContent = view === 'drivers' ? 'Drivers shown' : 'Teams shown';
-  $('erasPicker').innerHTML = rows.map(e => {
+  $('erasPicker').innerHTML = rows.map((e, i) => {
     const on = cur.has(e.id), st = stats(e), t = st.count === 0 ? 'not in these years' : st.titles ? `${st.titles} ${st.titles === 1 ? 'title' : 'titles'}` : `best P${st.best}`;
-    return `<label class="pickerRow"><input type="checkbox" data-id="${esc(e.id)}" ${on ? 'checked' : ''}>
+    return `<label class="pickerRow${i > 0 && i === firstRest ? ' restFirst' : ''}"><input type="checkbox" data-id="${esc(e.id)}" ${on ? 'checked' : ''}>
       <span class="pickerDot" style="background:${col(e.color)}"></span>
       <span class="pickerCode${on ? '' : ' off'}">${esc(e.name)}<span class="pickerCodeTag">${e.span}</span></span>
       <span class="pickerPts">${t}</span></label>`;
@@ -354,6 +362,7 @@ function draw(keepScroll){
   if(pinned && !ds.some(d => d.e.id === pinned)) pinned = null; // its line is gone
   hover = null;
   const ax = axes(ds);
+  $('erasMany').hidden = ds.length <= MANY; // C1
   $('erasEmpty').style.display = !ds.length || ax.none ? 'block' : 'none';
   $('erasEmpty').textContent = !ds.length ? 'Nothing picked.' : `None of these ${view === 'drivers' ? 'drivers' : 'teams'} ${view === 'drivers' ? 'raced' : 'competed'} in these years.`;
   const n = ax.x1 - ax.x0 + 1, stride = n <= 12 ? 1 : n <= 20 ? (nar ? 2 : 1) : n <= 45 ? 5 : nar ? 10 : 5;
@@ -442,7 +451,7 @@ $('erasPicker').addEventListener('change', e => {
   const order = new Map(list().map((x, i) => [x.id, i]));
   picked[view] = [...cur].sort((a, b) => order.get(a) - order.get(b));
   if(isDefault(picked[view])) picked[view] = null;
-  renderPicker(); draw(); syncURL();
+  renderPicker(false); draw(); syncURL();
 });
 $('viewSel').addEventListener('change', e => { view = e.target.value; filter = ''; $('erasFilter').value = ''; render(); });
 $('sortSel').addEventListener('change', e => { sortBy = e.target.value; renderPicker(); });

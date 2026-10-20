@@ -83,7 +83,7 @@ module.exports = async (t, h) => {
   }));
   let s = await state();
   t.check('default: the drivers with the most titles are picked (Gamma 2, Alpha and Beta 1 each) and charted', s.checked.join() === 'd3,d1,d2' && s.sets.join() === 'Carl Gamma,Alan Alpha,Bob Beta', JSON.stringify(s));
-  t.check('the default preset is highlighted and the URL stays clean', s.active.includes('top5') && s.url === '', JSON.stringify(s));
+  t.check('the default preset is highlighted and the URL stays clean', s.active.includes('top3') && s.url === '', JSON.stringify(s));
   t.check('the picker lists every driver, with titles', s.rows === 3 && /2 titles/.test(await h.text(p, '#erasPicker .pickerRow')));
   const ds = await p.evaluate(() => { const d = chart.data.datasets.find(x => x.label === 'Alan Alpha');
     return { data: d.data, radius: d.pointRadius, colors: d.pointBackgroundColor, n: chart.data.datasets.length, type: chart.options.scales.x.type }; });
@@ -173,7 +173,7 @@ module.exports = async (t, h) => {
   t.check('a pinned line that leaves the chart lets go with it', (await lit()).lit === null);
 
   // #135 O2 + C4: zoom to eras, era presets
-  await p.click('#presetRow [data-preset="top5"]');
+  await p.click('#presetRow [data-preset="top3"]');
   const chips = () => p.evaluate(() => [...document.querySelectorAll('#eraChips .eraBtn')].map(b => [b.textContent.replace(/\d{4}–(\d{4}|now)$/, ''), b.className.replace('eraBtn', '').trim(), b.getAttribute('aria-pressed')]));
   const view2 = () => p.evaluate(() => { const sc = chart.options.scales; return { x0: Math.round(sc.x.min + 0.5), x1: Math.round(sc.x.max - 0.5), ymax: sc.y.max, sub: document.getElementById('chartSub').textContent,
     url: location.search, presets: [...document.querySelectorAll('#presetRow .pill')].map(b => b.textContent), checked: [...document.querySelectorAll('#erasPicker input:checked')].map(i => i.dataset.id),
@@ -212,7 +212,7 @@ module.exports = async (t, h) => {
   V = await view2(); ch = await chips();
   t.check('All clears the zoom: whole span, no era in the link, the era presets go', V.x0 === 1966 && V.x1 === 2026 && !/era/.test(V.url) && !V.presets.some(x => /of this era/.test(x)) && ch[0][2] === 'true', JSON.stringify(V));
   // the picks the era presets set, with the zoom gone, are an ordinary set
-  await p.click('#presetRow [data-preset="top5"]');
+  await p.click('#presetRow [data-preset="top3"]');
   V = await view2();
   t.check('the era is a separate choice from the picks: the default picks and a clean link are back', V.checked.join() === 'd3,d1,d2' && V.url === '', JSON.stringify(V));
 
@@ -234,7 +234,7 @@ module.exports = async (t, h) => {
   await p.click('#presetRow [data-preset="now"]');
   s = await state();
   t.check('"Top 10 now" picks the latest season\'s drivers', s.checked.join() === 'd3,d1', JSON.stringify(s));
-  await p.click('#presetRow [data-preset="top5"]');
+  await p.click('#presetRow [data-preset="top3"]');
   t.check('back on the default preset the link is clean again', (await state()).url === '');
 
   // filter and sort
@@ -306,7 +306,7 @@ module.exports = async (t, h) => {
   await ph.click('#erasPicker input[data-id="d1"]'); await ph.click('#erasPicker input[data-id="d2"]'); // Gamma only: 2008–2026, narrow enough to fit
   q = await sc();
   t.check('phone: few seasons fit without scrolling (no hint, no pinned strip)', q.content <= q.box + 1 && !q.hint && !q.pinOn, JSON.stringify(q));
-  await ph.click('#presetRow [data-preset="top5"]');
+  await ph.click('#presetRow [data-preset="top3"]');
   q = await sc();
   t.check('phone: a new set of picks starts at the latest seasons again', q.content > q.box * 2 && q.left + q.box >= q.content - 2, JSON.stringify(q));
   await ph.setViewportSize({ width: 360, height: 1400 }); await ph.waitForTimeout(250);
@@ -332,6 +332,53 @@ module.exports = async (t, h) => {
   await p.waitForTimeout(150);
   t.check('switching theme redraws without errors', p.errors.length === 0 && await p.evaluate(() => !!chart));
   await p.done();
+
+  // #135 C1 + C5: a smaller default, a hint for many lines, Clear, and what's picked listed first.
+  // A second fake file with nine drivers: x1 wins 3 titles (2000–02), x2 and x3 two each, x4 and x5 one each.
+  const champs = ['x1', 'x1', 'x1', 'x2', 'x2', 'x3', 'x3', 'x4', 'x5'], NAMES = { x1: 'Yan Yankee', x2: 'Xia Xray', x3: 'Walt Whiskey', x4: 'Victor Victor', x5: 'Uma Uniform', x6: 'Anna Alpha', x7: 'Bea Bravo', x8: 'Cal Charlie', x9: 'Dee Delta' };
+  const D2 = {}, seasons2 = {};
+  Object.entries(NAMES).forEach(([id, n]) => { D2[id] = { n, s: n.split(' ')[1] }; });
+  champs.forEach((c, i) => { const rows = []; let pos = 2;
+    Object.keys(NAMES).forEach(id => { if(id === 'x3' && i < 4) return; if(id === c) rows.push([id, 1, 100, 'ferrari']); else rows.push([id, pos++, 50 - pos, 'ferrari']); });
+    seasons2[2000 + i] = { round: 16, d: rows, t: [] }; });
+  const FAKE2 = { v: 1, generatedAt: 0, partial: null, drivers: D2, teams: { ferrari: { n: 'Ferrari' } }, seasons: seasons2 };
+  const big = await h.openPage('eras', { eras: FAKE2 }); await big.waitForSelector('#erasPicker input'); await big.waitForTimeout(200);
+  const bs = () => big.evaluate(() => ({ checked: [...document.querySelectorAll('#erasPicker input:checked')].map(i => i.dataset.id),
+    order: [...document.querySelectorAll('#erasPicker input')].map(i => i.dataset.id), lines: chart.data.datasets.length,
+    many: !document.getElementById('erasMany').hidden, manyText: document.getElementById('erasMany').textContent, url: location.search,
+    presets: [...document.querySelectorAll('#presetRow .pill')].map(b => [b.dataset.preset, b.textContent, b.classList.contains('active')]) }));
+  let B = await bs();
+  t.check('C1: the default is the three drivers with the most titles (x1 3, then x2 and x3 with 2 each), no hint', B.checked.join() === 'x1,x2,x3' && B.lines === 3 && !B.many && B.url === '', JSON.stringify(B));
+  t.check('C1: the default preset reads "Most titles (3)" and is lit', B.presets.some(x => x[0] === 'top3' && x[1] === 'Most titles (3)' && x[2]), JSON.stringify(B.presets));
+  t.check('C5: the clear button is called Clear (not None)', B.presets.some(x => x[0] === 'none' && x[1] === 'Clear') && !B.presets.some(x => x[1] === 'None'));
+  await big.click('#presetRow [data-preset="champs"]');
+  B = await bs();
+  t.check('five champions: five lines, still no hint (six is fine)', B.lines === 5 && !B.many, JSON.stringify(B.checked));
+  await big.click('#erasPicker input[data-id="x6"]'); await big.click('#erasPicker input[data-id="x7"]');
+  B = await bs();
+  t.check('C1: more than six lines shows the hint to pick fewer', B.lines === 7 && B.many && /Pick fewer/.test(B.manyText), JSON.stringify(B));
+  await big.click('#erasPicker input[data-id="x7"]');
+  t.check('…and six lines take it away', !(await bs()).many);
+  await big.click('#presetRow [data-preset="none"]');
+  B = await bs();
+  t.check('Clear picks nothing and says so, with no hint', B.checked.length === 0 && B.lines === 0 && !B.many && B.url === '?d=', JSON.stringify(B));
+  await big.click('#presetRow [data-preset="top3"]');
+  await big.selectOption('#sortSel', 'name');
+  B = await bs();
+  t.check('C5: with a name sort, the three picked come first (Whiskey, Xray, Yankee), then everyone else A to Z',
+    B.order.slice(0, 3).join() === 'x3,x2,x1' && B.order.slice(3).join() === 'x6,x7,x8,x9,x5,x4', JSON.stringify(B.order));
+  const before = B.order.join();
+  await big.click('#erasPicker input[data-id="x8"]');
+  B = await bs();
+  t.check('ticking another row doesn\'t move it (the list never jumps under the pointer)', B.order.join() === before && B.checked.includes('x8'), JSON.stringify(B.order));
+  await big.click('#erasPicker input[data-id="x1"]');
+  t.check('…nor does unticking one', (await bs()).order.join() === before);
+  await big.selectOption('#sortSel', 'titles'); await big.selectOption('#sortSel', 'name');
+  B = await bs();
+  t.check('…the next rebuild (changing the sort) lists what\'s picked now at the top: x8, x2, x3 by name (Charlie, Whiskey, Xray)', B.order.slice(0, 3).join() === 'x8,x3,x2', JSON.stringify(B.order));
+  t.check('a divider marks where the picked rows end', await big.$$eval('#erasPicker .pickerRow.restFirst', r => r.length) === 1);
+  await h.screenshot(big, 'eras-picked-first.png');
+  await big.done();
 
   // loading failure
   p = await h.openPage('eras'); await p.waitForSelector('#erasRetry');
