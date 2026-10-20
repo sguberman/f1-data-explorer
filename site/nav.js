@@ -3,12 +3,12 @@
 // on the right). The menu's items are plain links; the season carries over through F1Controls' saved season.
 (function(){
   const PAGES = [
+    ['eras.html', 'Eras'], // #142: first, as on the homepage
     ['drivers.html', "Drivers' Championship"],
     ['constructors.html', "Constructors' Championship"],
     ['whatif.html', 'What-If Results'], // #107: the same order as the homepage's cards
     ['position.html', 'Race Finishing Positions'],
-    ['simulator.html', 'Title Simulator'],
-    ['eras.html', 'Eras']
+    ['simulator.html', 'Title Simulator']
   ];
   const HOME_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/></svg>';
   const CHEVRON = '<svg class="theme-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>';

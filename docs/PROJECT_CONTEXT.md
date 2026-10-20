@@ -542,7 +542,7 @@ standings after round N (tooltip says so) and counts for no title yet.
   and the one that was `partial` last time are. A failed fetch leaves the file as it was. `partial` = the current year unless its
   `site/data/{year}.json` says complete. Never edit by hand.
 
-**index.html** — Static landing page (#50): six cards (the Eras card, #135, is last), one per row, in the order Drivers' Championship,
+**index.html** — Static landing page (#50): six cards, one per row, in the order Eras (#142: first; its picture is the constructors plot, era bands, three team lines and ★ drivers' titles), Drivers' Championship,
 Constructors' Championship, What-If Results (#107: right after the championships), Race Finishing Positions, Title
 Simulator; the Pages menu on the other pages (`nav.js`) lists them in the same order. Each card has a
 picture of that page's main chart on the left (on top on phones): an inline SVG with illustrative shapes, not
