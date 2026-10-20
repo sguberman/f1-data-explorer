@@ -89,14 +89,15 @@ module.exports = async (t, h) => {
     window.matchMedia = q => /coarse/.test(q) ? { matches: mode !== 'desktop', media: q, addEventListener(){} } : mm(q);
     navigator.canShare = () => mode !== 'cannot';
     navigator.share = async d => { if(mode === 'refuse') throw new DOMException('no gesture', 'NotAllowedError');
-      window.__shared.push(d.files.map(f => [f.name, f.type, f.size > 0])); };
+      window.__shared.push(d.files.map(f => [f.name, f.type, f.size > 0]).concat(d.text ? [d.text] : [])); };
   }, mode);
   const downloads = p => { const n = { count: 0 }; p.on('download', () => n.count++); return n; };
   p = await h.openPage('drivers'); await h.loaded(p);
   let dl = downloads(p); await fakePhone(p, 'phone');
   await p.click('.exp-png'); await p.click('.exp-csv'); await p.waitForTimeout(400);
+  const link = await p.evaluate(() => location.origin + F1Share.url()); // #149: the PNG share's text is the Share button's link
   let shared = await p.evaluate(() => window.__shared);
-  t.check('phone: PNG and CSV go to the share sheet as files', JSON.stringify(shared) === JSON.stringify([[['f1-2026-drivers-points-r12.png', 'image/png', true]], [['f1-2026-drivers-points-r12.csv', 'text/csv', true]]]), JSON.stringify(shared));
+  t.check('phone: PNG and CSV go to the share sheet as files', JSON.stringify(shared) === JSON.stringify([[['f1-2026-drivers-points-r12.png', 'image/png', true], link], [['f1-2026-drivers-points-r12.csv', 'text/csv', true]]]), JSON.stringify(shared));
   t.check('phone: …and nothing downloads', dl.count === 0, String(dl.count));
   await p.done();
   for(const [mode, label] of [['cannot', "a phone that can't share files"], ['refuse', 'a phone that refuses the share'], ['desktop', 'a desktop with a share sheet']]){

@@ -8,7 +8,7 @@
      returns them (register()). Values are strings; null leaves a key out, '' keeps it empty (e.g. "none picked").
    - After any click, change or key press the URL is rewritten in place (history.replaceState): no reload, no
      fetch, no new history entry.
-   - share() copies the link, or opens the phone's share sheet. */
+   - share() copies the link, or opens the phone's share sheet; link() gives that same link (#149). */
 const F1Share = (() => {
   const initial = new URLSearchParams(location.search);
   const providers = []; let taken = false, pending = false;
@@ -58,9 +58,14 @@ const F1Share = (() => {
   const BUTTON = `<button type="button" class="f1c-share" title="Copy a link to exactly this view">${ICON}<span>Share</span></button>`;
 
   // `plainLink` (#145): a page without controls (Eras) shares its own address, which it keeps current itself.
+  // The full link to the current view (#149: the PNG share carries it too). Pages without controls share their address.
+  async function viewLink(plainLink){
+    if(plainLink || typeof F1Controls === 'undefined') return location.href;
+    sync(); await new Promise(r => setTimeout(r, 0));
+    return location.origin + url();
+  }
   async function share(btn, plainLink){
-    let link = plainLink && location.href;
-    if(!link){ sync(); await new Promise(r => setTimeout(r, 0)); link = location.origin + url(); }
+    const link = await viewLink(plainLink);
     const label = btn && btn.querySelector('span');
     const say = text => { if(!label) return; label.textContent = text; clearTimeout(btn._t); btn._t = setTimeout(() => { label.textContent = 'Share'; }, 2000); };
     // Phones (and anything with a share sheet and a touch screen) get the share sheet; desktops copy the link.
@@ -72,5 +77,5 @@ const F1Share = (() => {
     catch(e){ window.prompt('Copy this link:', link); }
   }
 
-  return { param, take, register, ids, sameSet, url, sync, share, BUTTON };
+  return { param, take, register, ids, sameSet, url, sync, share, link: viewLink, BUTTON };
 })();
