@@ -1,8 +1,9 @@
 // #117: the simulator's race model. Places are drawn one at a time for every position, each driver weighted by their
 // finishes at that place or better in the data window (last N Grand Prix starts, or the whole season), plus a bonus
-// for finishes just behind it and a small floor. DNF chance = the window's DNF share blended with 4 races at the
-// grid's rate. Only drivers in the latest round race; equal points go to countback. The "Form from" stepper picks
-// the window; it goes in the URL and never fetches.
+// for finishes just behind it and a small floor (0.03), plus a quarter of their teammate's weight (team strength,
+// #162). DNF chance = the window's DNF share blended with 64 races at the grid's rate. Only drivers in the latest
+// round race; equal points go to countback. The "Form from" stepper picks the window (default: the whole season);
+// it goes in the URL and never fetches.
 module.exports = async (t, h) => {
   const p = await h.openPage('simulator'); await h.loaded(p);
   const hits = p.apiHits.length;
@@ -17,17 +18,23 @@ module.exports = async (t, h) => {
       (starts[x.driverId] = starts[x.driverId] || []).push(pos); all++; if(pos == null) dnf++;
     }));
     const grid = dnf / all;
-    const weight = (res, place) => res.reduce((w, f) => f == null ? w : w + (f <= place ? 1 : 0.5 * Math.pow(0.5, f - place - 1)), 0.01);
+    const weight = (res, place) => res.reduce((w, f) => f == null ? w : w + (f <= place ? 1 : 0.5 * Math.pow(0.5, f - place - 1)), 0.03);
+    // team strength: a quarter of the average weight of the other cars on the same team in the latest round
+    const teamAt = {}; F1Controls.state.seasonRounds.filter(r => r.round === L).forEach(r => r.raceResults.forEach(x => { teamAt[x.driverId] = x.teamId; }));
+    let withMates = 0;
     const check = win => {
       dataWindow = win;
       const ctx = buildSimContext(), n = ctx.n, bad = [];
+      const resOf = id => win === Infinity ? starts[id] : starts[id].slice(-win);
       fullRoster.forEach((d, i) => {
-        const res = win === Infinity ? starts[d.driverId] : starts[d.driverId].slice(-win);
+        const res = resOf(d.driverId);
+        const mates = teamAt[d.driverId] != null ? fullRoster.filter(m => m !== d && teamAt[m.driverId] === teamAt[d.driverId]) : [];
+        if(mates.length) withMates++;
         for(let place = 1; place <= n; place++){
-          const want = weight(res, place);
+          const want = weight(res, place) + (mates.length ? 0.25 * mates.reduce((s, m) => s + weight(resOf(m.driverId), place), 0) / mates.length : 0);
           if(Math.abs(ctx.W[i * n + place - 1] - want) > 1e-9) bad.push(`${d.code} P${place} ${ctx.W[i * n + place - 1]} vs ${want}`);
         }
-        const k = res.filter(f => f == null).length, rate = (k + 4 * grid) / (res.length + 4);
+        const k = res.filter(f => f == null).length, rate = (k + 64 * grid) / (res.length + 64);
         if(Math.abs(ctx.dnfRate[i] - rate) > 1e-9) bad.push(`${d.code} DNF ${ctx.dnfRate[i]} vs ${rate}`);
       });
       return { n, slots: ctx.W.length, bad: bad.slice(0, 3), count: bad.length };
@@ -37,14 +44,15 @@ module.exports = async (t, h) => {
     dataWindow = 8;
     const ctx = buildSimContext(), lead = fullRoster.slice().sort(byStanding)[0], li = fullRoster.indexOf(lead);
     out.example = { code: lead.code, last8: starts[lead.driverId].slice(-8).join(','), w: [1, 2, 3].map(pl => +ctx.W[li * ctx.n + pl - 1].toFixed(3)) };
-    out.grid = grid; out.someDnf = Object.values(starts).some(s => s.includes(null));
+    out.grid = grid; out.someDnf = Object.values(starts).some(s => s.includes(null)); out.withMates = withMates;
     return out;
   });
-  t.check('weights for every place (P1 to last): finishes there or better + near bonus + floor, last 8 starts',
+  t.check('weights for every place (P1 to last): finishes there or better + near bonus + floor + a quarter of the teammate\'s, last 8 starts',
     indep.last8.count === 0 && indep.last8.slots === indep.last8.n * indep.last8.n, JSON.stringify(indep.last8));
   t.check('…the same with a window of 4', indep.last4.count === 0, JSON.stringify(indep.last4));
   t.check('…and with the whole season', indep.season.count === 0, JSON.stringify(indep.season));
-  t.check('DNF chance = the window\'s DNFs blended with 4 races at the grid rate (checked above; the fake season has DNFs)', indep.someDnf && indep.grid > 0);
+  t.check('DNF chance = the window\'s DNFs blended with 64 races at the grid rate (checked above; the fake season has DNFs)', indep.someDnf && indep.grid > 0);
+  t.check('…and team strength was exercised: drivers with teammates were checked', indep.withMates > 0, String(indep.withMates));
   t.check(`example: ${indep.example.code} (last 8: ${indep.example.last8}) weights P1/P2/P3 ${indep.example.w.join(' / ')}`,
     indep.example.w[0] < indep.example.w[1] && indep.example.w[1] < indep.example.w[2], JSON.stringify(indep.example));
 
@@ -118,19 +126,20 @@ module.exports = async (t, h) => {
   t.check('the top 3 score within 20% of their recent points per Grand Prix', pace.every(x => Math.abs(x.sim - x.recent) <= 0.2 * x.recent), JSON.stringify(pace));
 
   // ---- The "Form from" stepper ----
-  await p.evaluate(() => { dataWindow = 8; syncWindow(); });
+  await p.evaluate(() => { dataWindow = WINDOW_DEFAULT; syncWindow(); });
   const val = () => p.$eval('#winVal', e => e.textContent);
-  t.check('Form from starts at the last 8 races, not in the URL', await val() === 'last 8 races' && !q().has('w'), (await val()) + ' ' + p.url());
+  const L = await p.evaluate(() => L);
+  t.check('Form from starts at the whole season (#162), not in the URL', await val() === 'whole season' && await p.$eval('#winMore', b => b.disabled) && !q().has('w'), (await val()) + ' ' + p.url());
   await p.click('#run'); await p.waitForFunction(() => /seasons simulated/.test(document.getElementById('status').textContent));
   await p.click('#winLess'); await p.waitForTimeout(60);
-  t.check('− uses one race fewer, goes into the URL and marks the results out of date',
-    await val() === 'last 7 races' && q().get('w') === '7' && await p.$eval('#staleNote', e => !e.hidden), p.url());
-  for(let k = 0; k < 6; k++) await p.click('#winLess').catch(() => {});
+  t.check(`− from the whole season is the last ${L - 1} races, goes into the URL and marks the results out of date`,
+    await val() === `last ${L - 1} races` && q().get('w') === String(L - 1) && await p.$eval('#staleNote', e => !e.hidden), p.url());
+  for(let k = 0; k < L - 1 - 3; k++) await p.click('#winLess');
   t.check('it stops at the last 3 races', await val() === 'last 3 races' && await p.$eval('#winLess', b => b.disabled));
-  const L = await p.evaluate(() => L);
-  for(let k = 0; k < L; k++) await p.click('#winMore').catch(() => {});
-  t.check('+ ends at the whole season, which goes into the URL as w=all',
-    await val() === 'whole season' && await p.$eval('#winMore', b => b.disabled) && q().get('w') === 'all', (await val()) + ' ' + p.url());
+  for(let k = 0; k < L - 3; k++) await p.click('#winMore');
+  await p.waitForTimeout(60);
+  t.check('+ ends at the whole season, which is the default so it leaves the URL',
+    await val() === 'whole season' && await p.$eval('#winMore', b => b.disabled) && !q().has('w'), (await val()) + ' ' + p.url());
   await p.click('#winLess'); await p.waitForTimeout(60);
   t.check(`− from the whole season is the last ${L - 1} races`, await val() === `last ${L - 1} races`);
   const link = p.url().split('/').pop();
@@ -142,7 +151,7 @@ module.exports = async (t, h) => {
   t.check('a link restores Form from', await p2.$eval('#winVal', e => e.textContent) === `last ${L - 1} races`, link);
   // at an early round, a window as long as the season so far is the whole season; moving back up restores it
   await h.setRound(p2, 4); await p2.waitForTimeout(80);
-  t.check('at round 4 the last 8 races are the whole season so far', await p2.$eval('#winVal', e => e.textContent) === 'whole season' && await p2.$eval('#winMore', b => b.disabled));
+  t.check('at round 4 a window longer than the season so far is the whole season', await p2.$eval('#winVal', e => e.textContent) === 'whole season' && await p2.$eval('#winMore', b => b.disabled));
   await h.setRound(p2, L); await p2.waitForTimeout(80);
   t.check(`…and back at round ${L} the window is the last ${L - 1} races again`, await p2.$eval('#winVal', e => e.textContent) === `last ${L - 1} races`);
   t.check('link and slider: no page errors', p2.errors.length === 0, p2.errors.join('; '));

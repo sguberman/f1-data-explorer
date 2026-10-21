@@ -6,19 +6,38 @@
 // so one copy serves the page, What-If and Node (the backtest). Nothing here reads page state: the random generator
 // and the points tables come in as arguments.
 const F1RaceModel = (()=>{
- const NEAR_BONUS=0.5, NEAR_DECAY=0.5, WEIGHT_FLOOR=0.01, DNF_PRIOR_RACES=4;
+ // #162: refitted on 2014–2025 (docs/BACKTEST.md): a larger floor and DNF smoothing, plus team strength. A driver's own DNF
+ // record barely predicts their DNFs, so the DNF chance is mostly the grid's rate (DNF_PRIOR_RACES).
+ const NEAR_BONUS=0.5, NEAR_DECAY=0.5, WEIGHT_FLOOR=0.03, DNF_PRIOR_RACES=64;
+ // Team strength: each driver's weight for a place also includes TEAM_SHARE times the average of their teammates'
+ // (the other cars on the same team), so a replaced or new driver inherits the car's pace.
+ const TEAM_SHARE=0.25;
  function placeWeight(res, place){
    let w=WEIGHT_FLOOR;
    for(const f of res){ if(f==null) continue; w += f<=place ? 1 : NEAR_BONUS*Math.pow(NEAR_DECAY, f-place-1); }
    return w;
  }
+  // The cars sharing each car's team: teams[i] is a team id, or null for a car with no teammates in this race.
+ function matesOf(teams){ return teams.map((t,i)=>t==null ? [] : teams.map((u,j)=>j!==i && u===t ? j : -1).filter(j=>j>=0)); }
+ // The weight of every driver for every finishing place (n x n, driver i place s at i*n+s): their own, plus TEAM_SHARE times
+ // the average of their teammates'. res[i] = driver i's results in the window; teams as for matesOf.
+ function weightMatrix(res, teams){
+   const n=res.length, mates=matesOf(teams), W=new Float64Array(n*n);
+   for(let i=0;i<n;i++) for(let s=0;s<n;s++){
+     let w=placeWeight(res[i], s+1);
+     if(mates[i].length){ let m=0; for(const j of mates[i]) m+=placeWeight(res[j], s+1); w += TEAM_SHARE*m/mates[i].length; }
+     W[i*n+s]=w;
+   }
+   return W;
+ }
  // The window's DNF share blended with DNF_PRIOR_RACES races at the grid's DNF rate.
  function dnfRate(res, gridRate){ const k=res.filter(f=>f==null).length; return (k + DNF_PRIOR_RACES*gridRate)/(res.length + DNF_PRIOR_RACES); }
- // drivers: [{results}] (each Grand Prix start in the window: classified position or null for a DNF).
+ // drivers: [{results, team}] (results = each Grand Prix start in the window: classified position or null for a DNF;
+ // team = their team id this race, for team strength).
  // Returns per driver {meanPoints, medianPos (DNF counts as last), pClassified}.
  function simulate(drivers, {pts, gridRate, runs, rand}){
-   const n=drivers.length, W=new Float64Array(n*n), rate=new Float64Array(n);
-   drivers.forEach((d,i)=>{ rate[i]=dnfRate(d.results, gridRate); for(let s=0;s<n;s++) W[i*n+s]=placeWeight(d.results, s+1); });
+   const n=drivers.length, W=weightMatrix(drivers.map(d=>d.results), drivers.map(d=>d.team==null ? null : d.team)), rate=new Float64Array(n);
+   drivers.forEach((d,i)=>{ rate[i]=dnfRate(d.results, gridRate); });
    const sum=new Float64Array(n), cls=new Float64Array(n), counts=new Int32Array(n*(n+1)), alive=new Int16Array(n), wts=new Float64Array(n);
    for(let r=0;r<runs;r++){
      let len=0;
@@ -175,7 +194,7 @@ const F1RaceModel = (()=>{
    for(let p=0;p<n;p++){ const d=fin[b*n+p]-fin[a*n+p]; if(d) return d; }
    return 0;
  }
- return { placeWeight, dnfRate, simulate, NEAR_BONUS, NEAR_DECAY, WEIGHT_FLOOR, DNF_PRIOR_RACES,
+ return { placeWeight, dnfRate, matesOf, weightMatrix, simulate, NEAR_BONUS, NEAR_DECAY, WEIGHT_FLOOR, DNF_PRIOR_RACES, TEAM_SHARE,
           decidedContext, titleSettled, decidedRoundFor, pickInPlace, planSeason, simulateSeason, sampleOrder, countback };
 })();
 if(typeof module!=='undefined' && module.exports) module.exports=F1RaceModel; // Node (the backtest, #153)

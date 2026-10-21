@@ -68,12 +68,16 @@ module.exports = async (t, h) => {
   const pb = { ...B.DEFAULT, beta: 0.5 };
   t.check('team strength on: a driver with no record inherits a share of their teammate\'s weight', Math.abs(B.pooledWeight(rs, 1, m2, 3, pb) - (B.placeWeight([], 3, pb) + 0.5 * B.placeWeight(rs[0], 3, pb))) < 1e-12);
   t.check('team strength on: a driver on a one-car team is unchanged', B.pooledWeight(rs, 0, B.matesOf(['a', 'b', 'c', 'd']), 3, pb) === B.placeWeight(rs[0], 3, pb));
-  t.check('named models: current is the site model, the others differ', JSON.stringify(B.MODELS.current) === JSON.stringify(B.DEFAULT) && B.MODELS.team.beta > 0 && B.MODELS.retuned.beta === 0);
-  const withTeam = B.projectSeason(snap, B.MODELS.team, 300, 1);
+  t.check('named models: current is the site model (team strength on), previous and retuned have it off', JSON.stringify(B.MODELS.current) === JSON.stringify(B.DEFAULT) && B.DEFAULT.beta === M.TEAM_SHARE && B.MODELS.retuned.beta === 0 && B.MODELS.previous.beta === 0 && B.MODELS.previous.window === 8);
+  // the site's weight matrix against the backtest's (same numbers at DEFAULT)
+  const teams = ['a', 'a', 'b', null, 'b'], hres = [[1, 2, 3], [], [4, null, 5], [2], [7, 6]], WM = M.weightMatrix(hres, teams), mt = B.matesOf(teams.map((x, i) => x == null ? '-' + i : x));
+  let wsame = true; for (let i = 0; i < 5; i++) for (let s = 0; s < 5; s++) if (Math.abs(WM[i * 5 + s] - B.pooledWeight(hres, i, mt, s + 1, B.DEFAULT)) > 1e-12) wsame = false;
+  t.check('the site\'s weight matrix (with team strength) equals the backtest\'s at the default numbers', wsame);
+  const withTeam = B.projectSeason(snap, B.MODELS.current, 300, 1);
   t.check('team model: projections still end at or above the points now, title chances add to 1', withTeam.every(r => r.mean >= byNow[r.driverId] - 1e-9) && Math.abs(withTeam.reduce((a, r) => a + r.p1, 0) - 1) < 1e-9);
 
   // ---- Tuning never makes its own training score worse ----
-  const some = { 2023: B.raceCases(2023), 2024: B.raceCases(2024) }, before = B.scoreRaces(some, B.DEFAULT);
+  const some = { 2023: B.raceCases(2023), 2024: B.raceCases(2024) }, before = B.scoreRaces(some, B.PREVIOUS); // tuning starts from the previous numbers
   const tuned = B.tune(some, [2023, 2024]), after = B.scoreRaces(some, tuned.params);
   const m = s => [2023, 2024].flatMap(y => s[y].late).reduce((a, b, _, arr) => a + b / arr.length, 0);
   t.check('tuning does not lower the training score', m(after) >= m(before) - 1e-9, `${m(before)} → ${m(after)}`);

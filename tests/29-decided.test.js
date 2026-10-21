@@ -62,15 +62,15 @@ module.exports = async (t, h) => {
 
   // ---- Existing results unchanged: a seeded run gives exactly what it gave before #86 ----
   // Fingerprint of runSimulation(2000) with seed 12345 on the fake season (#86 adds no random draws). Recomputed for
-  // the #117 race model. If the fixture or the race model is changed on purpose, recompute it (same code, on the
-  // commit before the change).
+  // the #117 race model, and again for #162 (refitted numbers and team strength). If the fixture or the race model is
+  // changed on purpose, recompute it (same code, on the commit before the change).
   const fp = await p.evaluate(() => {
     rand = seededRandom(12345);
     const run = runSimulation(2000);
     let hsh = 0; for(let i = 0; i < run.totals.length; i++) hsh = (Math.imul(hsh, 31) + run.totals[i] * 7 + run.ranks[i]) | 0;
     return hsh;
   });
-  t.check('same seed, same final points and ranks as the race model gives without #86 (no extra random draws)', fp === -1612618962, String(fp));
+  t.check('same seed, same final points and ranks as the race model gives without #86 (no extra random draws)', fp === -709186230, String(fp));
 
   // ---- The engine's decided round against an independent replay of each simulated season's races ----
   const eng = await p.evaluate(() => {
