@@ -7,7 +7,7 @@ name: Update season data
 on:
   schedule:
     - cron: "17 6 * * *"        # every day
-    - cron: "47 * * * 0,1"      # hourly on Sundays and Mondays (UTC), when race results arrive
+    - cron: "47 * * * 0,1,6"    # hourly on Saturdays, Sundays and Mondays (UTC): qualifying (#167) and race results arrive
   workflow_dispatch:
     inputs:
       all:

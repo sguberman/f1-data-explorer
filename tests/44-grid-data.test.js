@@ -46,13 +46,16 @@ module.exports = async (t, h) => {
     if (!fs.existsSync(file)) { bad.push(`${y}: no file`); continue; }
     const gf = JSON.parse(fs.readFileSync(file, 'utf8')), sf = JSON.parse(fs.readFileSync(path.join(dir, `${y}.json`), 'utf8'));
     if (gf.year !== y || gf.v !== 1) bad.push(`${y}: header`);
-    if (gf.rounds.map(r => r.round).join() !== sf.rounds.map(r => r.round).join()) bad.push(`${y}: rounds differ`);
+    const sr = sf.rounds.map(r => r.round), have = gf.rounds.map(r => r.round);
+    // the season file's rounds, then (#167) any upcoming round that has qualifying but no results yet and so an empty grid
+    if (have.slice(0, sr.length).join() !== sr.join() || gf.rounds.slice(sr.length).some(r => Object.keys(r.grid).length || !r.qualifying.length)) bad.push(`${y}: rounds differ`);
     for (const r of gf.rounds) {
       if (!r.qualifying.length) bad.push(`${y} R${r.round}: no qualifying`);
+      if (!r.circuitId) bad.push(`${y} R${r.round}: no circuit id`);
       if (r.qualifying.some(q => !Number.isInteger(q.position) || q.position < 1 || (q.q1 != null && !Number.isInteger(q.q1)))) bad.push(`${y} R${r.round}: qualifying row`);
       if (!Object.values(r.grid).every(v => Number.isInteger(v) && v >= 0)) bad.push(`${y} R${r.round}: grid`);
-      const sr = sf.rounds.find(x => x.round === r.round);
-      for (const id of new Set(sr.raceResults.map(x => x.driverId))) { starts++; if (id in r.grid) withGrid++; }
+      const srnd = sf.rounds.find(x => x.round === r.round);
+      if (srnd) for (const id of new Set(srnd.raceResults.map(x => x.driverId))) { starts++; if (id in r.grid) withGrid++; }
     }
   }
   t.check('every season 2014 on has a grid file with the season file\'s rounds, qualifying and a clean grid', bad.length === 0, bad.slice(0, 6).join('; '));

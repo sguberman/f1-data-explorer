@@ -1,4 +1,4 @@
-# Backtest (#155, #160, #162)
+# Backtest (#155, #160, #162, #167)
 
 `tools/backtest.mjs` scores simulator models against history and tunes their numbers. It reads `site/data/{year}.json`
 (no network) and runs the site's own model and season engine (`site/racemodel.js`, #153) and standings code
@@ -47,17 +47,20 @@ and, for What-If, the next race. So there are two levels:
 
 ## Models
 
-A model is a set of numbers (`MODELS` in the script; `current` is the Simulator now, #162, `previous` is how it was before).
+A model is a set of numbers (`MODELS` in the script; `current` is the Simulator now, #167; `team` is it as of #162, without qualifying; `previous` is before #162).
 
-| | window | near bonus | floor | DNF prior | team strength |
-|---|---|---|---|---|---|
-| `previous` | last 8 | 0.5 | 0.01 | 4 | – |
-| `retuned` | whole season | 0.5 | 0.1 | 64 | – |
-| `current` | whole season | 0.5 | 0.03 | 64 | 0.25 |
+| | window | near bonus | floor | DNF prior | team strength | grid / qualifying known | qualifying form |
+|---|---|---|---|---|---|---|---|
+| `previous` | last 8 | 0.5 | 0.01 | 4 | – | – | – |
+| `retuned` | whole season | 0.5 | 0.1 | 64 | – | – | – |
+| `team` | whole season | 0.5 | 0.03 | 64 | 0.25 | – | – |
+| `current` | whole season | 0.5 | 0.03 | 64 | 0.25 | 16 | 0.5 |
 
 Team strength (`beta`): a driver's weight for a place is their own plus `beta` times the average of their teammates'
 (teammates = the cars on the same team in the latest round), so a new or replaced driver inherits the car's pace.
-The tuner picked a window of 16 races with a near bonus of 0.25 for the model with team strength; whole season with 0.5
+`known` (#167): this race's starting grid (0 = pit lane = last) if it has one, else its qualifying position, counts as `known`
+extra finishes at that position (and the near bonus behind it); `form` counts each of this season's earlier qualifying
+positions. At season level only the next race has a known position. The tuner picked a window of 16 races with a near bonus of 0.25 for the model with team strength; whole season with 0.5
 scores within 0.02 (−35.78 vs −35.77), so `current` keeps the simpler whole season and the old near bonus.
 
 ## Results (2014–2025)
@@ -112,6 +115,31 @@ What it says:
   observed 3–4%). Results that move together across races (idea 5 in #151) are the likely cause.
 - Even `previous` has genuine skill (race level −36.96 vs −43.08 with no information), but its point estimate is no better
   than a driver's season-average pace.
+
+## Qualifying and the starting grid (#164, #167)
+
+Race level, mean log-probability per race: `team` −35.78 → `current` −33.84 (**+1.88 ± 0.22, better in 12 of 12 seasons**).
+Before the qualifying result is known, qualifying form alone gives −35.54 (+0.24). Fitted leave-one-season-out on 2014–2023
+(all numbers free, including the weights of the new terms) and scored on 2024–2025: **+1.50 ± 0.21 over `team`, 10 of 10
+seasons; holdout +3.20 ± 0.25.** Cross-validated pieces on their own, each over `team`: grid known +1.56 ± 0.16 (10 of 10;
+holdout +2.8); qualifying position instead of the grid +1.44 ± 0.14 (a position known before penalties is nearly as good);
+qualifying form +0.33 ± 0.10 (8 of 10; holdout +0.01); track history from earlier seasons at the same circuit +0.08 ± 0.03
+(8 of 10; holdout +0.02, not built; a qualifying-based version is +0.09 in-sample, and the two carry the same information).
+The grid / qualifying weight is best at 16 once form is also on (8 without it).
+
+Season level (`current` against `team`, all cut points; the next race uses its known position, every race uses the form):
+
+| | team | current | current − team |
+|---|---|---|---|
+| points miss | 24.54 | 23.11 | −1.43 ± 0.47 (lower in 9 of 12 seasons) |
+| order error (places) | 0.99 | 0.93 | −0.05 ± 0.03 (8 of 12) |
+| champion log score | 0.39 | 0.39 | 0.00 ± 0.01 |
+| title Brier | 0.26 | 0.26 | 0.00 ± 0.01 |
+| clinch round miss | 1.08 | 1.06 | −0.02 ± 0.02 |
+
+The projected order is now slightly better than the standings as they are (1.01 places off); title odds and clinch timing
+are unchanged. Letting only the next race use its known position gives −0.39 ± 0.07 on the points miss (12 of 12 seasons);
+the rest comes from the qualifying form.
 
 ## Data note
 

@@ -28,8 +28,10 @@ const F1Common = (() => {
 // A model is a set of numbers. DEFAULT is the Simulator as it is now (#162: the constants in racemodel.js, and the page's default
 // "Form from" of the whole season); PREVIOUS is the Simulator before #162.
 // `beta` is team strength: a driver's weights include beta times the average of their teammates' (0 = off).
-export const DEFAULT = { window: Infinity, nearBonus: F1RaceModel.NEAR_BONUS, nearDecay: F1RaceModel.NEAR_DECAY, floor: F1RaceModel.WEIGHT_FLOOR, dnfPrior: F1RaceModel.DNF_PRIOR_RACES, beta: F1RaceModel.TEAM_SHARE };
-export const PREVIOUS = { window: 8, nearBonus: 0.5, nearDecay: 0.5, floor: 0.01, dnfPrior: 4, beta: 0 };
+// `known` and `form` (#167): the weight of this race's starting grid / qualifying position (when known) and of this season's
+// earlier qualifying positions, as extra evidence about where a driver will finish (0 = off).
+export const DEFAULT = { window: Infinity, nearBonus: F1RaceModel.NEAR_BONUS, nearDecay: F1RaceModel.NEAR_DECAY, floor: F1RaceModel.WEIGHT_FLOOR, dnfPrior: F1RaceModel.DNF_PRIOR_RACES, beta: F1RaceModel.TEAM_SHARE, known: F1RaceModel.QUALI_KNOWN, form: F1RaceModel.QUALI_FORM };
+export const PREVIOUS = { window: 8, nearBonus: 0.5, nearDecay: 0.5, floor: 0.01, dnfPrior: 4, beta: 0, known: 0, form: 0 };
 const GRID = { // what `tune` tries for each number
   window: [3, 4, 5, 6, 8, 10, 12, 16, Infinity],
   nearBonus: [0, 0.25, 0.5, 0.75, 1, 1.5],
@@ -37,12 +39,16 @@ const GRID = { // what `tune` tries for each number
   floor: [0.001, 0.01, 0.03, 0.1, 0.3, 1],
   dnfPrior: [1, 2, 4, 8, 16, 32, 64],
   beta: [0, 0.25, 0.5, 1, 2],
+  known: [0, 1, 2, 4, 8, 16, 32],
+  form: [0, 0.25, 0.5, 1, 2],
 };
 // Named models for `--model`. `retuned` = the previous model with the window, floor and DNF smoothing refitted;
-// `current` = the Simulator now (those refitted plus team strength), fitted on 2014–2023 (see docs/BACKTEST.md).
+// `team` = those plus team strength (the Simulator after #162); `current` = the Simulator now (plus qualifying, #167), fitted
+// on 2014–2023 (see docs/BACKTEST.md).
 export const MODELS = {
   previous: PREVIOUS,
   retuned: { ...PREVIOUS, window: Infinity, floor: 0.1, dnfPrior: 64 },
+  team: { ...DEFAULT, known: 0, form: 0 }, // the Simulator after #162: refitted numbers and team strength, no qualifying
   current: DEFAULT,
 };
 const windowOf = (res, p) => p.window === Infinity || res.length <= p.window ? res : res.slice(-p.window);
@@ -59,6 +65,16 @@ export function pooledWeight(res, i, mates, place, p) {
   if (p.beta > 0 && mates[i].length) w += p.beta * mates[i].reduce((a, j) => a + placeWeight(res[j], place, p), 0) / mates[i].length;
   return w;
 }
+// What a position f (a finish, grid or qualifying position) gives a finishing place, with the model's numbers.
+export const posTermP = (f, place, p) => f <= place ? 1 : p.nearBonus * Math.pow(p.nearDecay, f - place - 1);
+// Extra evidence (#167) for a driver at a place: this race's known grid / qualifying position (k) and this season's earlier
+// qualifying positions (form).
+export const extraWeight = (known, form, place, p) => {
+  let w = 0;
+  if (p.known > 0 && known != null) w += p.known * posTermP(known, place, p);
+  if (p.form > 0 && form) for (const f of form) w += p.form * posTermP(f, place, p);
+  return w;
+};
 export const matesOf = teams => teams.map((t, i) => teams.map((u, j) => j !== i && u === t ? j : -1).filter(j => j >= 0));
 export const dnfRate = (res, gridRate, p) => { const k = res.filter(f => f == null).length; return (k + p.dnfPrior * gridRate) / (res.length + p.dnfPrior); };
 
@@ -68,6 +84,19 @@ export function season(year) {
   if (!seasons[year]) seasons[year] = JSON.parse(fs.readFileSync(path.join(DATA, `${year}.json`), 'utf8'));
   return seasons[year];
 }
+const gridFiles = {};
+// site/data/grid/{year}.json (#158): qualifying and starting grid per round; null for a year without one.
+export function gridFile(year) {
+  if (!(year in gridFiles)) { const f = path.join(DATA, 'grid', `${year}.json`); gridFiles[year] = fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, 'utf8')) : null; }
+  return gridFiles[year];
+}
+// A driver's known position for a round: the starting grid (0 = pit lane = last) if there is one, else the qualifying position.
+function knownFor(gridRound, driverId, n) {
+  if (!gridRound) return null;
+  if (driverId in gridRound.grid) return gridRound.grid[driverId] === 0 ? n : gridRound.grid[driverId];
+  const q = gridRound.qualifying.find(x => x.driverId === driverId);
+  return q ? q.position : null;
+}
 const isFinish = r => Number.isFinite(r.position) && r.position >= 1;
 // A round's rows with each driver once: the 2024 file has Pérez twice in round 24, and a driver can start a race only once.
 const rowsOf = rs => { const seen = new Set(); return (rs || []).filter(x => !seen.has(x.driverId) && seen.add(x.driverId)); };
@@ -76,16 +105,20 @@ const table = (tbl, pos) => pos >= 1 && pos <= tbl.length ? tbl[pos - 1] : 0;
 // Every Grand Prix from round 2 on, with what a model may see before it: each racing driver's earlier starts
 // (classified position, or null for a DNF), the grid's DNF rate so far, and the real result.
 export function raceCases(year) {
-  const rounds = season(year).rounds, hist = {}, cases = [];
+  const rounds = season(year).rounds, hist = {}, cases = [], gf = gridFile(year), qhist = {};
   let starts = 0, dnfs = 0;
   for (const r of rounds) {
     const rows = rowsOf(r.raceResults), racers = rows.map(x => x.driverId);
     if (r.round >= 2 && racers.length) {
       const classified = rows.filter(isFinish).sort((a, b) => a.position - b.position);
+      const gr = gf && gf.rounds.find(g => g.round === r.round);
       cases.push({ year, round: r.round, racers, team: rows.map(x => x.teamId), hist: racers.map(id => (hist[id] || []).slice()), gridRate: starts ? dnfs / starts : 0,
+                   known: racers.map(id => knownFor(gr, id, racers.length)), form: racers.map(id => (qhist[id] || []).slice()),
                    order: classified.map(x => racers.indexOf(x.driverId)), dnf: new Set(rows.filter(x => !isFinish(x)).map(x => racers.indexOf(x.driverId))) });
     }
     for (const x of rows) { (hist[x.driverId] = hist[x.driverId] || []).push(isFinish(x) ? x.position : null); starts++; if (!isFinish(x)) dnfs++; }
+    const gr = gf && gf.rounds.find(g => g.round === r.round);
+    if (gr) for (const q of gr.qualifying) (qhist[q.driverId] = qhist[q.driverId] || []).push(q.position);
   }
   return cases;
 }
@@ -101,7 +134,7 @@ export function raceLogLik(c, p) {
   const m = c.order.length;
   for (let s = 0; s < m; s++) {
     let den = 0, num = 0;
-    for (let x = s; x < m; x++) { const w = pooledWeight(res, c.order[x], mates, s + 1, p); den += w; if (x === s) num = w; }
+    for (let x = s; x < m; x++) { const i = c.order[x], w = pooledWeight(res, i, mates, s + 1, p) + (c.known ? extraWeight(c.known[i], c.form[i], s + 1, p) : 0); den += w; if (x === s) num = w; }
     ll += Math.log(num / den);
   }
   return ll;
@@ -160,18 +193,20 @@ function mulberry32(seed) {
 // Everything known after round L: each driver's points, starts and finishes, and the rounds left.
 export function snapshot(year, L) {
   const s = season(year), sc = F1Common.scoring(year), upto = s.rounds.filter(r => r.round <= L);
-  const d = {}, order = [];
-  const get = (x) => d[x.driverId] || (order.push(x.driverId), d[x.driverId] = { driverId: x.driverId, now: 0, gp: [], gpPts: [], spPts: [], finishes: [], active: false });
+  const d = {}, order = [], gf = gridFile(year);
+  const get = (x) => d[x.driverId] || (order.push(x.driverId), d[x.driverId] = { driverId: x.driverId, now: 0, gp: [], gpPts: [], spPts: [], finishes: [], active: false, qpos: [] });
   for (const r of upto) {
     for (const x of rowsOf(r.raceResults)) { const q = get(x); q.teamId = x.teamId; q.gp.push(isFinish(x) ? x.position : null); q.gpPts.push(isFinish(x) ? table(sc.gp, x.position) : 0); q.now += q.gpPts.at(-1);
       if (isFinish(x)) q.finishes[x.position - 1] = (q.finishes[x.position - 1] || 0) + 1; if (r.round === L) q.active = true; }
     for (const x of rowsOf(r.sprintResults)) { const q = get(x); const v = isFinish(x) ? table(sc.sprint, x.position) : 0; q.spPts.push(v); q.now += v; }
   }
+  if (gf) for (const g of gf.rounds) if (g.round <= L) for (const q of g.qualifying) if (d[q.driverId]) d[q.driverId].qpos.push(q.position); // this season's qualifying so far (#167)
+  const nextGrid = gf && gf.rounds.find(g => g.round === L + 1); // the next race's grid / qualifying, if known
   const rank = F1Common.standingsRank(upto, L, 'drivers');
   const events = [];
   for (let r = L + 1; r <= s.calendar.totalRounds; r++) { events.push({ round: r, type: 'gp' }); if ((s.calendar.sprintRounds || []).includes(r)) events.push({ round: r, type: 'sprint' }); }
   let starts = 0, dnfs = 0; Object.values(d).forEach(q => q.gp.forEach(f => { starts++; if (f == null) dnfs++; }));
-  return { year, L, sc, roster: order.map(id => ({ ...d[id], rank: rank[id] })), events, gridRate: starts ? dnfs / starts : 0 };
+  return { year, L, sc, roster: order.map(id => ({ ...d[id], rank: rank[id] })), events, gridRate: starts ? dnfs / starts : 0, nextGrid };
 }
 // The final standings, as the model scores them (points) and as awarded (rank, the real champion).
 export function finalOutcome(year) {
@@ -187,11 +222,19 @@ export function simContext(snap, p) {
   const res = roster.map(q => windowOf(q.gp, p)), mates = matesOf(roster.map((q, i) => q.active ? q.teamId : '-' + i)); // only drivers racing now are teammates
   roster.forEach((q, i) => {
     dnf[i] = dnfRate(res[i], snap.gridRate, p);
-    for (let s = 0; s < n; s++) W[i * n + s] = pooledWeight(res, i, mates, s + 1, p);
+    for (let s = 0; s < n; s++) W[i * n + s] = pooledWeight(res, i, mates, s + 1, p) + extraWeight(null, q.active ? q.qpos : null, s + 1, p); // qualifying form (#167)
     q.finishes.forEach((c, pos) => { if (c && pos < n) fin0[i * n + pos] = c; });
   });
   const nowPts = roster.map(q => q.now), dec = F1RaceModel.decidedContext(events, snap.L, sc.gp, sc.sprint);
-  return { roster, n, E, events, isGp: events.map(e => e.type === 'gp'), gpIdx: events.map((e, i) => e.type === 'gp' ? i : -1).filter(i => i >= 0),
+  // the next Grand Prix, once its grid / qualifying is known, has its own weights (#167)
+  let eventW = null;
+  const e0 = events.findIndex(e => e.type === 'gp');
+  if (p.known > 0 && snap.nextGrid && e0 >= 0 && events[e0].round === snap.L + 1) {
+    const Wk = Float64Array.from(W);
+    roster.forEach((q, i) => { const k = q.active ? knownFor(snap.nextGrid, q.driverId, n) : null; if (k != null) for (let s = 0; s < n; s++) Wk[i * n + s] += extraWeight(k, null, s + 1, p); });
+    eventW = []; eventW[e0] = Wk;
+  }
+  return { eventW, roster, n, E, events, isGp: events.map(e => e.type === 'gp'), gpIdx: events.map((e, i) => e.type === 'gp' ? i : -1).filter(i => i >= 0),
            wins: roster.map(() => null), dnfs: roster.map(() => null), cols: [], W, dnfRate: dnf, active: roster.map(q => q.active), fin0,
            rank: roster.map(q => q.rank), winDrivers: [], nowPts, forcedWinner: roster.map(() => false), dec,
            decidedNow: F1RaceModel.titleSettled(nowPts, n, dec.room0) ? snap.L : 0,
@@ -328,7 +371,7 @@ async function main() {
     // Three variants: the previous numbers, the numbers refitted (window, floor, DNF smoothing, near bonus) and refitted
     // with team strength. Each is fitted leave-one-season-out inside the pool, then on the whole pool and scored once on the holdout.
     const cases = Object.fromEntries(years.map(y => [y, raceCases(y)])), pool = years.filter(y => y < holdout), hold = years.filter(y => y >= holdout);
-    const keys = { retuned: Object.keys(GRID).filter(k => k !== 'beta'), team: Object.keys(GRID) };
+    const keys = { retuned: Object.keys(GRID).filter(k => !['beta', 'known', 'form'].includes(k)), team: Object.keys(GRID).filter(k => !['known', 'form'].includes(k)), quali: Object.keys(GRID) };
     const base = scoreRaces(cases, PREVIOUS), cv = {}, folds = {}, fin = {};
     for (const v of Object.keys(keys)) {
       cv[v] = {}; folds[v] = [];
@@ -340,7 +383,9 @@ async function main() {
     out.tune = { pool, hold, baseline: { cv: lateMean(base, pool), holdout: lateMean(base, hold) },
       retuned: { ...compare(Object.fromEntries(pool.map(y => [y, base[y]])), cv.retuned, pool), holdout: compare(holdBase, fin.retuned.scores, hold), params: fin.retuned.params, folds: folds.retuned },
       team: { ...compare(Object.fromEntries(pool.map(y => [y, base[y]])), cv.team, pool), holdout: compare(holdBase, fin.team.scores, hold), params: fin.team.params, folds: folds.team },
-      teamOverRetuned: { ...compare(cv.retuned, cv.team, pool), holdout: compare(fin.retuned.scores, fin.team.scores, hold) } };
+      quali: { ...compare(Object.fromEntries(pool.map(y => [y, base[y]])), cv.quali, pool), holdout: compare(holdBase, fin.quali.scores, hold), params: fin.quali.params, folds: folds.quali },
+      teamOverRetuned: { ...compare(cv.retuned, cv.team, pool), holdout: compare(fin.retuned.scores, fin.team.scores, hold) },
+      qualiOverTeam: { ...compare(cv.team, cv.quali, pool), holdout: compare(fin.team.scores, fin.quali.scores, hold) } };
   } else if (cmd === 'season') {
     out.season = seasonCompare(years, modelsArg(), runs);
   } else {
@@ -356,9 +401,10 @@ async function main() {
   if (out.tune) {
     const t = out.tune, line = (name, c) => console.log(`  ${name.padEnd(26)} cross-validated ${f(c.meanDiff, 3)} ± ${f(c.se, 3)} (better in ${c.seasonsBetter} of ${c.seasons} seasons)   holdout ${f(c.holdout.meanDiff, 3)} ± ${f(c.holdout.se, 3)}`);
     console.log(`Race level, fitted on ${from}–${holdout - 1} (leave-one-season-out), holdout ${holdout}–${to}: gain in log-probability per race`);
-    line('refitted vs previous', t.retuned); line('with team strength vs previous', t.team); line('team strength vs refitted', t.teamOverRetuned);
+    line('refitted vs previous', t.retuned); line('with team strength vs previous', t.team); line('team strength vs refitted', t.teamOverRetuned); line('with qualifying vs previous', t.quali); line('qualifying vs team strength', t.qualiOverTeam);
     console.log('  refitted numbers:     ' + JSON.stringify(t.retuned.params, J));
     console.log('  with team strength:   ' + JSON.stringify(t.team.params, J));
+    console.log('  with qualifying:      ' + JSON.stringify(t.quali.params, J));
   }
   if (out.season) {
     const s = out.season, label = { miss: 'points miss', rankErr: 'order error (places)', champLog: 'champion log score', brier: 'title Brier', clinchErr: 'clinch round miss' };

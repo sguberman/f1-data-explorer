@@ -12,31 +12,48 @@ const F1RaceModel = (()=>{
  // Team strength: each driver's weight for a place also includes TEAM_SHARE times the average of their teammates'
  // (the other cars on the same team), so a replaced or new driver inherits the car's pace.
  const TEAM_SHARE=0.25;
+ // #167: extra evidence about where a driver will finish. A known starting grid / qualifying position for this race counts
+ // like QUALI_KNOWN extra finishes there; each of this season's earlier qualifying positions counts QUALI_FORM (a driver
+ // who qualifies well tends to finish well, and it helps while the qualifying result isn't in yet). Fitted by the backtest.
+ const QUALI_KNOWN=16, QUALI_FORM=0.5;
  function placeWeight(res, place){
    let w=WEIGHT_FLOOR;
    for(const f of res){ if(f==null) continue; w += f<=place ? 1 : NEAR_BONUS*Math.pow(NEAR_DECAY, f-place-1); }
    return w;
  }
-  // The cars sharing each car's team: teams[i] is a team id, or null for a car with no teammates in this race.
+  // The weight a position f (a finish, grid or qualifying position) gives a finishing place: 1 at that place or better,
+ // then the near bonus halving each place further behind.
+ function posTerm(f, place){ return f<=place ? 1 : NEAR_BONUS*Math.pow(NEAR_DECAY, f-place-1); }
+ // A driver's extra evidence for weightMatrix: [[weight, [positions...]], ...] from this race's known position (or null)
+ // and this season's earlier qualifying positions (or an empty list); null when there is none.
+ function evidence(known, form){
+   const ev=[];
+   if(known!=null) ev.push([QUALI_KNOWN, [known]]);
+   if(form && form.length) ev.push([QUALI_FORM, form]);
+   return ev.length ? ev : null;
+ }
+ // The cars sharing each car's team: teams[i] is a team id, or null for a car with no teammates in this race.
  function matesOf(teams){ return teams.map((t,i)=>t==null ? [] : teams.map((u,j)=>j!==i && u===t ? j : -1).filter(j=>j>=0)); }
  // The weight of every driver for every finishing place (n x n, driver i place s at i*n+s): their own, plus TEAM_SHARE times
- // the average of their teammates'. res[i] = driver i's results in the window; teams as for matesOf.
- function weightMatrix(res, teams){
+ // the average of their teammates', plus any extra evidence ev[i] (see evidence; optional). res[i] = driver i's results in
+ // the window; teams as for matesOf.
+ function weightMatrix(res, teams, ev){
    const n=res.length, mates=matesOf(teams), W=new Float64Array(n*n);
    for(let i=0;i<n;i++) for(let s=0;s<n;s++){
      let w=placeWeight(res[i], s+1);
      if(mates[i].length){ let m=0; for(const j of mates[i]) m+=placeWeight(res[j], s+1); w += TEAM_SHARE*m/mates[i].length; }
+     if(ev && ev[i]) for(const [lam, pos] of ev[i]) for(const f of pos) w += lam*posTerm(f, s+1);
      W[i*n+s]=w;
    }
    return W;
  }
  // The window's DNF share blended with DNF_PRIOR_RACES races at the grid's DNF rate.
  function dnfRate(res, gridRate){ const k=res.filter(f=>f==null).length; return (k + DNF_PRIOR_RACES*gridRate)/(res.length + DNF_PRIOR_RACES); }
- // drivers: [{results, team}] (results = each Grand Prix start in the window: classified position or null for a DNF;
+ // drivers: [{results, team, ev}] (ev = evidence(known, form), optional; results = each Grand Prix start in the window: classified position or null for a DNF;
  // team = their team id this race, for team strength).
  // Returns per driver {meanPoints, medianPos (DNF counts as last), pClassified}.
  function simulate(drivers, {pts, gridRate, runs, rand}){
-   const n=drivers.length, W=weightMatrix(drivers.map(d=>d.results), drivers.map(d=>d.team==null ? null : d.team)), rate=new Float64Array(n);
+   const n=drivers.length, W=weightMatrix(drivers.map(d=>d.results), drivers.map(d=>d.team==null ? null : d.team), drivers.map(d=>d.ev||null)), rate=new Float64Array(n);
    drivers.forEach((d,i)=>{ rate[i]=dnfRate(d.results, gridRate); });
    const sum=new Float64Array(n), cls=new Float64Array(n), counts=new Int32Array(n*(n+1)), alive=new Int16Array(n), wts=new Float64Array(n);
    for(let r=0;r<runs;r++){
@@ -145,9 +162,10 @@ const F1RaceModel = (()=>{
  // Grand Prix place is added to fin (finishes by position, for countback) — the sprint counts for points only.
  function simulateSeason(ctx, rand, ptsGP, ptsSprint, keepOrders){
    const plan=planSeason(ctx, rand), totals=ctx.nowPts.slice(), orders=keepOrders?[]:null, alive=ctx.alive, dec=ctx.dec;
-   const n=ctx.n, fin=ctx.fin0.slice(), active=ctx.active;
+   const n=ctx.n, fin=ctx.fin0.slice(), active=ctx.active, W0=ctx.W;
    let decided=ctx.decidedNow;
    for(let e=0;e<ctx.E;e++){
+     ctx.W = (ctx.eventW && ctx.eventW[e]) || W0; // #167: an event can have its own weights (the next race, once its qualifying is known)
      const gp=ctx.isGp[e], w=plan.winnerOf[e], pts = gp ? ptsGP : ptsSprint;
      let len=0; for(let i=0;i<n;i++) if(active[i] && !plan.out[i][e] && i!==w) alive[len++]=i;
      // A driver with a set number of wins wins exactly those GPs: they're never drawn for P1 elsewhere.
@@ -157,6 +175,7 @@ const F1RaceModel = (()=>{
      if(orders) orders.push(order);
      if(!decided && dec.endRound[e] && titleSettled(totals, n, dec.roomAfter[e])) decided=dec.endRound[e];
    }
+   ctx.W=W0;
    return {totals, plan, orders, fin, decided: decided || dec.lastRound};
  }
  // issue #30 / #117: draw a race order place by place (who takes P1, then P2, ...), weighting the still-unplaced
@@ -194,7 +213,7 @@ const F1RaceModel = (()=>{
    for(let p=0;p<n;p++){ const d=fin[b*n+p]-fin[a*n+p]; if(d) return d; }
    return 0;
  }
- return { placeWeight, dnfRate, matesOf, weightMatrix, simulate, NEAR_BONUS, NEAR_DECAY, WEIGHT_FLOOR, DNF_PRIOR_RACES, TEAM_SHARE,
+ return { placeWeight, dnfRate, matesOf, weightMatrix, evidence, posTerm, simulate, NEAR_BONUS, NEAR_DECAY, WEIGHT_FLOOR, DNF_PRIOR_RACES, TEAM_SHARE, QUALI_KNOWN, QUALI_FORM,
           decidedContext, titleSettled, decidedRoundFor, pickInPlace, planSeason, simulateSeason, sampleOrder, countback };
 })();
 if(typeof module!=='undefined' && module.exports) module.exports=F1RaceModel; // Node (the backtest, #153)

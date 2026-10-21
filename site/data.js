@@ -177,6 +177,20 @@ const F1Data = (() => {
     return load;
   }
 
+  // #167: the season's qualifying and starting grid (data/grid/{year}.json, #158). null when the file is missing or broken, so a
+  // page just carries on without it. Kept for the page view; `fresh` (Refresh data) asks the browser to re-download it.
+  const grids = {};
+  async function loadGrid(year, fresh){
+    if(!fresh && year in grids) return grids[year];
+    let g = null;
+    try{
+      const res = await fetch(`data/grid/${year}.json`, fresh ? {cache:'reload'} : {});
+      if(res.ok){ const j = await res.json(); if(j && j.v===1 && j.year===year && Array.isArray(j.rounds)) g = j; }
+    }catch(e){ /* no qualifying data: the model runs without it */ }
+    grids[year] = g;
+    return g;
+  }
+
   // opts: onProgress(round, count); live: true skips the snapshot (the snapshot tool itself uses this);
   // fresh: true asks the browser to re-download the snapshot (Refresh data); onSnapshot(rounds) (#111): called with
   // a copy of the season file's rounds as soon as the file is in, before f1api.dev is asked about newer rounds.
@@ -362,5 +376,5 @@ const F1Data = (() => {
       .sort((a,b)=>b.total-a.total).slice(0,n).map(t=>t.teamId);
   }
 
-  return { loadSeason, cumulative, topTeams, getCalendar, clearCache };
+  return { loadSeason, loadGrid, cumulative, topTeams, getCalendar, clearCache };
 })();
