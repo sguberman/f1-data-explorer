@@ -51,7 +51,26 @@ module.exports = async (t, h) => {
   t.check('projection: title probabilities add to 1', Math.abs(proj.reduce((s, r) => s + r.p1, 0) - 1) < 1e-9);
   t.check('same seed, same projection', JSON.stringify(proj) === JSON.stringify(B.projectSeason(snap, B.DEFAULT, 300, 1)));
   const sc = B.scoreProjection(B.paceProjection(snap, 0), out);
-  t.check('standings-as-is projection scores a finite miss and rank correlation', Number.isFinite(sc.miss) && sc.spearman > 0.8 && sc.spearman <= 1, JSON.stringify(sc));
+  t.check('standings-as-is projection scores a finite points miss and order error', Number.isFinite(sc.miss) && sc.miss > 0 && Number.isFinite(sc.rankErr) && sc.rankErr >= 0 && sc.rankErr < 5, JSON.stringify(sc));
+  const perfect = B.scoreProjection(Object.keys(out.points).map(id => ({ driverId: id, mean: out.points[id], p1: out.rank[id] === 0 ? 1 : 0 })), out);
+  t.check('a projection equal to the real final standings scores zero miss, zero order error, a perfect title', perfect.miss === 0 && perfect.rankErr === 0 && perfect.champLog === 0 && perfect.brier === 0, JSON.stringify(perfect));
+
+  // ---- When the title was settled ----
+  t.check('real settling rounds: 2020 round 14 (Turkey), 2021 round 22 (last)', B.actualDecided(2020) === 14 && B.actualDecided(2021) === 22, `${B.actualDecided(2020)} ${B.actualDecided(2021)}`);
+  const sp = B.simulateProjection(snap, B.DEFAULT, 200, 5);
+  t.check('simulated settling rounds: one per run, sorted, none before the cut point or after the last round', sp.decided.length === 200 && sp.decided.every((v, i) => i === 0 || sp.decided[i - 1] <= v) && sp.decided[0] >= 12 && sp.decided.at(-1) <= 24);
+
+  // ---- Team strength ----
+  const mates = B.matesOf(['a', 'b', 'a', 'c']);
+  t.check('teammates: cars on the same team, a lone car has none', JSON.stringify(mates) === '[[2],[],[0],[]]', JSON.stringify(mates));
+  const rs = [[1, 1, 2], [], [5, 6, 4], [3]], m2 = B.matesOf(['a', 'a', 'b', 'b']);
+  t.check('team strength off: a driver\'s weight is their own', B.pooledWeight(rs, 1, m2, 3, { ...B.DEFAULT, beta: 0 }) === B.placeWeight(rs[1], 3, B.DEFAULT));
+  const pb = { ...B.DEFAULT, beta: 0.5 };
+  t.check('team strength on: a driver with no record inherits a share of their teammate\'s weight', Math.abs(B.pooledWeight(rs, 1, m2, 3, pb) - (B.placeWeight([], 3, pb) + 0.5 * B.placeWeight(rs[0], 3, pb))) < 1e-12);
+  t.check('team strength on: a driver on a one-car team is unchanged', B.pooledWeight(rs, 0, B.matesOf(['a', 'b', 'c', 'd']), 3, pb) === B.placeWeight(rs[0], 3, pb));
+  t.check('named models: current is the site model, the others differ', JSON.stringify(B.MODELS.current) === JSON.stringify(B.DEFAULT) && B.MODELS.team.beta > 0 && B.MODELS.retuned.beta === 0);
+  const withTeam = B.projectSeason(snap, B.MODELS.team, 300, 1);
+  t.check('team model: projections still end at or above the points now, title chances add to 1', withTeam.every(r => r.mean >= byNow[r.driverId] - 1e-9) && Math.abs(withTeam.reduce((a, r) => a + r.p1, 0) - 1) < 1e-9);
 
   // ---- Tuning never makes its own training score worse ----
   const some = { 2023: B.raceCases(2023), 2024: B.raceCases(2024) }, before = B.scoreRaces(some, B.DEFAULT);
