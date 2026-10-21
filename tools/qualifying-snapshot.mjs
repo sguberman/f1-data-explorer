@@ -8,7 +8,8 @@
 //   node tools/qualifying-snapshot.mjs 2019 2024  only these years
 //
 // A round that has qualifying but no result yet (the next race) has an empty `grid`.
-// File: {v:1, year, generatedAt, complete, source:'jolpica', rounds:[{round, raceName, qualifying:[{driverId, code,
+// File: {v:1, year, generatedAt, complete, source:'jolpica', circuits:{round: circuitId, the whole calendar}, rounds:[{round, raceName,
+// circuitId, qualifying:[{driverId, code,
 // teamId, position, q1, q2, q3}], grid:{driverId: startingPosition}}]}. Times are milliseconds (null when the driver
 // set none); grid 0 is a pit-lane start; a driver missing from `grid` didn't start. A finished season is never
 // fetched twice, and a failed fetch never overwrites a good file.
@@ -85,10 +86,12 @@ export async function buildGrid(year, fetchImpl, { now = Date.now(), pause = asy
       grid,
     };
   });
-  return { v: 1, year, generatedAt: now, complete: withResults >= calendar.size, source: 'jolpica', rounds };
+  // the whole calendar's circuits, so the races still to come have theirs (track history, #169)
+  const circuits = {}; for(const [round, { race }] of calendar) if(race.Circuit && race.Circuit.circuitId) circuits[round] = race.Circuit.circuitId;
+  return { v: 1, year, generatedAt: now, complete: withResults >= calendar.size, source: 'jolpica', circuits, rounds };
 }
 
-const sameData = (a, b) => a && b && JSON.stringify([a.rounds, a.complete]) === JSON.stringify([b.rounds, b.complete]);
+const sameData = (a, b) => a && b && JSON.stringify([a.rounds, a.complete, a.circuits]) === JSON.stringify([b.rounds, b.complete, b.circuits]);
 
 async function main(){
   const args = process.argv.slice(2), all = args.includes('--all');

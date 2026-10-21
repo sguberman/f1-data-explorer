@@ -201,7 +201,7 @@ canvas{max-width:100%;}
 let PTS_GP=[25,18,15,12,10,8,6,4,2,1];
 let PTS_SPRINT=[8,7,6,5,4,3,2,1];
 
-let currentYear=null, currentSeasonRounds=[], currentCalendar=null, currentGrid=null; // currentGrid: the season's qualifying and grid (#167)
+let currentYear=null, currentSeasonRounds=[], currentCalendar=null, currentGrid=null, currentTracks=null; // currentGrid: the season's qualifying and grid (#167); currentTracks: drivers' history at each circuit (#169)
 let L=0, fullRoster=[], remainingEvents=[];
 let selectedDriverIds=null, pickerSort='team';
 // #42/#14: per tracked driver {dnf, win}; null = auto (actual DNF rate / no forced wins). #11: collisions.
@@ -233,6 +233,7 @@ async function buildFromSelection(detail){
  L = detail.round;
  currentCalendar = await F1Data.getCalendar(currentYear);
  currentGrid = await F1Data.loadGrid(currentYear, detail.fresh); // null when there is none: the model runs without it (#167)
+ currentTracks = await F1Data.loadTracks(detail.fresh); // likewise (#169)
  outcomes={}; collisions=[]; lastRun=null; hideResults(); // a new season starts from scratch
  recomputeRoster();
  defaultIds = F1Common.defaultSelection(driverSets(), [...fullRoster].sort(byStanding).map(d=>d.driverId)); // #104: the title contenders
@@ -414,6 +415,13 @@ function knownPos(r, id, n){
  const q=g.qualifying.find(x=>x.driverId===id);
  return q ? q.position : null;
 }
+// #169: a round's circuit (from the qualifying file, which has the whole calendar), and a driver's deltas at it from earlier
+// seasons only (finish minus that season's average; a past view never sees the future).
+const circuitOf = r => currentGrid ? ((currentGrid.circuits && currentGrid.circuits[r]) || (gridRound(r) || {}).circuitId || null) : null;
+function trackDeltas(id, circuit){
+ const e = currentTracks && currentTracks.circuits[circuit] && currentTracks.circuits[circuit][id];
+ return e ? e.filter(x=>x[0]<currentYear).map(x=>x[1]) : [];
+}
 // Whether the first remaining Grand Prix is the next round and has known positions for anyone racing: 'grid', 'qualifying' or null.
 function nextRaceSource(){
  const e=remainingEvents.find(x=>x.type==='gp'), g=e && e.round===L+1 ? gridRound(L+1) : null;
@@ -438,12 +446,20 @@ function buildSimContext(){
  const teams=roster.map(d=>d.active ? d.teamNow : null), form=roster.map(d=>d.active ? qualiForm(d.driverId) : []); // #162 team strength, #167 qualifying form
  const W=F1RaceModel.weightMatrix(res, teams, form.map(f=>F1RaceModel.evidence(null, f)));
  roster.forEach((d,i)=>{ dnfRate[i]=modelDnfRate(res[i]); });
- // #167: the next Grand Prix, once its grid / qualifying is known, has its own weights
- let eventW=null;
- if(nextRaceSource()){
-   const e0=remainingEvents.findIndex(e=>e.type==='gp'), known=roster.map(d=>d.active ? knownPos(L+1, d.driverId, n) : null);
-   eventW=[]; eventW[e0]=F1RaceModel.weightMatrix(res, teams, known.map((k,i)=>F1RaceModel.evidence(k, form[i])));
- }
+ // #167/#169: events with their own weights: the next Grand Prix once its grid / qualifying is known, and any race at a circuit
+ // where drivers have track history (a sprint shares its Grand Prix's circuit)
+ const knownSrc=nextRaceSource(), e0=remainingEvents.findIndex(e=>e.type==='gp');
+ const known=knownSrc ? roster.map(d=>d.active ? knownPos(L+1, d.driverId, n) : null) : null;
+ const cur=roster.map(d=>{ const c=d.results.filter(f=>f!=null); return c.length ? c.reduce((a,b)=>a+b,0)/c.length : null; });
+ const cache={}; let eventW=null;
+ remainingEvents.forEach((e,ei)=>{
+   const circuit=circuitOf(e.round), useKnown=!!knownSrc && ei===e0;
+   const track=circuit && currentTracks ? roster.map((d,i)=>d.active ? F1RaceModel.trackPosition(trackDeltas(d.driverId, circuit), cur[i], n) : null) : null;
+   if(!useKnown && !(track && track.some(t=>t!=null))) return;
+   const key=circuit+'|'+(useKnown?'k':'');
+   if(!cache[key]) cache[key]=F1RaceModel.weightMatrix(res, teams, roster.map((d,i)=>F1RaceModel.evidence(useKnown ? known[i] : null, form[i], track ? track[i] : null)));
+   (eventW=eventW||[])[ei]=cache[key];
+ });
  // countback (#117): Grand Prix finishes so far by exact position, per driver (simulated ones are added per season)
  const fin0=new Int16Array(n*n);
  roster.forEach((d,i)=>{ d.finishes.forEach((c,p)=>{ if(c && p<n) fin0[i*n+p]=c; }); });
@@ -509,7 +525,7 @@ function updateLede(){
  document.getElementById('lede').textContent =
    `Simulates the rest of the season thousands of times: ${nGP} ${nGP===1?'Grand Prix':'Grands Prix'}`
    + (nSprint ? ` and ${nSprint} sprint${nSprint===1?'':'s'}` : '')
-   + ` left after Round ${L}${totalRounds?(' of '+totalRounds):''}. Each race is drawn place by place from where each driver has been finishing this season, and a little from where their teammate has and how they have been qualifying (Form from, below): they're most likely to finish where they usually do or a place or two either side, and they retire about as often as they have been, unless you set DNFs, wins or collisions below. Every driver in the latest round is simulated, so someone you don't track can still score points or win the title, and drivers level on points are separated by countback, as in the real standings. It shows a range of plausible outcomes if current form holds, not a prediction.`
+   + ` left after Round ${L}${totalRounds?(' of '+totalRounds):''}. Each race is drawn place by place from where each driver has been finishing this season, and a little from where their teammate has how they have been qualifying and how they have done at the track before (Form from, below): they're most likely to finish where they usually do or a place or two either side, and they retire about as often as they have been, unless you set DNFs, wins or collisions below. Every driver in the latest round is simulated, so someone you don't track can still score points or win the title, and drivers level on points are separated by countback, as in the real standings. It shows a range of plausible outcomes if current form holds, not a prediction.`
    + (src ? ` Round ${L+1} is simulated from its ${src==='grid' ? 'starting grid' : 'qualifying result'}.` : '');
 }
 

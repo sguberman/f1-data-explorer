@@ -141,7 +141,7 @@ tr.champ td{background:var(--inset);}
 // the season already loaded — dragging and the buttons never fetch.
 let PTS_GP=[25,18,15,12,10,8,6,4,2,1]; // the season's scoring (#141: F1Common.scoring), set when a season loads
 const sprintPoints = year => F1Common.scoring(year).sprint;
-let year=null, seasonRounds=[], calendar=null, L=0, T=0, grid=null, simKnown=null; // grid: the season's qualifying and starting grid (#167)
+let year=null, seasonRounds=[], calendar=null, L=0, T=0, grid=null, tracks=null, simKnown=null; // grid: the season's qualifying and starting grid (#167)
 // orders[session] = [driverId…] with null as the "not classified" divider: everyone after it gets no position.
 let orders={}, sessions=[], roster={};
 // #85: clinch = the "🏆 Title clinch" preset for round T ({orders, kinds, who, what}), or null when no title can be won
@@ -158,6 +158,7 @@ async function buildFromSelection(detail){
  { const cn=document.getElementById('countNote'); cn.textContent=F1Counting.asAwardedNote(year); cn.hidden=!cn.textContent; } // #141
  calendar = seasonRounds.length ? await F1Data.getCalendar(year) : null;
  grid = seasonRounds.length ? await F1Data.loadGrid(year, detail.fresh) : null; // null when there is none: the model runs without it (#167)
+ tracks = seasonRounds.length ? await F1Data.loadTracks(detail.fresh) : null; // likewise (#169)
  // #31: a shared link's keys, first season only
  const link = F1Share.take();
  if(link){ const w=link.get('w'); if(w==='all') dataWindow=Infinity; else if(/^\d{1,3}$/.test(w||'') && +w>=WINDOW_MIN) dataWindow=+w; }
@@ -271,7 +272,14 @@ function simulatedOrder(session, standing){
  const gr=g=>grid && grid.rounds.find(x=>x.round===g), tr=gr(T), n=run.length;
  const form=id=>grid ? grid.rounds.filter(g=>g.round<=L).flatMap(g=>g.qualifying.filter(q=>q.driverId===id).map(q=>q.position)) : [];
  const known=id=>{ if(!gp || !tr) return null; if(id in tr.grid) return tr.grid[id]===0 ? n : tr.grid[id]; const q=tr.qualifying.find(x=>x.driverId===id); return q ? q.position : null; };
- const win=windowShown(), drivers=run.map(id=>({results: win===Infinity ? res[id] : res[id].slice(-win), team: team[id], ev: F1RaceModel.evidence(known(id), form(id))}));
+ // #169: track history at round T's circuit, from earlier seasons only (finish minus that season's average)
+ const circuit = grid ? ((grid.circuits && grid.circuits[T]) || (tr || {}).circuitId || null) : null;
+ const track=id=>{
+   const e = circuit && tracks && tracks.circuits[circuit] && tracks.circuits[circuit][id];
+   const c = res[id].filter(f=>f!=null), cur = c.length ? c.reduce((a,b)=>a+b,0)/c.length : null;
+   return F1RaceModel.trackPosition(e ? e.filter(x=>x[0]<year).map(x=>x[1]) : [], cur, n);
+ };
+ const win=windowShown(), drivers=run.map(id=>({results: win===Infinity ? res[id] : res[id].slice(-win), team: team[id], ev: F1RaceModel.evidence(known(id), form(id), track(id))}));
  if(gp) simKnown = run.some(id=>known(id)!=null) ? (Object.keys(tr.grid).length ? 'grid' : 'qualifying') : null;
  const sims=F1RaceModel.simulate(drivers, {pts, gridRate: starts ? dnfs/starts : 0, runs:SIM_RUNS, rand:Math.random});
  const idx=run.map((id,i)=>i).sort((a,b)=>sims[b].meanPoints-sims[a].meanPoints || sims[a].medianPos-sims[b].medianPos || a-b);
