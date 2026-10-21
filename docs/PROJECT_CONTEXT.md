@@ -126,6 +126,9 @@ Move something into `common.js` only once it's genuinely identical on every page
   points, and sprint results (`session:'sprint'`). It only patches when both sources agree on the rounds and
   drivers and the sprint rounds match the calendar; otherwise it warns and keeps the file as it was. A patched
   file carries `patched:{source:'jolpica', version}`; bumping `PATCH_VERSION` re-patches those seasons once.
+  **Repeated drivers (#157):** f1api.dev once listed a driver twice in a round and left another out (2024 round 24: Pérez twice, no Lawson).
+  A stored or freshly built season whose round repeats a driver is rebuilt for that round from Jolpica (`repairRepeatedDrivers`, with the
+  drivers' details taken from their other rows); `47-data-repair` also checks no season file from 2014 on repeats one.
   **Workflow:** `snapshot.yml` runs daily, hourly on Saturdays, Sundays and Mondays (UTC), by hand (Actions → Update
   season data, optionally "all"), and on pushes that change the generator or `data.js`. It commits
   `issue #13: update season data (automated)` and, on `main`, starts the Pages deploy itself (commits made
