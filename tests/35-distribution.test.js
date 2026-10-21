@@ -10,6 +10,7 @@ module.exports = async (t, h) => {
 
   const hits = p.apiHits.length;
   await p.selectOption('#chartSortSelect', 'median');
+  await p.waitForFunction(() => /chart=median/.test(location.search), null, { timeout: 3000 }).catch(() => {}); // the link follows a tick later (F1Share.sync); if it never does, the check below fails
   const pos = await p.evaluate(() => {
     const ch = Chart.getChart(document.getElementById('ridgeCanvas')), ds = ch.data.datasets.filter(d => !d._baseline);
     const med = D.map(d => d.median);
@@ -25,6 +26,7 @@ module.exports = async (t, h) => {
   const hits2 = p.apiHits.length;
   const before = await p.evaluate(() => ({ seed: lastRun.seed, pts: Chart.getChart(document.getElementById('ridgePointsCanvas')).data.datasets.filter(d => !d._baseline).map(d => d._code) }));
   await p.selectOption('#ridgePointsCard .resultSort', 'median');
+  await p.waitForFunction(() => /rsort=median/.test(location.search), null, { timeout: 3000 }).catch(() => {});
   const after = await p.evaluate(() => {
     const ds = id => Chart.getChart(document.getElementById(id)).data.datasets.filter(d => !d._baseline);
     const pts = ds('ridgePointsCanvas'), pos = ds('ridgePosCanvas');
@@ -37,6 +39,7 @@ module.exports = async (t, h) => {
 
   t.check('simulator: the ridge plots redraw without animation', await p.evaluate(() => ['ridgePosCanvas', 'ridgePointsCanvas'].every(id => Chart.getChart(document.getElementById(id)).options.animation === false)));
   await p.check('#ridgeBarsOpt');
+  await p.waitForFunction(() => /bars=1/.test(location.search), null, { timeout: 3000 }).catch(() => {}); // the link is updated a tick after the change (F1Share.sync); a link that never updates still fails the check below
   const bars = await p.evaluate(() => ({ b: Chart.getChart(document.getElementById('ridgePointsCanvas')).data.datasets.filter(d => !d._baseline).every(d => d._bars && d.fill === false),
     pos: Chart.getChart(document.getElementById('ridgePosCanvas')).data.datasets.some(d => d._bars), link: location.search }));
   t.check('simulator: Bars switches the points plot to bins, and only that plot (bars=1 in the link)', bars.b && !bars.pos && /bars=1/.test(bars.link), J(bars));
