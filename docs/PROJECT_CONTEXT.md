@@ -37,7 +37,9 @@ site/                 The website (deployed as the site root, so URLs are unchan
   position.html       Race finishing-position ridgeline chart per driver, with sort/show options, and a
                       results heat strip (#87).
   simulator.html      Monte Carlo rest-of-season title simulator with ridgeline result charts.
-  racemodel.js        F1RaceModel (#133): the simulator's race model for one race, used by What-If's Simulated preset.
+  racemodel.js        F1RaceModel (#133, #153): the simulator's race model (weights, DNF rate) and season engine (planSeason,
+                      simulateSeason, sampleOrder, decidedContext, countback). Shared by simulator.html, What-If's Simulated
+                      preset and Node (`require`); takes the random generator and points tables as arguments.
   eras.html / eras.js Eras (#135): championship position per season since 1950 against rule eras; F1Eras = lineage map + model.
   whatif.html         What-if: drag a finishing order for a round, see both championships after it, with the title race (#85).
   common.js           F1Common: helpers shared by the chart pages (issue #44 and later).
