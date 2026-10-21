@@ -26,13 +26,22 @@ const F1Common = (() => {
 
 // ---- Models ----
 // A model is a set of numbers; DEFAULT is the Simulator as it is today (the constants in racemodel.js, window 8).
-export const DEFAULT = { window: 8, nearBonus: F1RaceModel.NEAR_BONUS, nearDecay: F1RaceModel.NEAR_DECAY, floor: F1RaceModel.WEIGHT_FLOOR, dnfPrior: F1RaceModel.DNF_PRIOR_RACES };
+// `beta` is team strength: a driver's weights include beta times the average of their teammates' (0 = off, as today).
+export const DEFAULT = { window: 8, nearBonus: F1RaceModel.NEAR_BONUS, nearDecay: F1RaceModel.NEAR_DECAY, floor: F1RaceModel.WEIGHT_FLOOR, dnfPrior: F1RaceModel.DNF_PRIOR_RACES, beta: 0 };
 const GRID = { // what `tune` tries for each number
   window: [3, 4, 5, 6, 8, 10, 12, 16, Infinity],
   nearBonus: [0, 0.25, 0.5, 0.75, 1, 1.5],
   nearDecay: [0.25, 0.35, 0.5, 0.65, 0.8],
   floor: [0.001, 0.01, 0.03, 0.1, 0.3, 1],
-  dnfPrior: [1, 2, 4, 8, 16],
+  dnfPrior: [1, 2, 4, 8, 16, 32, 64],
+  beta: [0, 0.25, 0.5, 1, 2],
+};
+// Named models for `--model`. `retuned` = the current model with the window, floor and DNF smoothing refitted;
+// `team` = that plus team strength (numbers fitted on 2014–2023, see docs/BACKTEST.md).
+export const MODELS = {
+  current: DEFAULT,
+  retuned: { ...DEFAULT, window: Infinity, floor: 0.1, dnfPrior: 64 },
+  team: { ...DEFAULT, window: 16, nearBonus: 0.25, floor: 0.03, dnfPrior: 64, beta: 0.25 },
 };
 const windowOf = (res, p) => p.window === Infinity || res.length <= p.window ? res : res.slice(-p.window);
 // Weight for finishing at `place`: the same formula as F1RaceModel.placeWeight, with the numbers as parameters.
@@ -41,6 +50,14 @@ export function placeWeight(res, place, p) {
   for (const f of res) { if (f == null) continue; w += f <= place ? 1 : p.nearBonus * Math.pow(p.nearDecay, f - place - 1); }
   return w;
 }
+// A driver's weight for a place: their own, plus `beta` times the average of their teammates' (so a driver with a thin
+// record inherits the car's pace). `res` = every racer's windowed results, `mates[i]` = the indexes of i's teammates.
+export function pooledWeight(res, i, mates, place, p) {
+  let w = placeWeight(res[i], place, p);
+  if (p.beta > 0 && mates[i].length) w += p.beta * mates[i].reduce((a, j) => a + placeWeight(res[j], place, p), 0) / mates[i].length;
+  return w;
+}
+export const matesOf = teams => teams.map((t, i) => teams.map((u, j) => j !== i && u === t ? j : -1).filter(j => j >= 0));
 export const dnfRate = (res, gridRate, p) => { const k = res.filter(f => f == null).length; return (k + p.dnfPrior * gridRate) / (res.length + p.dnfPrior); };
 
 // ---- Data ----
@@ -63,7 +80,7 @@ export function raceCases(year) {
     const rows = rowsOf(r.raceResults), racers = rows.map(x => x.driverId);
     if (r.round >= 2 && racers.length) {
       const classified = rows.filter(isFinish).sort((a, b) => a.position - b.position);
-      cases.push({ year, round: r.round, racers, hist: racers.map(id => (hist[id] || []).slice()), gridRate: starts ? dnfs / starts : 0,
+      cases.push({ year, round: r.round, racers, team: rows.map(x => x.teamId), hist: racers.map(id => (hist[id] || []).slice()), gridRate: starts ? dnfs / starts : 0,
                    order: classified.map(x => racers.indexOf(x.driverId)), dnf: new Set(rows.filter(x => !isFinish(x)).map(x => racers.indexOf(x.driverId))) });
     }
     for (const x of rows) { (hist[x.driverId] = hist[x.driverId] || []).push(isFinish(x) ? x.position : null); starts++; if (!isFinish(x)) dnfs++; }
@@ -77,12 +94,12 @@ export function raceCases(year) {
 const clamp = x => Math.min(1 - 1e-9, Math.max(1e-9, x));
 export function raceLogLik(c, p) {
   let ll = 0;
-  const res = c.hist.map(h => windowOf(h, p));
+  const res = c.hist.map(h => windowOf(h, p)), mates = c.mates || (c.mates = matesOf(c.team || c.racers.map((_, i) => '-' + i)));
   res.forEach((r, i) => { const q = clamp(dnfRate(r, c.gridRate, p)); ll += Math.log(c.dnf.has(i) ? q : 1 - q); });
   const m = c.order.length;
   for (let s = 0; s < m; s++) {
     let den = 0, num = 0;
-    for (let x = s; x < m; x++) { const w = placeWeight(res[c.order[x]], s + 1, p); den += w; if (x === s) num = w; }
+    for (let x = s; x < m; x++) { const w = pooledWeight(res, c.order[x], mates, s + 1, p); den += w; if (x === s) num = w; }
     ll += Math.log(num / den);
   }
   return ll;
@@ -111,11 +128,11 @@ const lateMean = (scores, years) => mean(years.flatMap(y => scores[y].late));
 
 // ---- Tuning ----
 // Coordinate descent: try each number's grid with the others fixed, keep the best, repeat until nothing improves.
-export function tune(allCases, years, start = DEFAULT) {
+export function tune(allCases, years, start = DEFAULT, keys = Object.keys(GRID).filter(k => k !== 'beta')) {
   let best = { ...start }, bestScore = lateMean(scoreRaces(pick(allCases, years), best), years);
   for (let pass = 0; pass < 6; pass++) {
     let improved = false;
-    for (const key of Object.keys(GRID)) for (const v of GRID[key]) {
+    for (const key of keys) for (const v of GRID[key]) {
       if (v === best[key]) continue;
       const cand = { ...best, [key]: v }, sc = lateMean(scoreRaces(pick(allCases, years), cand), years);
       if (sc > bestScore + 1e-9) { best = cand; bestScore = sc; improved = true; }
@@ -144,7 +161,7 @@ export function snapshot(year, L) {
   const d = {}, order = [];
   const get = (x) => d[x.driverId] || (order.push(x.driverId), d[x.driverId] = { driverId: x.driverId, now: 0, gp: [], gpPts: [], spPts: [], finishes: [], active: false });
   for (const r of upto) {
-    for (const x of rowsOf(r.raceResults)) { const q = get(x); q.gp.push(isFinish(x) ? x.position : null); q.gpPts.push(isFinish(x) ? table(sc.gp, x.position) : 0); q.now += q.gpPts.at(-1);
+    for (const x of rowsOf(r.raceResults)) { const q = get(x); q.teamId = x.teamId; q.gp.push(isFinish(x) ? x.position : null); q.gpPts.push(isFinish(x) ? table(sc.gp, x.position) : 0); q.now += q.gpPts.at(-1);
       if (isFinish(x)) q.finishes[x.position - 1] = (q.finishes[x.position - 1] || 0) + 1; if (r.round === L) q.active = true; }
     for (const x of rowsOf(r.sprintResults)) { const q = get(x); const v = isFinish(x) ? table(sc.sprint, x.position) : 0; q.spPts.push(v); q.now += v; }
   }
@@ -165,9 +182,10 @@ export function finalOutcome(year) {
 export function simContext(snap, p) {
   const { roster, events, sc } = snap, n = roster.length, E = events.length;
   const W = new Float64Array(n * n), dnf = new Float64Array(n), fin0 = new Int16Array(n * n);
+  const res = roster.map(q => windowOf(q.gp, p)), mates = matesOf(roster.map((q, i) => q.active ? q.teamId : '-' + i)); // only drivers racing now are teammates
   roster.forEach((q, i) => {
-    const res = windowOf(q.gp, p); dnf[i] = dnfRate(res, snap.gridRate, p);
-    for (let s = 0; s < n; s++) W[i * n + s] = placeWeight(res, s + 1, p);
+    dnf[i] = dnfRate(res[i], snap.gridRate, p);
+    for (let s = 0; s < n; s++) W[i * n + s] = pooledWeight(res, i, mates, s + 1, p);
     q.finishes.forEach((c, pos) => { if (c && pos < n) fin0[i * n + pos] = c; });
   });
   const nowPts = roster.map(q => q.now), dec = F1RaceModel.decidedContext(events, snap.L, sc.gp, sc.sprint);
@@ -177,18 +195,21 @@ export function simContext(snap, p) {
            decidedNow: F1RaceModel.titleSettled(nowPts, n, dec.room0) ? snap.L : 0,
            scratch: new Int16Array(Math.max(E, n)), alive: new Int16Array(n), wts: new Float64Array(n) };
 }
-// Simulates `runs` seasons: each driver's mean final points and how often they finish at each championship rank.
-export function projectSeason(snap, p, runs, seed) {
-  const ctx = simContext(snap, p), n = ctx.n, rand = mulberry32(seed), t = new Float64Array(n), rankCounts = new Int32Array(n * n), standing = new Array(n);
+// Simulates `runs` seasons: each driver's mean final points and how often they finish at each championship rank, and
+// the round the title was settled in each simulated season (sorted).
+export function simulateProjection(snap, p, runs, seed) {
+  const ctx = simContext(snap, p), n = ctx.n, rand = mulberry32(seed), t = new Float64Array(n), rankCounts = new Int32Array(n * n), standing = new Array(n), decided = new Uint16Array(runs);
   for (let s = 0; s < runs; s++) {
     const sim = F1RaceModel.simulateSeason(ctx, rand, snap.sc.gp, snap.sc.sprint, false), tot = sim.totals;
+    decided[s] = sim.decided;
     for (let i = 0; i < n; i++) { standing[i] = i; t[i] += tot[i]; }
     standing.sort((a, b) => tot[b] - tot[a] || F1RaceModel.countback(sim.fin, n, a, b) || ctx.rank[a] - ctx.rank[b]);
     for (let r = 0; r < n; r++) rankCounts[standing[r] * n + r]++;
   }
-  const pRank = i => { let c = 0; return k => { c = 0; for (let r = 0; r < k; r++) c += rankCounts[i * n + r]; return c / runs; }; };
-  return snap.roster.map((q, i) => ({ driverId: q.driverId, mean: t[i] / runs, p1: pRank(i)(1), p3: pRank(i)(3), p10: pRank(i)(10) }));
+  const pRank = (i, k) => { let c = 0; for (let r = 0; r < k; r++) c += rankCounts[i * n + r]; return c / runs; };
+  return { rows: snap.roster.map((q, i) => ({ driverId: q.driverId, mean: t[i] / runs, p1: pRank(i, 1), p3: pRank(i, 3), p10: pRank(i, 10) })), decided: decided.sort() };
 }
+export const projectSeason = (snap, p, runs, seed) => simulateProjection(snap, p, runs, seed).rows;
 // Simple projections to compare against: the points so far (`standings`), or points so far plus the average of the
 // driver's last N Grand Prix scores for each Grand Prix left and their sprint average for each sprint left.
 export function paceProjection(snap, last) {
@@ -199,103 +220,154 @@ export function paceProjection(snap, last) {
     return { driverId: q.driverId, mean: q.now + mean(g) * gpLeft + mean(q.spPts) * spLeft };
   });
 }
-// Score one projection against the final standings: the average miss on the real final top 10's points, the rank
-// correlation of projected and real points over the whole roster, and for models with probabilities the log score of
-// the real champion and the Brier score for the title.
+// The round after which the real title was mathematically settled (the Simulator's own test: a win in every Grand Prix
+// and sprint left, from the runner-up, would still not catch the leader); the last round if it never was before then.
+const decidedRounds = {};
+export function actualDecided(year) {
+  if (decidedRounds[year] == null) {
+    const total = season(year).rounds.length;
+    let found = total;
+    for (let r = 1; r < total; r++) {
+      const s = snapshot(year, r), ctx = simContext(s, DEFAULT);
+      if (F1RaceModel.titleSettled(ctx.nowPts, ctx.n, ctx.dec.room0)) { found = r; break; }
+    }
+    decidedRounds[year] = found;
+  }
+  return decidedRounds[year];
+}
+// Score one projection against the final standings:
+//   miss      the average miss on the real final top 10's points
+//   rankErr   the average error in championship position for the real top 10 (projected order by projected points vs
+//             the real final order, both among the drivers on the grid at the cut point)
+// and for models with probabilities
+//   champLog  the log score of the real champion (-ln of the probability given, floored at 1e-4)
+//   brier     the Brier score for the title (sum over drivers of (probability - 1 if champion)^2)
 export function scoreProjection(pred, outcome) {
-  const rows = pred.filter(r => r.driverId in outcome.points);
-  const top10 = Object.keys(outcome.rank).filter(id => rows.some(r => r.driverId === id)).sort((a, b) => outcome.rank[a] - outcome.rank[b]).slice(0, 10);
-  const byId = Object.fromEntries(rows.map(r => [r.driverId, r]));
-  const miss = mean(top10.map(id => Math.abs(byId[id].mean - outcome.points[id])));
-  const rk = a => { const o = a.map((v, i) => [v, i]).sort((x, y) => x[0] - y[0]), r = []; o.forEach(([, i], k) => { r[i] = k; }); return r; };
-  const ra = rk(rows.map(r => r.mean)), rb = rk(rows.map(r => outcome.points[r.driverId])), nn = rows.length;
-  const spearman = 1 - 6 * ra.reduce((s, v, i) => s + (v - rb[i]) ** 2, 0) / (nn * (nn * nn - 1));
-  const out = { miss, spearman };
+  const rows = pred.filter(r => r.driverId in outcome.points), byId = Object.fromEntries(rows.map(r => [r.driverId, r]));
+  const real = rows.map(r => r.driverId).sort((a, b) => outcome.rank[a] - outcome.rank[b]), realPos = Object.fromEntries(real.map((id, i) => [id, i]));
+  const projected = rows.slice().sort((a, b) => b.mean - a.mean), projPos = Object.fromEntries(projected.map((r, i) => [r.driverId, i]));
+  const top10 = real.slice(0, 10);
+  const out = { miss: mean(top10.map(id => Math.abs(byId[id].mean - outcome.points[id]))), rankErr: mean(top10.map(id => Math.abs(projPos[id] - realPos[id]))) };
   if (rows[0] && 'p1' in rows[0]) {
-    const champ = top10[0];
+    const champ = real[0];
     out.champLog = -Math.log(Math.max(byId[champ].p1, 1e-4));
     out.brier = rows.reduce((s, r) => s + (r.p1 - (r.driverId === champ ? 1 : 0)) ** 2, 0);
   }
   return out;
 }
 const bucketOf = p => Math.min(9, Math.floor(p * 10));
+export const MEASURES = ['miss', 'rankErr', 'champLog', 'brier', 'clinchErr'];
 
-// Season-level report over `years`: every cut point from round 4 to the second-last round.
-export function seasonReport(years, p, runs) {
-  const names = ['model', 'standings', 'last 5 avg', 'season avg'], acc = Object.fromEntries(names.map(n => [n, { early: [], mid: [], late: [] }]));
-  const calib = { title: Array.from({ length: 10 }, () => [0, 0, 0]), top3: Array.from({ length: 10 }, () => [0, 0, 0]), top10: Array.from({ length: 10 }, () => [0, 0, 0]) };
+// Season-level study over `years`: every cut point from round 4 to the second-last round, for each named model and for
+// plain baselines. clinchErr = how many rounds the median predicted settling round is off the real one, counted only
+// at cut points before the title was settled; the baseline "last round" assumes it is settled in the final round.
+export function seasonCompare(years, names, runs) {
+  const all = [...names, 'standings', 'last 5 avg', 'season avg', 'last round'], rec = Object.fromEntries(all.map(n => [n, []]));
+  const calib = Object.fromEntries(names.map(n => [n, { title: Array.from({ length: 10 }, () => [0, 0, 0]), top3: Array.from({ length: 10 }, () => [0, 0, 0]), top10: Array.from({ length: 10 }, () => [0, 0, 0]) }]));
   for (const year of years) {
-    const out = finalOutcome(year), total = season(year).rounds.length;
+    const out = finalOutcome(year), total = season(year).rounds.length, dec = actualDecided(year);
     for (let L = 4; L < total; L++) {
-      const snap = snapshot(year, L), third = (L - 4) / Math.max(1, total - 5) < 1 / 3 ? 'early' : (L - 4) / Math.max(1, total - 5) < 2 / 3 ? 'mid' : 'late';
-      const preds = { model: projectSeason(snap, p, runs, year * 100 + L), standings: paceProjection(snap, 0), 'last 5 avg': paceProjection(snap, 5), 'season avg': paceProjection(snap, Infinity) };
-      for (const n of names) acc[n][third].push(scoreProjection(preds[n], out));
-      for (const r of preds.model) {
-        if (!(r.driverId in out.rank)) continue;
-        const k = out.rank[r.driverId] + 1;
-        for (const [key, pr, hit] of [['title', r.p1, k === 1], ['top3', r.p3, k <= 3], ['top10', r.p10, k <= 10]]) { const b = calib[key][bucketOf(pr)]; b[0]++; b[1] += pr; b[2] += hit ? 1 : 0; }
+      const snap = snapshot(year, L), x = (L - 4) / Math.max(1, total - 5), part = x < 1 / 3 ? 'early' : x < 2 / 3 ? 'mid' : 'late';
+      for (const n of names) {
+        const { rows, decided } = simulateProjection(snap, MODELS[n], runs, year * 100 + L), r = { year, L, part, ...scoreProjection(rows, out) };
+        if (L < dec) r.clinchErr = Math.abs(decided[runs >> 1] - dec);
+        rec[n].push(r);
+        for (const q of rows) {
+          if (!(q.driverId in out.rank)) continue;
+          const k = out.rank[q.driverId] + 1;
+          for (const [key, pr, hit] of [['title', q.p1, k === 1], ['top3', q.p3, k <= 3], ['top10', q.p10, k <= 10]]) { const b = calib[n][key][bucketOf(pr)]; b[0]++; b[1] += pr; b[2] += hit ? 1 : 0; }
+        }
       }
+      for (const [n, pred] of [['standings', paceProjection(snap, 0)], ['last 5 avg', paceProjection(snap, 5)], ['season avg', paceProjection(snap, Infinity)]]) rec[n].push({ year, L, part, ...scoreProjection(pred, out) });
+      rec['last round'].push({ year, L, part, ...(L < dec ? { clinchErr: total - dec } : {}) });
     }
   }
+  // per season mean of a measure (seasons with none are left out), then the mean over seasons; and by part of season
+  const perSeason = (n, m) => Object.fromEntries(years.map(y => [y, rec[n].filter(r => r.year === y && r[m] != null).map(r => r[m])]).filter(([, v]) => v.length).map(([y, v]) => [y, mean(v)]));
   const summary = {};
-  for (const n of names) for (const part of ['early', 'mid', 'late']) {
-    const rs = acc[n][part];
-    summary[`${n} / ${part}`] = { cuts: rs.length, miss: mean(rs.map(r => r.miss)), spearman: mean(rs.map(r => r.spearman)), champLog: rs[0] && 'champLog' in rs[0] ? mean(rs.map(r => r.champLog)) : null, brier: rs[0] && 'brier' in rs[0] ? mean(rs.map(r => r.brier)) : null };
+  for (const n of all) {
+    summary[n] = {};
+    for (const m of MEASURES) {
+      const ps = perSeason(n, m), vals = Object.values(ps);
+      if (!vals.length) continue;
+      summary[n][m] = { all: mean(vals), early: mean(rec[n].filter(r => r.part === 'early' && r[m] != null).map(r => r[m])), mid: mean(rec[n].filter(r => r.part === 'mid' && r[m] != null).map(r => r[m])), late: mean(rec[n].filter(r => r.part === 'late' && r[m] != null).map(r => r[m])), perSeason: ps };
+    }
   }
-  const calibration = Object.fromEntries(Object.entries(calib).map(([k, bs]) => [k, bs.map(([n, ps, hs], i) => ({ bin: `${i * 10}–${i * 10 + 10}%`, n, predicted: n ? ps / n : null, observed: n ? hs / n : null }))]));
-  return { summary, calibration };
+  // paired against the first model: per-season difference (lower is better for every measure)
+  const paired = {};
+  for (const n of names.slice(1)) {
+    paired[n] = {};
+    for (const m of MEASURES) {
+      const a = summary[names[0]][m], b = summary[n][m];
+      if (!a || !b) continue;
+      const ys = Object.keys(a.perSeason).filter(y => y in b.perSeason), d = ys.map(y => b.perSeason[y] - a.perSeason[y]);
+      paired[n][m] = { diff: mean(d), se: sd(d) / Math.sqrt(d.length), better: d.filter(x => x < 0).length, seasons: d.length };
+    }
+  }
+  const calibration = Object.fromEntries(names.map(n => [n, Object.fromEntries(Object.entries(calib[n]).map(([k, bs]) => [k, bs.map(([c, ps, hs], i) => ({ bin: `${i * 10}–${i * 10 + 10}%`, n: c, predicted: c ? ps / c : null, observed: c ? hs / c : null }))]))]));
+  return { names, summary, paired, calibration };
 }
 
 // ---- Command line ----
 const f = (x, d = 3) => x == null ? '–' : x.toFixed(d);
+const J = (k, v) => v === Infinity ? 'Infinity' : v;
 function arg(name, dflt) { const i = process.argv.indexOf('--' + name); return i > 0 ? +process.argv[i + 1] : dflt; }
+function modelsArg() { const i = process.argv.indexOf('--model'), names = i > 0 ? process.argv[i + 1].split(',') : ['current']; for (const n of names) if (!MODELS[n]) { console.error(`unknown model "${n}"; models: ${Object.keys(MODELS).join(', ')}`); process.exit(2); } return names; }
 async function main() {
   const cmd = process.argv[2], from = arg('from', 2014), to = arg('to', 2025), holdout = arg('holdout', 2024), runs = arg('runs', 2000), json = process.argv.includes('--json');
   const years = []; for (let y = from; y <= to; y++) years.push(y);
   const out = {};
-  if (cmd === 'race' || cmd === 'tune') {
-    const cases = Object.fromEntries(years.map(y => [y, raceCases(y)]));
-    const base = scoreRaces(cases, DEFAULT);
-    out.race = { params: DEFAULT, logLikPerRace: lateMean(base, years), uniform: lateMean(Object.fromEntries(years.map(y => [y, { late: base[y].uniform }])), years),
-                 early: mean(years.flatMap(y => base[y].early)), perSeason: Object.fromEntries(years.map(y => [y, mean(base[y].late)])) };
-    if (cmd === 'tune') {
-      const pool = years.filter(y => y < holdout), hold = years.filter(y => y >= holdout);
-      // leave-one-season-out inside the pool: tune on the other seasons, score the one left out
-      const cvA = {}, cvB = {}, folds = [];
-      for (const y of pool) {
-        const t = tune(cases, pool.filter(x => x !== y)), s = scoreRaces(pick(cases, [y]), t.params);
-        cvA[y] = base[y]; cvB[y] = s[y]; folds.push({ heldOut: y, params: t.params });
-      }
-      out.cv = { ...compare(cvA, cvB, pool), folds };
-      const final = tune(cases, pool), fin = scoreRaces(pick(cases, hold), final.params);
-      out.holdout = { params: final.params, ...compare(pick(base, hold), fin, hold), baseline: lateMean(base, hold), tuned: lateMean(fin, hold) };
+  if (cmd === 'race') {
+    const names = modelsArg(), cases = Object.fromEntries(years.map(y => [y, raceCases(y)])), sc = Object.fromEntries(names.map(n => [n, scoreRaces(cases, MODELS[n])]));
+    out.race = { names, uniform: lateMean(Object.fromEntries(years.map(y => [y, { late: sc[names[0]][y].uniform }])), years),
+      models: Object.fromEntries(names.map(n => [n, { params: MODELS[n], logLikPerRace: lateMean(sc[n], years), early: mean(years.flatMap(y => sc[n][y].early)), perSeason: Object.fromEntries(years.map(y => [y, mean(sc[n][y].late)])) }])),
+      paired: Object.fromEntries(names.slice(1).map(n => [n, compare(sc[names[0]], sc[n], years)])) };
+  } else if (cmd === 'tune') {
+    // Three variants: the current numbers, the numbers refitted (window, floor, DNF smoothing, near bonus) and refitted
+    // with team strength. Each is fitted leave-one-season-out inside the pool, then on the whole pool and scored once on the holdout.
+    const cases = Object.fromEntries(years.map(y => [y, raceCases(y)])), pool = years.filter(y => y < holdout), hold = years.filter(y => y >= holdout);
+    const keys = { retuned: Object.keys(GRID).filter(k => k !== 'beta'), team: Object.keys(GRID) };
+    const base = scoreRaces(cases, DEFAULT), cv = {}, folds = {}, fin = {};
+    for (const v of Object.keys(keys)) {
+      cv[v] = {}; folds[v] = [];
+      for (const y of pool) { const t = tune(cases, pool.filter(x => x !== y), DEFAULT, keys[v]); cv[v][y] = scoreRaces(pick(cases, [y]), t.params)[y]; folds[v].push({ heldOut: y, params: t.params }); }
+      const final = tune(cases, pool, DEFAULT, keys[v]);
+      fin[v] = { params: final.params, scores: scoreRaces(pick(cases, hold), final.params) };
     }
+    const holdBase = pick(base, hold);
+    out.tune = { pool, hold, baseline: { cv: lateMean(base, pool), holdout: lateMean(base, hold) },
+      retuned: { ...compare(Object.fromEntries(pool.map(y => [y, base[y]])), cv.retuned, pool), holdout: compare(holdBase, fin.retuned.scores, hold), params: fin.retuned.params, folds: folds.retuned },
+      team: { ...compare(Object.fromEntries(pool.map(y => [y, base[y]])), cv.team, pool), holdout: compare(holdBase, fin.team.scores, hold), params: fin.team.params, folds: folds.team },
+      teamOverRetuned: { ...compare(cv.retuned, cv.team, pool), holdout: compare(fin.retuned.scores, fin.team.scores, hold) } };
   } else if (cmd === 'season') {
-    out.season = seasonReport(years, DEFAULT, runs);
+    out.season = seasonCompare(years, modelsArg(), runs);
   } else {
-    console.error('usage: node tools/backtest.mjs race|season|tune [--from Y] [--to Y] [--holdout Y] [--runs N] [--json]'); process.exit(2);
+    console.error('usage: node tools/backtest.mjs race|season|tune [--model current,retuned,team] [--from Y] [--to Y] [--holdout Y] [--runs N] [--calibration] [--json]'); process.exit(2);
   }
-  if (json) { console.log(JSON.stringify(out, (k, v) => v === Infinity ? 'Infinity' : v, 1)); return; }
+  if (json) { console.log(JSON.stringify(out, J, 1)); return; }
   if (out.race) {
     const r = out.race;
-    console.log(`Race level, ${from}–${to}, rounds 4+: mean log-probability of the real result per race`);
-    console.log(`  model ${f(r.logLikPerRace)}   no information ${f(r.uniform)}   (rounds 2–3: ${f(r.early)})`);
-    console.log('  by season: ' + Object.entries(r.perSeason).map(([y, v]) => `${y} ${f(v, 2)}`).join('  '));
+    console.log(`Race level, ${from}–${to}, rounds 4+: mean log-probability of the real result per race (no information: ${f(r.uniform)})`);
+    for (const n of r.names) console.log(`  ${n.padEnd(9)} ${f(r.models[n].logLikPerRace)}   rounds 2–3: ${f(r.models[n].early)}`);
+    for (const [n, c] of Object.entries(r.paired)) console.log(`  ${n} minus ${r.names[0]}: ${f(c.meanDiff, 3)} ± ${f(c.se, 3)} per race, better in ${c.seasonsBetter} of ${c.seasons} seasons`);
   }
-  if (out.cv) {
-    console.log(`\nLeave-one-season-out over ${from}–${holdout - 1}: tuned minus current model, per race`);
-    console.log(`  ${f(out.cv.meanDiff, 4)} ± ${f(out.cv.se, 4)} (se across seasons); tuned better in ${out.cv.seasonsBetter} of ${out.cv.seasons} seasons`);
-    const keys = Object.keys(DEFAULT);
-    for (const k of keys) console.log(`  ${k}: ` + out.cv.folds.map(x => x.params[k]).join(' '));
-    console.log(`\nHoldout ${holdout}–${to} (tuned on ${from}–${holdout - 1}): current ${f(out.holdout.baseline)} tuned ${f(out.holdout.tuned)} difference ${f(out.holdout.meanDiff, 4)} ± ${f(out.holdout.se, 4)}`);
-    console.log('  tuned parameters: ' + JSON.stringify(out.holdout.params, (k, v) => v === Infinity ? 'Infinity' : v));
+  if (out.tune) {
+    const t = out.tune, line = (name, c) => console.log(`  ${name.padEnd(26)} cross-validated ${f(c.meanDiff, 3)} ± ${f(c.se, 3)} (better in ${c.seasonsBetter} of ${c.seasons} seasons)   holdout ${f(c.holdout.meanDiff, 3)} ± ${f(c.holdout.se, 3)}`);
+    console.log(`Race level, fitted on ${from}–${holdout - 1} (leave-one-season-out), holdout ${holdout}–${to}: gain in log-probability per race`);
+    line('refitted vs current', t.retuned); line('with team strength vs current', t.team); line('team strength vs refitted', t.teamOverRetuned);
+    console.log('  refitted numbers:     ' + JSON.stringify(t.retuned.params, J));
+    console.log('  with team strength:   ' + JSON.stringify(t.team.params, J));
   }
   if (out.season) {
-    console.log(`Season level, ${from}–${to}, cut points from round 4 (${runs} runs each): average miss on the real final top 10's points (lower is better)`);
-    console.log('  ' + 'projection / part of season'.padEnd(28) + 'cuts   miss  spearman  champLog  brier');
-    for (const [k, v] of Object.entries(out.season.summary)) console.log('  ' + k.padEnd(28) + String(v.cuts).padStart(4) + f(v.miss, 1).padStart(7) + f(v.spearman, 2).padStart(9) + f(v.champLog, 2).padStart(10) + f(v.brier, 2).padStart(7));
-    for (const [k, bs] of Object.entries(out.season.calibration)) {
-      console.log(`\nCalibration, ${k}: predicted vs observed`);
+    const s = out.season, label = { miss: 'points miss', rankErr: 'order error (places)', champLog: 'champion log score', brier: 'title Brier', clinchErr: 'clinch round miss' };
+    console.log(`Season level, ${from}–${to}, cut points from round 4 (${runs} runs each); lower is better. all = mean of the per-season means; early / mid / late = thirds of the season`);
+    for (const m of MEASURES) {
+      console.log(`\n${label[m]}`);
+      for (const n of Object.keys(s.summary)) { const v = s.summary[n][m]; if (v) console.log(`  ${n.padEnd(11)} all ${f(v.all, 2).padStart(6)}   early ${f(v.early, 2).padStart(6)}  mid ${f(v.mid, 2).padStart(6)}  late ${f(v.late, 2).padStart(6)}`); }
+      for (const n of s.names.slice(1)) { const c = s.paired[n][m]; if (c) console.log(`  ${n} minus ${s.names[0]}: ${f(c.diff, 2)} ± ${f(c.se, 2)} (lower in ${c.better} of ${c.seasons} seasons)`); }
+    }
+    if (process.argv.includes('--calibration')) for (const n of s.names) for (const [k, bs] of Object.entries(s.calibration[n])) {
+      console.log(`\nCalibration, ${n}, ${k}: predicted vs observed`);
       for (const b of bs.filter(x => x.n)) console.log(`  ${b.bin.padEnd(9)} n=${String(b.n).padStart(5)}  predicted ${f(b.predicted, 3)}  observed ${f(b.observed, 3)}`);
     }
   }
