@@ -12,6 +12,7 @@
 <script src="nav.js"></script>
 <script src="common.js"></script>
 <script src="counting.js"></script>
+<script src="racemodel.js"></script>
 <script src="data.js"></script>
 <script src="share.js"></script>
 <script src="export.js"></script>
@@ -375,15 +376,10 @@ const windowResults = d => dataWindow===Infinity ? d.results : d.results.slice(-
 // Weight for finishing at position `place` (1-based): finishes at that place or better in the window, plus a bonus
 // for finishes just behind it (+0.5 one place behind, halving each place further), plus a small floor, so a driver is
 // most likely to finish near where they've been finishing and anything stays possible.
-const NEAR_BONUS=0.5, NEAR_DECAY=0.5, WEIGHT_FLOOR=0.01;
-function placeWeight(res, place){
- let w=WEIGHT_FLOOR;
- for(const f of res){ if(f==null) continue; w += f<=place ? 1 : NEAR_BONUS*Math.pow(NEAR_DECAY, f-place-1); }
- return w;
-}
-// DNF chance: the window's DNF share, blended with DNF_PRIOR_RACES races at the grid's DNF rate (so 0 DNFs in 8
-// races isn't "never retires", and 2 bad-luck DNFs aren't 25%).
-const DNF_PRIOR_RACES=4;
+// The weights and the DNF chance are the shared race model's (racemodel.js, #153). DNF chance: the window's DNF share,
+// blended with DNF_PRIOR_RACES races at the grid's DNF rate (so 0 DNFs in 8 races isn't "never retires", and 2
+// bad-luck DNFs aren't 25%).
+const placeWeight=F1RaceModel.placeWeight;
 // The window as used at round L: anything as long as the races so far is the whole season.
 const windowShown = ()=>dataWindow>=L ? Infinity : dataWindow;
 function syncWindow(){
@@ -398,7 +394,7 @@ function stepWindow(dir){
  else{ if(w===Infinity) return; dataWindow = w+1>=L ? Infinity : w+1; }
  syncWindow(); refreshResults(); // the last results stay, marked out of date (#17)
 }
-function modelDnfRate(res){ const k=res.filter(f=>f==null).length; return (k + DNF_PRIOR_RACES*gridDnfRate)/(res.length + DNF_PRIOR_RACES); }
+function modelDnfRate(res){ return F1RaceModel.dnfRate(res, gridDnfRate); }
 
 // Roster order everywhere on this page (pickers, settings, presets): the standings (#20).
 const byStanding = (a,b)=>a.rank-b.rank;
@@ -429,108 +425,18 @@ function buildSimContext(){
           scratch:new Int16Array(Math.max(E,n)), alive:new Int16Array(n), wts:new Float64Array(n) };
 }
 
-// ---- When the title is decided (#86) ----
-// The points still available after each remaining round, the same arithmetic as the knockout line on the drivers'
-// page: the most a rival can gain on the leader, a win in every Grand Prix (25) and sprint (8) left while the leader
-// scores nothing. endRound[e] = the round number when event e is the last of its round (its Grand Prix and sprint
-// are both done), else 0; roomAfter[e] = points still available after that round; room0 = before any of them.
-function decidedContext(events, startRound){
- const E=events.length, endRound=new Int16Array(E), roomAfter=new Float64Array(E);
- let room=0;
- for(const ev of events) room += ev.type==='gp' ? PTS_GP[0] : (PTS_SPRINT[0]||0);
- const room0=room;
- for(let e=0;e<E;e++){
-   room -= events[e].type==='gp' ? PTS_GP[0] : (PTS_SPRINT[0]||0);
-   if(e===E-1 || events[e+1].round!==events[e].round) endRound[e]=events[e].round;
-   roomAfter[e]=room;
- }
- return { endRound, roomAfter, room0, startRound, lastRound: E ? events[E-1].round : startRound };
-}
-// True when the leader's margin over every rival is more than the points still available. A lead equal to them
-// isn't enough: a rival could still draw level, and a tie goes to countback (counted conservatively, #86).
-function titleSettled(totals, n, room){
- let a=-Infinity, b=-Infinity;
- for(let i=0;i<n;i++){ const v=totals[i]; if(v>a){ b=a; a=v; } else if(v>b) b=v; }
- return a-b>room;
-}
-// The round after which a season's title is decided, given the points after each event (constructed sequences in
-// tests; the engine does the same check inline in simulateSeason). Not settled before the final round = the final round.
-function decidedRoundFor(dec, startTotals, eventPoints){
- const n=startTotals.length, totals=startTotals.slice();
- if(titleSettled(totals, n, dec.room0)) return dec.startRound;
- for(let e=0;e<eventPoints.length;e++){
-   for(let i=0;i<n;i++) totals[i]+=eventPoints[e][i]||0;
-   if(dec.endRound[e] && titleSettled(totals, n, dec.roomAfter[e])) return dec.endRound[e];
- }
- return dec.lastRound;
-}
-// Chooses k of the first len entries of buf at random (partial Fisher-Yates); they end up in buf[0..k-1].
-function pickInPlace(buf, len, k){
- k=Math.max(0,Math.min(k,len));
- for(let i=0;i<k;i++){ const j=i+Math.floor(rand()*(len-i)); const t=buf[i]; buf[i]=buf[j]; buf[j]=t; }
- return k;
-}
+// ---- The season engine (#153) ----
+// Lives in racemodel.js (F1RaceModel), shared with What-If and the backtest; nothing there reads page state, so these
+// wrappers pass in this page's seeded generator (`rand`, replaced at the start of each run) and points tables.
+// When the title is decided (#86): points still available after each remaining round, and the settled check.
+function decidedContext(events, startRound){ return F1RaceModel.decidedContext(events, startRound, PTS_GP, PTS_SPRINT); }
+const titleSettled=F1RaceModel.titleSettled;
+const decidedRoundFor=F1RaceModel.decidedRoundFor;
+function pickInPlace(buf, len, k){ return F1RaceModel.pickInPlace(buf, len, k, rand); }
 
-// One simulated season's fixed outcomes: winnerOf[e] (roster index or null) and out[i] = events driver i
-// doesn't finish. Order matters: forced wins first, then collisions (both drivers out of the same GP,
-// never one either of them wins), then exact DNFs, then everyone on auto retires at their own rate in
-// the events still open to them (never in a race they're set to win).
-// #56: typed arrays and no per-call closures or copies — this runs once per simulated season.
-// winnerOf[e] = roster index or -1; out[i][e] = 1 if driver i doesn't finish event e.
-function planSeason(ctx){
- const {n,E,gpIdx,scratch}=ctx;
- const winnerOf=new Int16Array(E).fill(-1), out=new Array(n);
- for(let i=0;i<n;i++) out[i]=new Uint8Array(E);
- if(ctx.winDrivers.length){
-   const order=ctx.winDrivers.slice();
-   for(let i=order.length-1;i>0;i--){ const j=Math.floor(rand()*(i+1)); const t=order[i]; order[i]=order[j]; order[j]=t; }
-   for(const i of order){
-     let len=0; for(const e of gpIdx) if(winnerOf[e]<0) scratch[len++]=e;
-     const k=pickInPlace(scratch, len, ctx.wins[i]);
-     for(let x=0;x<k;x++) winnerOf[scratch[x]]=i;
-   }
- }
- for(const c of ctx.cols){
-   const A=out[c.a], B=out[c.b];
-   let len=0; for(const e of gpIdx) if(winnerOf[e]!==c.a && winnerOf[e]!==c.b && !A[e] && !B[e]) scratch[len++]=e;
-   const k=pickInPlace(scratch, len, c.n);
-   for(let x=0;x<k;x++){ A[scratch[x]]=1; B[scratch[x]]=1; }
- }
- for(let i=0;i<n;i++){
-   const O=out[i];
-   if(ctx.dnfs[i]!=null){
-     let len=0; for(let e=0;e<E;e++) if(winnerOf[e]!==i && !O[e]) scratch[len++]=e;
-     const k=pickInPlace(scratch, len, ctx.dnfs[i]);
-     for(let x=0;x<k;x++) O[scratch[x]]=1;
-   }else{
-     const p=ctx.dnfRate[i];
-     if(p>0) for(let e=0;e<E;e++) if(winnerOf[e]!==i && !O[e] && rand()<p) O[e]=1;
-   }
- }
- return {winnerOf, out};
-}
-
-// One whole simulated season: points totals per roster index (and, for tests, each event's order), and the round
-// the title was decided (#86: checked at the end of each round from the points already drawn; no extra random draws,
-// so a seeded run gives exactly the results it gave before).
-// #117: only drivers who raced in the latest round take part (ctx.active); every classified place is drawn, and each
-// Grand Prix place is added to fin (finishes by position, for countback) — the sprint counts for points only.
-function simulateSeason(ctx, keepOrders){
- const plan=planSeason(ctx), totals=ctx.nowPts.slice(), orders=keepOrders?[]:null, alive=ctx.alive, dec=ctx.dec;
- const n=ctx.n, fin=ctx.fin0.slice(), active=ctx.active;
- let decided=ctx.decidedNow;
- for(let e=0;e<ctx.E;e++){
-   const gp=ctx.isGp[e], w=plan.winnerOf[e], pts = gp ? PTS_GP : PTS_SPRINT;
-   let len=0; for(let i=0;i<n;i++) if(active[i] && !plan.out[i][e] && i!==w) alive[len++]=i;
-   // A driver with a set number of wins wins exactly those GPs: they're never drawn for P1 elsewhere.
-   let order;
-   if(gp && w>=0){ totals[w]+=pts[0]; fin[w*n]++; order=sampleOrder(ctx, alive, len, 1, null, totals, pts, fin); if(orders) order.unshift(w); }
-   else order=sampleOrder(ctx, alive, len, 0, gp ? ctx.forcedWinner : null, totals, pts, gp ? fin : null);
-   if(orders) orders.push(order);
-   if(!decided && dec.endRound[e] && titleSettled(totals, n, dec.roomAfter[e])) decided=dec.endRound[e];
- }
- return {totals, plan, orders, fin, decided: decided || dec.lastRound};
-}
+// One simulated season's fixed outcomes (forced wins, collisions, DNFs), and one whole simulated season.
+function planSeason(ctx){ return F1RaceModel.planSeason(ctx, rand); }
+function simulateSeason(ctx, keepOrders){ return F1RaceModel.simulateSeason(ctx, rand, PTS_GP, PTS_SPRINT, keepOrders); }
 
 // The real remaining schedule from the live calendar — each GP, plus a separate "event" for any
 // round that also has a sprint (same pace weights, its own draw and point table).
@@ -594,35 +500,8 @@ function hideResults(){
  document.getElementById('staleNote').hidden=true;
 }
 
-// issue #30 / #117: draw a race order place by place (who takes P1, then P2, ...), weighting the still-unplaced
-// drivers by their weight for that place (placeWeight: finishes at that place or better in the data window, a bonus
-// for finishes just behind it, and a small floor, so nothing is impossible and the weights never all go to zero),
-// and removing each pick before the next place. Every place is drawn, so countback and 0-point drivers' order work.
-// startSlot: the first position being filled (1 when P1 is already decided, #14). noWin[i] true: driver i
-// can't be drawn for P1 (they have a set number of wins and this isn't one of those races).
-// #56: draws from the first len entries of alive (reordered in place), adds each placed driver's points
-// straight into totals and (Grand Prix only) their place into fin, and returns the drawn order.
-function sampleOrder(ctx, alive, len, startSlot, noWin, totals, pts, fin){
- const W=ctx.W, wts=ctx.wts, n=ctx.n, order=[];
- for(let s=0; s<len; s++){
-   const slot=s+startSlot;
-   let anyAllowed=true;
-   if(slot===0 && noWin){ anyAllowed=false; for(let x=s;x<len;x++) if(!noWin[alive[x]]){ anyAllowed=true; break; } }
-   let total=0;
-   for(let x=s;x<len;x++){
-     const i=alive[x];
-     const wt = slot===0 && noWin && anyAllowed && noWin[i] ? 0 : W[i*n+slot];
-     wts[x]=wt; total+=wt;
-   }
-   let r=rand()*total, pick=len-1;
-   for(let x=s;x<len;x++){ if((r-=wts[x])<=0){ pick=x; break; } }
-   const i=alive[pick]; alive[pick]=alive[s]; alive[s]=i; // move the pick to the front of what's left
-   if(totals && slot<pts.length) totals[i]+=pts[slot];
-   if(fin) fin[i*n+slot]++;
-   order.push(i);
- }
- return order;
-}
+// Draws one race order place by place from the model's weights.
+function sampleOrder(ctx, alive, len, startSlot, noWin, totals, pts, fin){ return F1RaceModel.sampleOrder(ctx, rand, alive, len, startSlot, noWin, totals, pts, fin); }
 
 // ---- Tracked drivers' DNFs and wins (#42, #14) and collisions (#11) ----
 const nGPLeft = ()=>remainingEvents.filter(e=>e.type==='gp').length;
@@ -835,12 +714,7 @@ function newRun(ctx, N){
           info:ctx.roster.map(d=>({code:d.code, teamId:d.teamId, rank:d.rank})), startRound:L, lastRound:ctx.dec.lastRound, done:0 };
  // #86: decided[s] = round the title was settled, champion[s] = the champion's index in ids (rank 1, as for the win probability)
 }
-// #117: equal points go to countback, as in the real standings — most Grand Prix wins, then most second places, and
-// so on (fin from simulateSeason); still level, the current standings order.
-function countback(fin, n, a, b){
- for(let p=0;p<n;p++){ const d=fin[b*n+p]-fin[a*n+p]; if(d) return d; }
- return 0;
-}
+const countback=F1RaceModel.countback; // equal points go to countback (#117)
 // Simulates seasons run.done … upto-1 into the run.
 function simulateInto(ctx, run, upto){
  const n=run.n, standing=new Array(n);
