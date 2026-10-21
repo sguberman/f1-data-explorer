@@ -61,6 +61,7 @@ site/                 The website (deployed as the site root, so URLs are unchan
 .github/workflows/    static.yml deploys site/ on pushes to main that touch site/ (or the workflow).
                       tests.yml runs tests/ on PRs (a new push cancels the PR's older run, #137). snapshot.yml refreshes site/data/ (#13).
 tools/                snapshot.mjs: builds site/data/{year}.json from f1api.dev (run by snapshot.yml).
+                      backtest.mjs (#155): scores simulator models against 2014–2025 and tunes them; see docs/BACKTEST.md.
                       eras-snapshot.mjs (#135): builds site/data/eras.json (standings since 1950) from Jolpica (same workflow).
                       history-snapshot.mjs (#141): builds site/data/{1950..2020}.json (per-round results) from Jolpica (same workflow).
 tests/                Browser tests, run on every PR (see "Tests" below). Not deployed.
