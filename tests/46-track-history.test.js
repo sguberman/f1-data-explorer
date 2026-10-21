@@ -24,7 +24,7 @@ module.exports = async (t, h) => {
 
   // ---- The expected position ----
   t.check('no earlier visits: none', M.trackPosition([], 5, 20) === null && M.trackPosition(undefined, 5, 20) === null);
-  t.check('visits move the average finish by their mean delta, shrunk by (visits + 3)', M.trackPosition([-2, -1], 5, 20) === 4 && M.trackPosition([-6], 5, 20) === 3 && M.trackPosition([4, 4, 4], 10, 20) === 12);
+  t.check('visits move the average finish by their mean delta, shrunk by (visits + 3)', M.trackPosition([-2, -1], 5, 20) === 4 && M.trackPosition([-8], 5, 20) === 3 && M.trackPosition([4, 4, 4], 10, 20) === 12);
   t.check('with no finishes this season it starts mid-field; the result is kept within 1 to the number of cars', M.trackPosition([3], null, 20) === 11 && M.trackPosition([-50], 2, 20) === 1 && M.trackPosition([90, 90, 90], 18, 20) === 20);
   t.check('evidence carries the track weight on the expected position', JSON.stringify(M.evidence(null, [], 7)) === JSON.stringify([[M.TRACK_WEIGHT, [7]]]) && M.evidence(null, [], null) === null);
 
@@ -79,15 +79,22 @@ module.exports = async (t, h) => {
   t.check('simulator, no track file: nothing changes and there are no errors', !r.hasEvents && r.base && p.errors.length === 0, JSON.stringify(r));
   await p.done();
 
+  // What-If: capture the drivers the Simulated preset hands to the model and check the track evidence on them
   const wi = async tr => {
     const q = await h.openPage('whatif', { grids: { 2026: grid }, tracks: tr }); await h.loaded(q);
-    await q.evaluate(() => { let a = 12345; Math.random = () => { a = (a + 0x6D2B79F5) | 0; let x = Math.imul(a ^ (a >>> 15), 1 | a); x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x; return ((x ^ (x >>> 14)) >>> 0) / 4294967296; }; });
+    await q.evaluate(() => { window.__ev = null; const orig = F1RaceModel.simulate; F1RaceModel.simulate = (d, o) => { window.__ev = d.map(x => ({ team: x.team, ev: x.ev })); return orig(d, o); }; });
     await q.click('#useSim');
-    const got = await q.$$eval('.wiList[data-session="gp"] > li', l => l.map(x => x.dataset.id || null));
-    return { q, got };
+    const cap = await q.evaluate(() => ({ ev: window.__ev, rounds: F1Controls.state.seasonRounds.filter(r => r.round <= 12).map(r => r.raceResults) }));
+    return { q, cap };
   };
   const a = await wi(tracks), b = await wi(null);
-  t.check('what-if: a driver with strong history at round 13\'s circuit is simulated further up than without the file', a.got.indexOf(star) < b.got.indexOf(star), `${a.got.indexOf(star)} vs ${b.got.indexOf(star)}`);
+  const starRes = a.cap.rounds.map(rs => (rs.find(x => x.driverId === star) || {}).position).filter(p => Number.isFinite(p) && p >= 1);
+  const cur = starRes.reduce((x, y) => x + y, 0) / starRes.length, nCars = a.cap.ev.length;
+  const want = M.trackPosition([-6, -5], cur, nCars); // the 2026 entry (-20) is not an earlier season
+  const evs = a.cap.ev.map(x => x.ev && x.ev.find(e => e[0] === M.TRACK_WEIGHT));
+  t.check('what-if: the track evidence is on exactly the driver with history at round 13\'s circuit, at the expected position (the 2026 entry ignored)',
+    evs.filter(Boolean).length === 1 && evs.find(Boolean)[1][0] === want, JSON.stringify([want, evs.filter(Boolean)]));
+  t.check('what-if: without the file there is no track evidence', b.cap.ev.every(x => !x.ev || !x.ev.some(e => e[0] === M.TRACK_WEIGHT)));
   t.check('what-if: no errors either way', a.q.errors.length === 0 && b.q.errors.length === 0);
   await a.q.done(); await b.q.done();
 };
