@@ -10,8 +10,8 @@ on:
         options: [race, season, tune]
         default: race
       model:
-        description: "Models for race and season: current, retuned, team (comma separated)"
-        default: "current,retuned,team"
+        description: "Models for race and season: previous, retuned, current (comma separated)"
+        default: "previous,retuned,current"
       from:
         description: "First season"
         default: "2014"

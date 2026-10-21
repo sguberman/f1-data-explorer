@@ -1,12 +1,12 @@
-# Backtest (#155, #160)
+# Backtest (#155, #160, #162)
 
 `tools/backtest.mjs` scores simulator models against history and tunes their numbers. It reads `site/data/{year}.json`
 (no network) and runs the site's own model and season engine (`site/racemodel.js`, #153) and standings code
 (`site/common.js`) in Node. Run it locally, or by hand on GitHub (Actions → Backtest).
 
 ```
-node tools/backtest.mjs race   --model current,retuned,team   # race level: the exact probability each model gave the real results
-node tools/backtest.mjs season --model current,retuned,team   # season level: projections from every cut point vs the real season
+node tools/backtest.mjs race   --model previous,retuned,current # race level: the exact probability each model gave the real results
+node tools/backtest.mjs season --model previous,retuned,current # season level: projections from every cut point vs the real season
 node tools/backtest.mjs tune                                   # fit the numbers (leave-one-season-out, then the holdout)
   --from 2014 --to 2025 --holdout 2024 --runs 2000 --calibration --json
 ```
@@ -47,27 +47,32 @@ and, for What-If, the next race. So there are two levels:
 
 ## Models
 
-A model is a set of numbers (`MODELS` in the script; `current` = the Simulator today).
+A model is a set of numbers (`MODELS` in the script; `current` is the Simulator now, #162, `previous` is how it was before).
 
 | | window | near bonus | floor | DNF prior | team strength |
 |---|---|---|---|---|---|
-| `current` | last 8 | 0.5 | 0.01 | 4 | – |
+| `previous` | last 8 | 0.5 | 0.01 | 4 | – |
 | `retuned` | whole season | 0.5 | 0.1 | 64 | – |
-| `team` | last 16 | 0.25 | 0.03 | 64 | 0.25 |
+| `current` | whole season | 0.5 | 0.03 | 64 | 0.25 |
 
 Team strength (`beta`): a driver's weight for a place is their own plus `beta` times the average of their teammates'
 (teammates = the cars on the same team in the latest round), so a new or replaced driver inherits the car's pace.
+The tuner picked a window of 16 races with a near bonus of 0.25 for the model with team strength; whole season with 0.5
+scores within 0.02 (−35.78 vs −35.77), so `current` keeps the simpler whole season and the old near bonus.
 
-## Results (2014–2025; the Simulator is unchanged)
+## Results (2014–2025)
 
 **Race level**, mean log-probability of the real result per race (no information −43.08):
-current −36.96, retuned −36.20, team −35.77. Fitted leave-one-season-out on 2014–2023 and scored on 2024–2025:
+previous −36.96, retuned −36.20, current −35.78 (rounds 2–3: −45.58, −40.64, −39.27). Fitted leave-one-season-out on
+2014–2023 and scored on 2024–2025 (the fitted numbers for the last two rows are the tuner's own, e.g. window 16 for team strength):
 
 | gain per race | cross-validated | better in | holdout 2024–25 |
 |---|---|---|---|
-| retuned over current | +0.74 ± 0.14 | 9 of 10 seasons | +0.67 ± 0.62 |
-| team over current | +1.18 ± 0.09 | 10 of 10 | +0.99 ± 0.46 |
-| team over retuned | +0.44 ± 0.11 | 9 of 10 | +0.32 ± 0.16 |
+| retuned over previous | +0.74 ± 0.14 | 9 of 10 seasons | +0.67 ± 0.62 |
+| with team strength over previous | +1.18 ± 0.09 | 10 of 10 | +0.99 ± 0.46 |
+| team strength over retuned | +0.44 ± 0.11 | 9 of 10 | +0.32 ± 0.16 |
+
+`current` over `previous`, all 12 seasons: +1.16 ± 0.13, better in 12 of 12.
 
 Which numbers matter: the form window alone is worth about 0.2 (last 8 → whole season; last 5 is 0.8 worse than the
 whole season); most of the retuned gain is the DNF smoothing and the floor. A driver's own DNF record barely predicts
@@ -76,35 +81,36 @@ recent races more (a decay) and team-based DNF chance were tried and add nothing
 
 **Season level** (2,000 runs per cut point; all = mean of the per-season means):
 
-| | current | retuned | team | standings as is | last 5 avg | season avg | last round |
+| | previous | retuned | current | standings as is | last 5 avg | season avg | last round |
 |---|---|---|---|---|---|---|---|
-| points miss | 25.4 | 24.8 | 24.0 | 85.3 | 26.9 | 25.0 | |
+| points miss | 25.4 | 24.8 | 24.5 | 85.3 | 26.9 | 25.0 | |
 | order error (places) | 1.05 | 1.00 | 0.99 | 1.01 | 1.06 | 1.01 | |
-| champion log score | 0.48 | 0.39 | 0.38 | | | | |
-| title Brier | 0.32 | 0.26 | 0.25 | | | | |
-| clinch round miss | 0.99 | 1.03 | 1.06 | | | | 1.92 |
+| champion log score | 0.48 | 0.39 | 0.39 | | | | |
+| title Brier | 0.32 | 0.26 | 0.26 | | | | |
+| clinch round miss | 0.99 | 1.03 | 1.08 | | | | 1.92 |
 
 Paired differences (± standard error across the 12 seasons):
 
-| | retuned − current | team − current | team − retuned |
-|---|---|---|---|
-| points miss | −0.60 ± 0.49 | −1.38 ± 0.73 | −0.78 ± 0.69 |
-| order error | −0.05 ± 0.04 | −0.06 ± 0.04 | −0.01 ± 0.03 |
-| champion log score | −0.09 ± 0.04 | −0.10 ± 0.04 | −0.01 ± 0.01 |
-| title Brier | −0.06 ± 0.02 | −0.07 ± 0.02 | −0.01 ± 0.01 |
-| clinch round miss | +0.05 ± 0.06 | +0.08 ± 0.06 | +0.03 ± 0.02 |
+| | retuned − previous | current − previous |
+|---|---|---|
+| points miss | −0.60 ± 0.49 | −0.85 ± 0.57 |
+| order error | −0.05 ± 0.04 | −0.06 ± 0.04 |
+| champion log score | −0.09 ± 0.04 | −0.09 ± 0.04 |
+| title Brier | −0.06 ± 0.02 | −0.06 ± 0.02 |
+| clinch round miss | +0.05 ± 0.06 | +0.10 ± 0.07 |
 
 What it says:
 - The retune improves the title probabilities (log score 0.48 → 0.39, Brier 0.32 → 0.26, mostly early and mid-season)
-  and the points slightly. Team strength adds little at season level; its gain is at race level (the next-race forecast).
+  and the points slightly. Team strength adds nothing to the title probabilities; its gain is at race level (the next-race
+  forecast) and a little in the points.
 - **Order:** the projected order is no better than the standings as they are (1.0 place error either way). The Simulator's
   value is in the probabilities and the points, not a better order.
-- **Clinch timing** is off by about one round on average (twice as good as always saying the last round) and does not
-  improve with either change; team strength is a hair worse (+0.08 ± 0.06 rounds, within about 1.3 standard errors).
+- **Clinch timing** is off by about one round on average (nearly twice as good as always saying the last round) and does
+  not improve with either change: `current` is a hair worse (+0.10 ± 0.07 rounds, 1.4 standard errors).
 - **Calibration:** the retune fixes most of the title overconfidence (the 80–90% bucket: observed 68% → 83%). P(top 10) is
   still overconfident at the top (the 80–90% bucket: observed 65–68%) and underconfident at the bottom (a predicted 1% is
   observed 3–4%). Results that move together across races (idea 5 in #151) are the likely cause.
-- Even `current` has genuine skill (race level −36.96 vs −43.08 with no information), but its point estimate is no better
+- Even `previous` has genuine skill (race level −36.96 vs −43.08 with no information), but its point estimate is no better
   than a driver's season-average pace.
 
 ## Data note

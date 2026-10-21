@@ -194,9 +194,9 @@ Move something into `common.js` only once it's genuinely identical on every page
   - both championship pages: `result` (the open round, #29) and `session=sprint`
   - position: `d`, `sort`, `chart` (`mode` default, `champ`, `team`, `median`, #108), `below10`, `sprint`
   - what-if: `gp` and `sprint` orders (`-` marks the not-classified line), and `start=clinch` (#85: start from the
-    "🏆 Title clinch" order; the orders are then left out while they're still that order) and `w` (#133: Form from, a number of races or `all`; left out at 8)
+    "🏆 Title clinch" order; the orders are then left out while they're still that order) and `w` (#133: Form from, a number of races or `all`; left out at the default, the whole season, #162)
   - simulator: `d`, `sort`, `o` (`id:dnf:win`, `a` = auto), `c` (`a:b:n`), `rsort` (`median` = results sorted by median, #108), `bars` (`1` = points plot as bars, #114), `n` (runs), `w` (#117: Form from, a
-    number of races or `all`; left out at the default 8) and `seed`
+    number of races or `all`; left out at the default, the whole season, #162) and `seed`
   
   How it works:
   - `F1Controls` reads the season and round on the first load.
@@ -434,13 +434,16 @@ collision). **Race model (#117, replacing #30's exact-place histogram + flat 0.5
 share of every place and simulated leaders at ~60% of their real scoring):** each race order is drawn place by place
 for **every position** (P1 to last), weighting the drivers not yet placed by `placeWeight`: their finishes at **that
 place or better** in the data window, plus a **near bonus** for finishes just behind it (+0.5 one place behind,
-halving each place further: `NEAR_BONUS`, `NEAR_DECAY`), plus a 0.01 floor (`WEIGHT_FLOOR`), so a driver usually
-finishes near where they have been and anything stays possible (#116). The **data window** is the "Form from"
-stepper in the run card: the last N Grand Prix starts of each driver (`WINDOW_MIN` 3, default 8) up to the **whole
+halving each place further: `NEAR_BONUS`, `NEAR_DECAY`), plus a 0.03 floor (`WEIGHT_FLOOR`), and **a quarter of their teammate's weight** (`TEAM_SHARE`, #162: the average
+of the other cars on the same team in round L, so a replaced driver inherits the car's pace; `F1RaceModel.weightMatrix`),
+so a driver usually finishes near where they have been and anything stays possible (#116). The **data window** is the "Form from"
+stepper in the run card: the last N Grand Prix starts of each driver (`WINDOW_MIN` 3, default the **whole season** since #162, it was 8) up to the **whole
 season** (`dataWindow = Infinity`; a window as long as the races so far shows as the whole season). GP results only;
 sprints use the same weights with sprint points. Retirements are modeled separately (#39): drivers on **auto**
 retire in each event with `modelDnfRate`: the window's DNF share (no classified position, the same rule as the
-position page's NC, #46) blended with 4 races (`DNF_PRIOR_RACES`) at the grid's DNF rate so far (`gridDnfRate`).
+position page's NC, #46) blended with 64 races (`DNF_PRIOR_RACES`, #162; it was 4: a driver's own DNFs barely predict their DNFs) at the grid's DNF
+rate so far (`gridDnfRate`). The numbers were refitted on 2014–2025 with `tools/backtest.mjs` (docs/BACKTEST.md): the real
+result gets about 3 times the probability it did, the title odds are better calibrated (champion log score 0.48 → 0.39).
 Final standings split **equal points by countback** (most GP wins, then P2s, …: real finishes so far plus the
 simulated GP places, `countback()`), then the current standings. A 2021–2025 backtest (average miss on the final
 top 10's points at ½ / ⅔ / ⅚ of a season) gave: last-5 average 28 / 29 / 13, old model 41 / 31 / 16, this model
@@ -512,7 +515,7 @@ drivers' and constructors' tables after that round: position, ▲/▼ vs the sta
 before, gained and after, ranked with countback (`F1Common.standingsOrder` on the season with that round
 replaced by your result; later rounds left out). Full names on desktop, codes / short team names on phones.
 Live and lap-by-lap running orders were considered and left out (see #48 for the API research).
-**"🎲 Simulated" preset (#133, `racemodel.js`):** a button after the other "Start from" presets, with the simulator's "Form from" stepper (last N Grand Prix starts per driver as of the slider's round, 3 up to the whole season, default 8, link key `w`). Clicking it runs 30,000 simulated races (the simulator's race model #117, retirements on auto, no wins/DNF settings) and orders the Grand Prix, and on a sprint weekend the sprint, by average points (ties: median finish, then standings). Drivers retiring in over half the runs, and drivers who didn't race in round L, go below the Not classified line. Runs only on click (`Math.random`, about 30 ms), can be dragged afterwards, never fetches; the note names the window. Tested in `39-whatif-sim` against an independent re-implementation fed the same random numbers.
+**"🎲 Simulated" preset (#133, `racemodel.js`):** a button after the other "Start from" presets, with the simulator's "Form from" stepper (last N Grand Prix starts per driver as of the slider's round, 3 up to the whole season, default the whole season, link key `w`; with team strength, #162). Clicking it runs 30,000 simulated races (the simulator's race model #117, retirements on auto, no wins/DNF settings) and orders the Grand Prix, and on a sprint weekend the sprint, by average points (ties: median finish, then standings). Drivers retiring in over half the runs, and drivers who didn't race in round L, go below the Not classified line. Runs only on click (`Math.random`, about 30 ms), can be dragged afterwards, never fetches; the note names the window. Tested in `39-whatif-sim` against an independent re-implementation fed the same random numbers.
 Title race (#85, see "Title race on What-If" above): a box above the lists with what each title needs at this round, a live
 line above each table and a 🏆 Champion tag on the champion's row as you drag.
 

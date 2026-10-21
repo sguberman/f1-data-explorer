@@ -114,7 +114,7 @@ tr.champ td{background:var(--inset);}
     <span class="wiForm"><span class="presetLbl" id="winLbl">Form from</span>
       <span class="stepper" role="group" aria-labelledby="winLbl">
         <button type="button" id="winLess" aria-label="Use fewer races">−</button>
-        <span class="val" id="winVal" aria-live="polite">last 8 races</span>
+        <span class="val" id="winVal" aria-live="polite">whole season</span>
         <button type="button" id="winMore" aria-label="Use more races">+</button>
       </span></span>
   </div>
@@ -150,7 +150,7 @@ let orders={}, sessions=[], roster={};
 let clinch=null, startMode=null;
 // #133: the "Simulated" preset: Form from (last N Grand Prix starts of each driver, or the whole season), and the
 // note shown after a simulated order has been applied (cleared by any other preset and by a new round).
-const SIM_RUNS=30000, WINDOW_DEFAULT=8, WINDOW_MIN=3;
+const SIM_RUNS=30000, WINDOW_DEFAULT=Infinity, WINDOW_MIN=3; // #162: the whole season (it was the last 8 races)
 let dataWindow=WINDOW_DEFAULT, simNote='';
 
 async function buildFromSelection(detail){
@@ -236,7 +236,7 @@ function resetOrders(mode){
      orders[s]=orderFrom(s==='gp' ? act.raceResults : act.sprintResults);
    }else orders[s]=[...all, null];
  });
- if(mode==='sim') simNote=`Simulated ${SIM_RUNS.toLocaleString('en-US')} times from each driver’s ${windowShown()===Infinity?'whole season':'last '+windowShown()+' races'}: drivers are ordered by average points, and anyone likely to retire is below the “Not classified” line. `;
+ if(mode==='sim') simNote=`Simulated ${SIM_RUNS.toLocaleString('en-US')} times from each driver’s ${windowShown()===Infinity?'whole season':'last '+windowShown()+' races'} (and a little from their teammate’s): drivers are ordered by average points, and anyone likely to retire is below the “Not classified” line. `;
  render();
 }
 
@@ -259,14 +259,14 @@ function stepWindow(dir){
 // Drivers who didn't race in round L stay out of the draw and go below the not-classified line, as in the simulator.
 function simulatedOrder(session, standing){
  const gp = session==='gp', pts = gp ? PTS_GP : sprintPoints(year);
- const res={}, raced=new Set();
+ const res={}, raced=new Set(), team={};
  seasonRounds.filter(r=>r.round<=L).forEach(r=>(r.raceResults||[]).forEach(x=>{
    (res[x.driverId]=res[x.driverId]||[]).push(Number.isFinite(x.position) && x.position>=1 ? x.position : null);
-   if(r.round===L) raced.add(x.driverId);
+   if(r.round===L){ raced.add(x.driverId); team[x.driverId]=x.teamId; } // #162: team strength uses the cars on the same team in round L
  }));
  const run=standing.filter(id=>raced.has(id)), rest=standing.filter(id=>!raced.has(id));
  let starts=0, dnfs=0; Object.values(res).forEach(a=>{ starts+=a.length; dnfs+=a.filter(p=>p==null).length; });
- const win=windowShown(), drivers=run.map(id=>({results: win===Infinity ? res[id] : res[id].slice(-win)}));
+ const win=windowShown(), drivers=run.map(id=>({results: win===Infinity ? res[id] : res[id].slice(-win), team: team[id]}));
  const sims=F1RaceModel.simulate(drivers, {pts, gridRate: starts ? dnfs/starts : 0, runs:SIM_RUNS, rand:Math.random});
  const idx=run.map((id,i)=>i).sort((a,b)=>sims[b].meanPoints-sims[a].meanPoints || sims[a].medianPos-sims[b].medianPos || a-b);
  const inn=idx.filter(i=>sims[i].pClassified>=0.5).map(i=>run[i]), out=idx.filter(i=>sims[i].pClassified<0.5).map(i=>run[i]);
