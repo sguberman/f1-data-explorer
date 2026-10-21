@@ -61,7 +61,7 @@ Team strength (`beta`): a driver's weight for a place is their own plus `beta` t
 ## Results (2014–2025; the Simulator is unchanged)
 
 **Race level**, mean log-probability of the real result per race (no information −43.08):
-current −36.96, retuned −36.21, team −35.78. Fitted leave-one-season-out on 2014–2023 and scored on 2024–2025:
+current −36.96, retuned −36.20, team −35.77. Fitted leave-one-season-out on 2014–2023 and scored on 2024–2025:
 
 | gain per race | cross-validated | better in | holdout 2024–25 |
 |---|---|---|---|
