@@ -21,6 +21,7 @@ on:
       - "tools/eras-snapshot.mjs"
       - "tools/history-snapshot.mjs"
       - "tools/qualifying-snapshot.mjs"
+      - "tools/track-history.mjs"
       - "site/data.js"
       - ".github/workflows/snapshot.yml"
 
@@ -50,6 +51,8 @@ jobs:
         run: node tools/eras-snapshot.mjs ${{ github.event.inputs.all == 'true' && '--all' || '' }}
       - name: Build the qualifying and starting-grid files (#158; complete seasons are skipped)
         run: node tools/qualifying-snapshot.mjs ${{ github.event.inputs.all == 'true' && '--all' || '' }}
+      - name: Build the track history file (#169; from the season and qualifying files)
+        run: node tools/track-history.mjs
       - name: Commit if changed
         id: commit
         run: |

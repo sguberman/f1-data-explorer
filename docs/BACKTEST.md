@@ -1,4 +1,4 @@
-# Backtest (#155, #160, #162, #167)
+# Backtest (#155, #160, #162, #167, #169)
 
 `tools/backtest.mjs` scores simulator models against history and tunes their numbers. It reads `site/data/{year}.json`
 (no network) and runs the site's own model and season engine (`site/racemodel.js`, #153) and standings code
@@ -47,14 +47,15 @@ and, for What-If, the next race. So there are two levels:
 
 ## Models
 
-A model is a set of numbers (`MODELS` in the script; `current` is the Simulator now, #167; `team` is it as of #162, without qualifying; `previous` is before #162).
+A model is a set of numbers (`MODELS` in the script; `current` is the Simulator now, #169; `quali` is it as of #167, without track history; `team` as of #162, without qualifying; `previous` is before #162).
 
-| | window | near bonus | floor | DNF prior | team strength | grid / qualifying known | qualifying form |
-|---|---|---|---|---|---|---|---|
-| `previous` | last 8 | 0.5 | 0.01 | 4 | – | – | – |
-| `retuned` | whole season | 0.5 | 0.1 | 64 | – | – | – |
-| `team` | whole season | 0.5 | 0.03 | 64 | 0.25 | – | – |
-| `current` | whole season | 0.5 | 0.03 | 64 | 0.25 | 16 | 0.5 |
+| | window | near bonus | floor | DNF prior | team strength | grid / qualifying known | qualifying form | track |
+|---|---|---|---|---|---|---|---|---|
+| `previous` | last 8 | 0.5 | 0.01 | 4 | – | – | – | – |
+| `retuned` | whole season | 0.5 | 0.1 | 64 | – | – | – | – |
+| `team` | whole season | 0.5 | 0.03 | 64 | 0.25 | – | – | – |
+| `quali` | whole season | 0.5 | 0.03 | 64 | 0.25 | 16 | 0.5 | – |
+| `current` | whole season | 0.5 | 0.03 | 64 | 0.25 | 16 | 0.5 | 2 |
 
 Team strength (`beta`): a driver's weight for a place is their own plus `beta` times the average of their teammates'
 (teammates = the cars on the same team in the latest round), so a new or replaced driver inherits the car's pace.
@@ -140,6 +141,22 @@ Season level (`current` against `team`, all cut points; the next race uses its k
 The projected order is now slightly better than the standings as they are (1.01 places off); title odds and clinch timing
 are unchanged. Letting only the next race use its known position gives −0.39 ± 0.07 on the points miss (12 of 12 seasons);
 the rest comes from the qualifying form.
+
+## Track history (#169)
+
+`track` (weight 2): a driver's finishes at the same circuit in earlier seasons (2014 on), each minus their own average that season,
+averaged and divided by (visits + 3), move their current average finish to an expected position at this circuit, which counts as
+extra finishes there. `tools/track-history.mjs` builds `site/data/tracks.json` from the season and qualifying files; the pages use
+only seasons before the one shown.
+
+Race level, `quali` −33.835 → `current` −33.794 (**+0.040 ± 0.014 per race, better in 9 of 12 seasons**, about 4% more probability on
+the real result). Before the qualifying result is in (form only): −35.542 → −35.510. The weights 1, 2 and 4 score within 0.003; the
+gain is largest early in a season, when there is little in-season history (rounds 2–3: −37.26 → −36.40, +0.86). It was +0.08 ± 0.03
+cross-validated against the Stage 3 model, +0.02 on the 2024–25 holdout.
+
+Season level (`current` − `quali`): points miss +0.09 ± 0.09 (lower in 2 of 12 seasons), order error 0.00, champion log score 0.00 ± 0.01,
+title Brier 0.00 ± 0.01, clinch round 0.00. So track history helps the next-race forecast a little and does not move the season
+projection; it is kept at the owner's request.
 
 ## Data note
 

@@ -65,8 +65,10 @@ tools/                snapshot.mjs: builds site/data/{year}.json from f1api.dev 
                       eras-snapshot.mjs (#135): builds site/data/eras.json (standings since 1950) from Jolpica (same workflow).
                       history-snapshot.mjs (#141): builds site/data/{1950..2020}.json (per-round results) from Jolpica (same workflow).
                       qualifying-snapshot.mjs (#158): builds site/data/grid/{2014..}.json (qualifying position and Q1–Q3 times, starting grid
-                      per driver, 0 = pit lane, plus each round's circuit id and the upcoming round's qualifying) from Jolpica (same workflow); read by the
-                      Simulator and What-If (#167) and the backtest.
+                      per driver, 0 = pit lane, plus each round's circuit id, the whole calendar's circuit ids and the upcoming round's qualifying) from
+                      Jolpica (same workflow); read by the Simulator and What-If (#167) and the backtest.
+                      track-history.mjs (#169): builds site/data/tracks.json (each driver's results at each circuit relative to their
+                      season average, 2014 on) from the season and qualifying files (same workflow).
 tests/                Browser tests, run on every PR (see "Tests" below). Not deployed.
 docs/                 Project docs (not deployed): PROJECT_CONTEXT.md (this file), DONE.md (archive of
                       legacy issues #1–#55), TODO.md (legacy → GitHub issue numbers).
@@ -485,6 +487,16 @@ and What-If's note say "Round N is simulated from its starting grid / qualifying
 Grand Prix of the round being predicted (T = L+1); a past round uses its real grid. The qualifying file also holds the upcoming round
 (qualifying, empty grid) once Saturday's session is in; `snapshot.yml` also runs hourly on Saturdays for that. Tested in `45-quali-model`.
 
+**Track history (#169, `data/tracks.json`):** `F1Data.loadTracks(fresh)` loads, with the season, how each driver has finished at each
+circuit relative to their own season average (`tools/track-history.mjs`, from the season and qualifying files; `{circuits:{circuitId:
+{driverId:[[year, delta],...]}}}`; the pages use only years before the season shown). For a race at a circuit, the model
+(`F1RaceModel.trackPosition`) turns a driver's earlier deltas (averaged, shrunk by visits + 3) into an expected position from their
+current average finish, and that counts as `TRACK_WEIGHT` (2) extra finishes there (`evidence`'s third argument). The Simulator gives
+every remaining race at a circuit with history its own weights (`ctx.eventW`, a sprint shares its Grand Prix's circuit; circuits of
+the whole calendar come from the qualifying file's `circuits`); What-If does it for the round being predicted. Missing file: no
+change. The backtest says it helps the next-race forecast a little (+0.04 per race) and not the season projection. Tested in
+`46-track-history`.
+
 **Result plots (#108, #114, simulator):** both ridge plots (final position, final points) have a dashed median line (exact
 median of the simulated totals / ranks) and their own "Sort by" Most common / Median dropdown (one shared setting, `rsort`),
 and the points plot a **Bars** checkbox that draws the 10-point bins as bars instead of the smooth curve. Redraw only: no re-run, no fetch.
@@ -786,6 +798,11 @@ since fonts render differently on different machines.
    nothing in this environment can reach them anyway. **`main` isn't built on Cloudflare** (production
    builds are off): the real site is GitHub Pages, so only PR branches get previews (#52). Previews stay up
    indefinitely and never need cleaning up; the free plan's limit is 500 builds a month, far above our use.
+   Every push builds (a WIP commit, an automated data commit, a merge of `main`), so batch pushes. Builds queue and can finish
+   out of order or fail (seen on #168, where the check appeared minutes late, and #170, whose last build failed after
+   45 minutes while earlier ones succeeded): trust the **Cloudflare Pages check on the PR's current head**, not the single PR
+   comment (it is edited by whichever build finished last); if it failed, retry the deployment from the Cloudflare dashboard
+   or push a real change.
 4. The owner tries the preview (phone included). Requested changes are pushed to the same PR, and the
    preview updates.
 5. When the owner merges (or says to merge), the change goes live on GitHub Pages and GitHub closes the

@@ -191,6 +191,20 @@ const F1Data = (() => {
     return g;
   }
 
+  // #169: how drivers have done at each circuit in earlier seasons (data/tracks.json, tools/track-history.mjs); null when the file
+  // is missing or broken. Kept for the page view; `fresh` asks the browser to re-download it.
+  let tracks;
+  async function loadTracks(fresh){
+    if(!fresh && tracks !== undefined) return tracks;
+    let t = null;
+    try{
+      const res = await fetch('data/tracks.json', fresh ? {cache:'reload'} : {});
+      if(res.ok){ const j = await res.json(); if(j && j.v===1 && j.circuits && typeof j.circuits==='object') t = j; }
+    }catch(e){ /* no track history: the model runs without it */ }
+    tracks = t;
+    return t;
+  }
+
   // opts: onProgress(round, count); live: true skips the snapshot (the snapshot tool itself uses this);
   // fresh: true asks the browser to re-download the snapshot (Refresh data); onSnapshot(rounds) (#111): called with
   // a copy of the season file's rounds as soon as the file is in, before f1api.dev is asked about newer rounds.
@@ -376,5 +390,5 @@ const F1Data = (() => {
       .sort((a,b)=>b.total-a.total).slice(0,n).map(t=>t.teamId);
   }
 
-  return { loadSeason, loadGrid, cumulative, topTeams, getCalendar, clearCache };
+  return { loadSeason, loadGrid, loadTracks, cumulative, topTeams, getCalendar, clearCache };
 })();

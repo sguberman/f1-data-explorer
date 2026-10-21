@@ -14,6 +14,7 @@ import path from 'node:path';
 import vm from 'node:vm';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+import { buildTrackHistory } from './track-history.mjs';
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DATA = path.join(ROOT, 'site', 'data');
@@ -29,9 +30,10 @@ const F1Common = (() => {
 // "Form from" of the whole season); PREVIOUS is the Simulator before #162.
 // `beta` is team strength: a driver's weights include beta times the average of their teammates' (0 = off).
 // `known` and `form` (#167): the weight of this race's starting grid / qualifying position (when known) and of this season's
-// earlier qualifying positions, as extra evidence about where a driver will finish (0 = off).
-export const DEFAULT = { window: Infinity, nearBonus: F1RaceModel.NEAR_BONUS, nearDecay: F1RaceModel.NEAR_DECAY, floor: F1RaceModel.WEIGHT_FLOOR, dnfPrior: F1RaceModel.DNF_PRIOR_RACES, beta: F1RaceModel.TEAM_SHARE, known: F1RaceModel.QUALI_KNOWN, form: F1RaceModel.QUALI_FORM };
-export const PREVIOUS = { window: 8, nearBonus: 0.5, nearDecay: 0.5, floor: 0.01, dnfPrior: 4, beta: 0, known: 0, form: 0 };
+// earlier qualifying positions, as extra evidence about where a driver will finish (0 = off). `track` (#169): the weight of the
+// expected position at this circuit from the driver's earlier visits (0 = off).
+export const DEFAULT = { window: Infinity, nearBonus: F1RaceModel.NEAR_BONUS, nearDecay: F1RaceModel.NEAR_DECAY, floor: F1RaceModel.WEIGHT_FLOOR, dnfPrior: F1RaceModel.DNF_PRIOR_RACES, beta: F1RaceModel.TEAM_SHARE, known: F1RaceModel.QUALI_KNOWN, form: F1RaceModel.QUALI_FORM, track: F1RaceModel.TRACK_WEIGHT };
+export const PREVIOUS = { window: 8, nearBonus: 0.5, nearDecay: 0.5, floor: 0.01, dnfPrior: 4, beta: 0, known: 0, form: 0, track: 0 };
 const GRID = { // what `tune` tries for each number
   window: [3, 4, 5, 6, 8, 10, 12, 16, Infinity],
   nearBonus: [0, 0.25, 0.5, 0.75, 1, 1.5],
@@ -41,15 +43,17 @@ const GRID = { // what `tune` tries for each number
   beta: [0, 0.25, 0.5, 1, 2],
   known: [0, 1, 2, 4, 8, 16, 32],
   form: [0, 0.25, 0.5, 1, 2],
+  track: [0, 1, 2, 4],
 };
 // Named models for `--model`. `retuned` = the previous model with the window, floor and DNF smoothing refitted;
-// `team` = those plus team strength (the Simulator after #162); `current` = the Simulator now (plus qualifying, #167), fitted
+// `team` = those plus team strength (the Simulator after #162); `quali` = plus qualifying (#167); `current` = the Simulator now (plus track history, #169), fitted
 // on 2014–2023 (see docs/BACKTEST.md).
 export const MODELS = {
   previous: PREVIOUS,
   retuned: { ...PREVIOUS, window: Infinity, floor: 0.1, dnfPrior: 64 },
-  team: { ...DEFAULT, known: 0, form: 0 }, // the Simulator after #162: refitted numbers and team strength, no qualifying
-  current: DEFAULT,
+  team: { ...DEFAULT, known: 0, form: 0, track: 0 }, // the Simulator after #162: refitted numbers and team strength, no qualifying
+  quali: { ...DEFAULT, track: 0 }, // plus the grid / qualifying result and qualifying form (#167)
+  current: DEFAULT, // plus track history (#169)
 };
 const windowOf = (res, p) => p.window === Infinity || res.length <= p.window ? res : res.slice(-p.window);
 // Weight for finishing at `place`: the same formula as F1RaceModel.placeWeight, with the numbers as parameters.
@@ -69,8 +73,9 @@ export function pooledWeight(res, i, mates, place, p) {
 export const posTermP = (f, place, p) => f <= place ? 1 : p.nearBonus * Math.pow(p.nearDecay, f - place - 1);
 // Extra evidence (#167) for a driver at a place: this race's known grid / qualifying position (k) and this season's earlier
 // qualifying positions (form).
-export const extraWeight = (known, form, place, p) => {
+export const extraWeight = (known, form, track, place, p) => {
   let w = 0;
+  if (p.track > 0 && track != null) w += p.track * posTermP(track, place, p);
   if (p.known > 0 && known != null) w += p.known * posTermP(known, place, p);
   if (p.form > 0 && form) for (const f of form) w += p.form * posTermP(f, place, p);
   return w;
@@ -90,6 +95,15 @@ export function gridFile(year) {
   if (!(year in gridFiles)) { const f = path.join(DATA, 'grid', `${year}.json`); gridFiles[year] = fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, 'utf8')) : null; }
   return gridFiles[year];
 }
+let trackFile = null;
+// How drivers have done at each circuit in earlier seasons (what site/data/tracks.json holds, #169), built from the same files.
+function trackData() {
+  if (!trackFile) { const ys = []; for (let y = 2014; y <= 2030; y++) if (fs.existsSync(path.join(DATA, `${y}.json`))) ys.push(y); trackFile = buildTrackHistory(ys, season, gridFile); }
+  return trackFile;
+}
+// A driver's deltas at a circuit from seasons before `year` only.
+const trackDeltas = (circuit, id, year) => { const e = circuit && trackData().circuits[circuit] && trackData().circuits[circuit][id]; return e ? e.filter(x => x[0] < year).map(x => x[1]) : []; };
+const classifiedMean = h => { const c = h.filter(f => f != null); return c.length ? c.reduce((a, b) => a + b, 0) / c.length : null; };
 // A driver's known position for a round: the starting grid (0 = pit lane = last) if there is one, else the qualifying position.
 function knownFor(gridRound, driverId, n) {
   if (!gridRound) return null;
@@ -114,6 +128,7 @@ export function raceCases(year) {
       const gr = gf && gf.rounds.find(g => g.round === r.round);
       cases.push({ year, round: r.round, racers, team: rows.map(x => x.teamId), hist: racers.map(id => (hist[id] || []).slice()), gridRate: starts ? dnfs / starts : 0,
                    known: racers.map(id => knownFor(gr, id, racers.length)), form: racers.map(id => (qhist[id] || []).slice()),
+                   track: racers.map(id => F1RaceModel.trackPosition(trackDeltas(gr && gr.circuitId, id, year), classifiedMean(hist[id] || []), racers.length)),
                    order: classified.map(x => racers.indexOf(x.driverId)), dnf: new Set(rows.filter(x => !isFinish(x)).map(x => racers.indexOf(x.driverId))) });
     }
     for (const x of rows) { (hist[x.driverId] = hist[x.driverId] || []).push(isFinish(x) ? x.position : null); starts++; if (!isFinish(x)) dnfs++; }
@@ -134,7 +149,7 @@ export function raceLogLik(c, p) {
   const m = c.order.length;
   for (let s = 0; s < m; s++) {
     let den = 0, num = 0;
-    for (let x = s; x < m; x++) { const i = c.order[x], w = pooledWeight(res, i, mates, s + 1, p) + (c.known ? extraWeight(c.known[i], c.form[i], s + 1, p) : 0); den += w; if (x === s) num = w; }
+    for (let x = s; x < m; x++) { const i = c.order[x], w = pooledWeight(res, i, mates, s + 1, p) + (c.known ? extraWeight(c.known[i], c.form[i], c.track[i], s + 1, p) : 0); den += w; if (x === s) num = w; }
     ll += Math.log(num / den);
   }
   return ll;
@@ -206,7 +221,7 @@ export function snapshot(year, L) {
   const events = [];
   for (let r = L + 1; r <= s.calendar.totalRounds; r++) { events.push({ round: r, type: 'gp' }); if ((s.calendar.sprintRounds || []).includes(r)) events.push({ round: r, type: 'sprint' }); }
   let starts = 0, dnfs = 0; Object.values(d).forEach(q => q.gp.forEach(f => { starts++; if (f == null) dnfs++; }));
-  return { year, L, sc, roster: order.map(id => ({ ...d[id], rank: rank[id] })), events, gridRate: starts ? dnfs / starts : 0, nextGrid };
+  return { year, L, sc, roster: order.map(id => ({ ...d[id], rank: rank[id] })), events, gridRate: starts ? dnfs / starts : 0, nextGrid, circuits: (gf && gf.circuits) || {} };
 }
 // The final standings, as the model scores them (points) and as awarded (rank, the real champion).
 export function finalOutcome(year) {
@@ -222,18 +237,30 @@ export function simContext(snap, p) {
   const res = roster.map(q => windowOf(q.gp, p)), mates = matesOf(roster.map((q, i) => q.active ? q.teamId : '-' + i)); // only drivers racing now are teammates
   roster.forEach((q, i) => {
     dnf[i] = dnfRate(res[i], snap.gridRate, p);
-    for (let s = 0; s < n; s++) W[i * n + s] = pooledWeight(res, i, mates, s + 1, p) + extraWeight(null, q.active ? q.qpos : null, s + 1, p); // qualifying form (#167)
+    for (let s = 0; s < n; s++) W[i * n + s] = pooledWeight(res, i, mates, s + 1, p) + extraWeight(null, q.active ? q.qpos : null, null, s + 1, p); // qualifying form (#167)
     q.finishes.forEach((c, pos) => { if (c && pos < n) fin0[i * n + pos] = c; });
   });
   const nowPts = roster.map(q => q.now), dec = F1RaceModel.decidedContext(events, snap.L, sc.gp, sc.sprint);
-  // the next Grand Prix, once its grid / qualifying is known, has its own weights (#167)
+  // events with their own weights (#167, #169): the next Grand Prix once its grid / qualifying is known, and any race at a circuit
+  // where drivers have track history (a sprint shares its Grand Prix's circuit)
   let eventW = null;
-  const e0 = events.findIndex(e => e.type === 'gp');
-  if (p.known > 0 && snap.nextGrid && e0 >= 0 && events[e0].round === snap.L + 1) {
-    const Wk = Float64Array.from(W);
-    roster.forEach((q, i) => { const k = q.active ? knownFor(snap.nextGrid, q.driverId, n) : null; if (k != null) for (let s = 0; s < n; s++) Wk[i * n + s] += extraWeight(k, null, s + 1, p); });
-    eventW = []; eventW[e0] = Wk;
-  }
+  const e0 = events.findIndex(e => e.type === 'gp'), useKnown0 = p.known > 0 && snap.nextGrid && e0 >= 0 && events[e0].round === snap.L + 1;
+  const cache = {};
+  events.forEach((e, ei) => {
+    const useKnown = useKnown0 && ei === e0, circuit = snap.circuits[e.round];
+    const track = p.track > 0 && circuit ? roster.map(q => q.active ? F1RaceModel.trackPosition(trackDeltas(circuit, q.driverId, snap.year), classifiedMean(q.gp), n) : null) : null;
+    if (!useKnown && !(track && track.some(t => t != null))) return;
+    const key = circuit + '|' + (useKnown ? 'k' : '');
+    if (!cache[key]) {
+      const Wk = Float64Array.from(W);
+      roster.forEach((q, i) => {
+        const k = useKnown && q.active ? knownFor(snap.nextGrid, q.driverId, n) : null;
+        if (k != null || (track && track[i] != null)) for (let s = 0; s < n; s++) Wk[i * n + s] += extraWeight(k, null, track ? track[i] : null, s + 1, p);
+      });
+      cache[key] = Wk;
+    }
+    (eventW = eventW || [])[ei] = cache[key];
+  });
   return { eventW, roster, n, E, events, isGp: events.map(e => e.type === 'gp'), gpIdx: events.map((e, i) => e.type === 'gp' ? i : -1).filter(i => i >= 0),
            wins: roster.map(() => null), dnfs: roster.map(() => null), cols: [], W, dnfRate: dnf, active: roster.map(q => q.active), fin0,
            rank: roster.map(q => q.rank), winDrivers: [], nowPts, forcedWinner: roster.map(() => false), dec,

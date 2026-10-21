@@ -24,12 +24,13 @@ async function close(){ if(browser) await browser.close(); }
 //   eras: an object served as site/data/eras.json (#135); without it that file is a 404.
 //   grids: {year: object|null} served as site/data/grid/{year}.json (#167); null = a 404 (no qualifying data); a year not
 //     listed gets the real file in site/data/grid/. page.gridHits lists the requests for it.
+//   tracks: an object served as site/data/tracks.json (#169), null = a 404; left out = the real file. page.trackHits lists the requests.
 // The returned page has .errors (uncaught page errors), .apiHits (f1api.dev requests made) and .done().
-async function openPage(name, {theme='light', width=1000, fail=()=>false, delay=0, snapshots={}, grids={}, eras=null, now=null, timezone, locale}={}){
+async function openPage(name, {theme='light', width=1000, fail=()=>false, delay=0, snapshots={}, grids={}, tracks=undefined, eras=null, now=null, timezone, locale}={}){
   const ctx = await browser.newContext({ viewport:{width, height:1400}, ...(timezone ? {timezoneId:timezone} : {}), ...(locale ? {locale} : {}) });
   if(now !== null) await ctx.clock.setFixedTime(now);
   await ctx.addInitScript(t => { try{ localStorage.setItem('f1-theme', t); }catch(e){} }, theme);
-  const apiHits = [], snapshotHits = [], gridHits = [];
+  const apiHits = [], snapshotHits = [], gridHits = [], trackHits = [];
   await ctx.route('**/*', async route => {
     const url = route.request().url();
     if(url.startsWith('https://f1api.dev/')){
@@ -45,6 +46,10 @@ async function openPage(name, {theme='light', width=1000, fail=()=>false, delay=
     if(url.startsWith('http://site.test/')){
       if(new URL(url).pathname === '/data/eras.json')
         return eras ? route.fulfill({status:200, contentType:'application/json', body:JSON.stringify(eras)}) : route.fulfill({status:404, body:''});
+      if(new URL(url).pathname === '/data/tracks.json'){
+        trackHits.push(url);
+        if(tracks !== undefined) return tracks ? route.fulfill({status:200, contentType:'application/json', body:JSON.stringify(tracks)}) : route.fulfill({status:404, body:''});
+      }
       const gridM = new URL(url).pathname.match(/^\/data\/grid\/(\d{4})\.json$/);
       if(gridM){
         gridHits.push(url);
@@ -63,7 +68,7 @@ async function openPage(name, {theme='light', width=1000, fail=()=>false, delay=
     return route.abort();
   });
   const page = await ctx.newPage();
-  page.errors = []; page.apiHits = apiHits; page.snapshotHits = snapshotHits; page.gridHits = gridHits;
+  page.errors = []; page.apiHits = apiHits; page.snapshotHits = snapshotHits; page.gridHits = gridHits; page.trackHits = trackHits;
   page.on('pageerror', e => page.errors.push(e.message));
   page.done = () => ctx.close();
   await page.goto(`http://site.test/${name}.html`);

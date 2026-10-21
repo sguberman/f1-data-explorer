@@ -16,6 +16,10 @@ const F1RaceModel = (()=>{
  // like QUALI_KNOWN extra finishes there; each of this season's earlier qualifying positions counts QUALI_FORM (a driver
  // who qualifies well tends to finish well, and it helps while the qualifying result isn't in yet). Fitted by the backtest.
  const QUALI_KNOWN=16, QUALI_FORM=0.5;
+ // #169: track history. A driver's finishes at this circuit in earlier seasons, each relative to their own average that season
+ // (the deltas in data/tracks.json), averaged and shrunk toward zero (divided by visits + TRACK_SHRINK), move their current
+ // average finish to an expected position here, which counts like TRACK_WEIGHT extra finishes there.
+ const TRACK_WEIGHT=2, TRACK_SHRINK=3;
  function placeWeight(res, place){
    let w=WEIGHT_FLOOR;
    for(const f of res){ if(f==null) continue; w += f<=place ? 1 : NEAR_BONUS*Math.pow(NEAR_DECAY, f-place-1); }
@@ -24,13 +28,24 @@ const F1RaceModel = (()=>{
   // The weight a position f (a finish, grid or qualifying position) gives a finishing place: 1 at that place or better,
  // then the near bonus halving each place further behind.
  function posTerm(f, place){ return f<=place ? 1 : NEAR_BONUS*Math.pow(NEAR_DECAY, f-place-1); }
- // A driver's extra evidence for weightMatrix: [[weight, [positions...]], ...] from this race's known position (or null)
- // and this season's earlier qualifying positions (or an empty list); null when there is none.
- function evidence(known, form){
+ // A driver's extra evidence for weightMatrix: [[weight, [positions...]], ...] from this race's known position (or null),
+ // this season's earlier qualifying positions (or an empty list) and the expected position at this track (or null, see
+ // trackPosition); null when there is none.
+ function evidence(known, form, track){
    const ev=[];
    if(known!=null) ev.push([QUALI_KNOWN, [known]]);
    if(form && form.length) ev.push([QUALI_FORM, form]);
+   if(track!=null) ev.push([TRACK_WEIGHT, [track]]);
    return ev.length ? ev : null;
+ }
+ // The expected position at a circuit from earlier visits: deltas = [delta, ...] (finish minus that season's average, from
+ // earlier seasons only); cur = the driver's average classified finish this season (null when none: mid-field, n/2); n = cars.
+ // null when they have never raced there.
+ function trackPosition(deltas, cur, n){
+   if(!deltas || !deltas.length) return null;
+   let sum=0; for(const d of deltas) sum+=d;
+   const base = cur==null ? n/2 : cur;
+   return Math.min(n, Math.max(1, Math.round(base + sum/(deltas.length+TRACK_SHRINK))));
  }
  // The cars sharing each car's team: teams[i] is a team id, or null for a car with no teammates in this race.
  function matesOf(teams){ return teams.map((t,i)=>t==null ? [] : teams.map((u,j)=>j!==i && u===t ? j : -1).filter(j=>j>=0)); }
@@ -213,7 +228,7 @@ const F1RaceModel = (()=>{
    for(let p=0;p<n;p++){ const d=fin[b*n+p]-fin[a*n+p]; if(d) return d; }
    return 0;
  }
- return { placeWeight, dnfRate, matesOf, weightMatrix, evidence, posTerm, simulate, NEAR_BONUS, NEAR_DECAY, WEIGHT_FLOOR, DNF_PRIOR_RACES, TEAM_SHARE, QUALI_KNOWN, QUALI_FORM,
+ return { placeWeight, dnfRate, matesOf, weightMatrix, evidence, trackPosition, posTerm, simulate, NEAR_BONUS, NEAR_DECAY, WEIGHT_FLOOR, DNF_PRIOR_RACES, TEAM_SHARE, QUALI_KNOWN, QUALI_FORM, TRACK_WEIGHT, TRACK_SHRINK,
           decidedContext, titleSettled, decidedRoundFor, pickInPlace, planSeason, simulateSeason, sampleOrder, countback };
 })();
 if(typeof module!=='undefined' && module.exports) module.exports=F1RaceModel; // Node (the backtest, #153)
