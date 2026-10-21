@@ -137,7 +137,7 @@ canvas{max-width:100%;}
       <label id="winLbl">Form from</label><br>
       <div class="stepper winStep" role="group" aria-labelledby="winLbl">
         <button type="button" id="winLess" aria-label="Use fewer races">−</button>
-        <span class="val" id="winVal" aria-live="polite">last 8 races</span>
+        <span class="val" id="winVal" aria-live="polite">whole season</span>
         <button type="button" id="winMore" aria-label="Use more races">+</button>
       </div>
     </div>
@@ -344,14 +344,14 @@ function recomputeRoster(){
  const cumInc = F1Data.cumulative(currentSeasonRounds, L);
  const posHist = buildPosHist(), dnfStats = buildDnfStats();
  const rank = F1Common.standingsRank(currentSeasonRounds, L, 'drivers'); // #20: standings order, ties by countback
- const results = {}, finishes = {}, activeIds = new Set();
+ const results = {}, finishes = {}, activeIds = new Set(), teamNow = {};
  currentSeasonRounds.forEach(r=>{
    if(r.round > L) return;
    (r.raceResults||[]).forEach(res=>{
      const pos = isFinish(res) ? res.position : null;
      (results[res.driverId] = results[res.driverId] || []).push(pos);
      if(pos){ const f = finishes[res.driverId] = finishes[res.driverId] || []; f[pos-1] = (f[pos-1]||0) + 1; }
-     if(r.round === L) activeIds.add(res.driverId);
+     if(r.round === L){ activeIds.add(res.driverId); teamNow[res.driverId] = res.teamId; } // #162: teammates are the cars on the same team in round L
    });
  });
  let starts=0, dnfs=0;
@@ -364,21 +364,22 @@ function recomputeRoster(){
    const dnfRate = st && st.starts ? st.dnfs / st.starts : 0;
    return { driverId:id, code:di.code, name:di.name, teamId:di.teamId, teamName:di.teamName, now, dnfRate, rank:rank[id],
             posHist: posHist[id] || new Array(11).fill(0), results: results[id] || [], finishes: finishes[id] || [],
-            active: activeIds.has(id) };
+            active: activeIds.has(id), teamNow: teamNow[id] };
  });
 }
 
 // ---- #117: the race model's inputs ----
-// The data window: the last N Grand Prix starts of each driver, or the whole season (Infinity). Default 8.
-const WINDOW_DEFAULT=8, WINDOW_MIN=3;
+// The data window: the last N Grand Prix starts of each driver, or the whole season (Infinity). Default: the whole season.
+const WINDOW_DEFAULT=Infinity, WINDOW_MIN=3; // #162: the whole season (it was the last 8 races)
 let dataWindow=WINDOW_DEFAULT;
 const windowResults = d => dataWindow===Infinity ? d.results : d.results.slice(-dataWindow);
 // Weight for finishing at position `place` (1-based): finishes at that place or better in the window, plus a bonus
 // for finishes just behind it (+0.5 one place behind, halving each place further), plus a small floor, so a driver is
-// most likely to finish near where they've been finishing and anything stays possible.
+// most likely to finish near where they've been finishing and anything stays possible; #162: plus a quarter of their
+// teammate's weight (team strength), see F1RaceModel.weightMatrix.
 // The weights and the DNF chance are the shared race model's (racemodel.js, #153). DNF chance: the window's DNF share,
-// blended with DNF_PRIOR_RACES races at the grid's DNF rate (so 0 DNFs in 8 races isn't "never retires", and 2
-// bad-luck DNFs aren't 25%).
+// blended with DNF_PRIOR_RACES (64, #162) races at the grid's DNF rate, i.e. a driver's own record moves it only a little
+// (it barely predicts their DNFs).
 const placeWeight=F1RaceModel.placeWeight;
 // The window as used at round L: anything as long as the races so far is the whole season.
 const windowShown = ()=>dataWindow>=L ? Infinity : dataWindow;
@@ -412,9 +413,9 @@ function buildSimContext(){
  const cols=validCollisions().map(c=>({a:index[c.a], b:index[c.b], n:c.n})).filter(c=>c.a!=null && c.b!=null);
  const gpIdx=remainingEvents.map((e,i)=>e.type==='gp'?i:-1).filter(i=>i>=0);
  // #56/#117: weights per driver and finishing place (every place, P1 to last), worked out once per run
- const W=new Float64Array(n*n), active=roster.map(d=>d.active), dnfRate=new Float64Array(n);
- roster.forEach((d,i)=>{ const res=windowResults(d); dnfRate[i]=modelDnfRate(res);
-   for(let slot=0;slot<n;slot++) W[i*n+slot]=placeWeight(res, slot+1); });
+ const active=roster.map(d=>d.active), dnfRate=new Float64Array(n), res=roster.map(windowResults);
+ const W=F1RaceModel.weightMatrix(res, roster.map(d=>d.active ? d.teamNow : null)); // #162: team strength
+ roster.forEach((d,i)=>{ dnfRate[i]=modelDnfRate(res[i]); });
  // countback (#117): Grand Prix finishes so far by exact position, per driver (simulated ones are added per season)
  const fin0=new Int16Array(n*n);
  roster.forEach((d,i)=>{ d.finishes.forEach((c,p)=>{ if(c && p<n) fin0[i*n+p]=c; }); });
@@ -479,7 +480,7 @@ function updateLede(){
  document.getElementById('lede').textContent =
    `Simulates the rest of the season thousands of times: ${nGP} ${nGP===1?'Grand Prix':'Grands Prix'}`
    + (nSprint ? ` and ${nSprint} sprint${nSprint===1?'':'s'}` : '')
-   + ` left after Round ${L}${totalRounds?(' of '+totalRounds):''}. Each race is drawn place by place from where each driver has been finishing in their recent races (Form from, below): they're most likely to finish where they usually do or a place or two either side, and they retire about as often as they have been, unless you set DNFs, wins or collisions below. Every driver in the latest round is simulated, so someone you don't track can still score points or win the title, and drivers level on points are separated by countback, as in the real standings. It shows a range of plausible outcomes if current form holds, not a prediction.`;
+   + ` left after Round ${L}${totalRounds?(' of '+totalRounds):''}. Each race is drawn place by place from where each driver has been finishing this season, and a little from where their teammate has (Form from, below): they're most likely to finish where they usually do or a place or two either side, and they retire about as often as they have been, unless you set DNFs, wins or collisions below. Every driver in the latest round is simulated, so someone you don't track can still score points or win the title, and drivers level on points are separated by countback, as in the real standings. It shows a range of plausible outcomes if current form holds, not a prediction.`;
 }
 
 function updateReadiness(){

@@ -25,9 +25,11 @@ const F1Common = (() => {
 })();
 
 // ---- Models ----
-// A model is a set of numbers; DEFAULT is the Simulator as it is today (the constants in racemodel.js, window 8).
-// `beta` is team strength: a driver's weights include beta times the average of their teammates' (0 = off, as today).
-export const DEFAULT = { window: 8, nearBonus: F1RaceModel.NEAR_BONUS, nearDecay: F1RaceModel.NEAR_DECAY, floor: F1RaceModel.WEIGHT_FLOOR, dnfPrior: F1RaceModel.DNF_PRIOR_RACES, beta: 0 };
+// A model is a set of numbers. DEFAULT is the Simulator as it is now (#162: the constants in racemodel.js, and the page's default
+// "Form from" of the whole season); PREVIOUS is the Simulator before #162.
+// `beta` is team strength: a driver's weights include beta times the average of their teammates' (0 = off).
+export const DEFAULT = { window: Infinity, nearBonus: F1RaceModel.NEAR_BONUS, nearDecay: F1RaceModel.NEAR_DECAY, floor: F1RaceModel.WEIGHT_FLOOR, dnfPrior: F1RaceModel.DNF_PRIOR_RACES, beta: F1RaceModel.TEAM_SHARE };
+export const PREVIOUS = { window: 8, nearBonus: 0.5, nearDecay: 0.5, floor: 0.01, dnfPrior: 4, beta: 0 };
 const GRID = { // what `tune` tries for each number
   window: [3, 4, 5, 6, 8, 10, 12, 16, Infinity],
   nearBonus: [0, 0.25, 0.5, 0.75, 1, 1.5],
@@ -36,12 +38,12 @@ const GRID = { // what `tune` tries for each number
   dnfPrior: [1, 2, 4, 8, 16, 32, 64],
   beta: [0, 0.25, 0.5, 1, 2],
 };
-// Named models for `--model`. `retuned` = the current model with the window, floor and DNF smoothing refitted;
-// `team` = that plus team strength (numbers fitted on 2014–2023, see docs/BACKTEST.md).
+// Named models for `--model`. `retuned` = the previous model with the window, floor and DNF smoothing refitted;
+// `current` = the Simulator now (those refitted plus team strength), fitted on 2014–2023 (see docs/BACKTEST.md).
 export const MODELS = {
+  previous: PREVIOUS,
+  retuned: { ...PREVIOUS, window: Infinity, floor: 0.1, dnfPrior: 64 },
   current: DEFAULT,
-  retuned: { ...DEFAULT, window: Infinity, floor: 0.1, dnfPrior: 64 },
-  team: { ...DEFAULT, window: 16, nearBonus: 0.25, floor: 0.03, dnfPrior: 64, beta: 0.25 },
 };
 const windowOf = (res, p) => p.window === Infinity || res.length <= p.window ? res : res.slice(-p.window);
 // Weight for finishing at `place`: the same formula as F1RaceModel.placeWeight, with the numbers as parameters.
@@ -128,7 +130,7 @@ const lateMean = (scores, years) => mean(years.flatMap(y => scores[y].late));
 
 // ---- Tuning ----
 // Coordinate descent: try each number's grid with the others fixed, keep the best, repeat until nothing improves.
-export function tune(allCases, years, start = DEFAULT, keys = Object.keys(GRID).filter(k => k !== 'beta')) {
+export function tune(allCases, years, start = PREVIOUS, keys = Object.keys(GRID).filter(k => k !== 'beta')) {
   let best = { ...start }, bestScore = lateMean(scoreRaces(pick(allCases, years), best), years);
   for (let pass = 0; pass < 6; pass++) {
     let improved = false;
@@ -323,15 +325,15 @@ async function main() {
       models: Object.fromEntries(names.map(n => [n, { params: MODELS[n], logLikPerRace: lateMean(sc[n], years), early: mean(years.flatMap(y => sc[n][y].early)), perSeason: Object.fromEntries(years.map(y => [y, mean(sc[n][y].late)])) }])),
       paired: Object.fromEntries(names.slice(1).map(n => [n, compare(sc[names[0]], sc[n], years)])) };
   } else if (cmd === 'tune') {
-    // Three variants: the current numbers, the numbers refitted (window, floor, DNF smoothing, near bonus) and refitted
+    // Three variants: the previous numbers, the numbers refitted (window, floor, DNF smoothing, near bonus) and refitted
     // with team strength. Each is fitted leave-one-season-out inside the pool, then on the whole pool and scored once on the holdout.
     const cases = Object.fromEntries(years.map(y => [y, raceCases(y)])), pool = years.filter(y => y < holdout), hold = years.filter(y => y >= holdout);
     const keys = { retuned: Object.keys(GRID).filter(k => k !== 'beta'), team: Object.keys(GRID) };
-    const base = scoreRaces(cases, DEFAULT), cv = {}, folds = {}, fin = {};
+    const base = scoreRaces(cases, PREVIOUS), cv = {}, folds = {}, fin = {};
     for (const v of Object.keys(keys)) {
       cv[v] = {}; folds[v] = [];
-      for (const y of pool) { const t = tune(cases, pool.filter(x => x !== y), DEFAULT, keys[v]); cv[v][y] = scoreRaces(pick(cases, [y]), t.params)[y]; folds[v].push({ heldOut: y, params: t.params }); }
-      const final = tune(cases, pool, DEFAULT, keys[v]);
+      for (const y of pool) { const t = tune(cases, pool.filter(x => x !== y), PREVIOUS, keys[v]); cv[v][y] = scoreRaces(pick(cases, [y]), t.params)[y]; folds[v].push({ heldOut: y, params: t.params }); }
+      const final = tune(cases, pool, PREVIOUS, keys[v]);
       fin[v] = { params: final.params, scores: scoreRaces(pick(cases, hold), final.params) };
     }
     const holdBase = pick(base, hold);
@@ -342,7 +344,7 @@ async function main() {
   } else if (cmd === 'season') {
     out.season = seasonCompare(years, modelsArg(), runs);
   } else {
-    console.error('usage: node tools/backtest.mjs race|season|tune [--model current,retuned,team] [--from Y] [--to Y] [--holdout Y] [--runs N] [--calibration] [--json]'); process.exit(2);
+    console.error('usage: node tools/backtest.mjs race|season|tune [--model previous,retuned,current] [--from Y] [--to Y] [--holdout Y] [--runs N] [--calibration] [--json]'); process.exit(2);
   }
   if (json) { console.log(JSON.stringify(out, J, 1)); return; }
   if (out.race) {
@@ -354,7 +356,7 @@ async function main() {
   if (out.tune) {
     const t = out.tune, line = (name, c) => console.log(`  ${name.padEnd(26)} cross-validated ${f(c.meanDiff, 3)} ± ${f(c.se, 3)} (better in ${c.seasonsBetter} of ${c.seasons} seasons)   holdout ${f(c.holdout.meanDiff, 3)} ± ${f(c.holdout.se, 3)}`);
     console.log(`Race level, fitted on ${from}–${holdout - 1} (leave-one-season-out), holdout ${holdout}–${to}: gain in log-probability per race`);
-    line('refitted vs current', t.retuned); line('with team strength vs current', t.team); line('team strength vs refitted', t.teamOverRetuned);
+    line('refitted vs previous', t.retuned); line('with team strength vs previous', t.team); line('team strength vs refitted', t.teamOverRetuned);
     console.log('  refitted numbers:     ' + JSON.stringify(t.retuned.params, J));
     console.log('  with team strength:   ' + JSON.stringify(t.team.params, J));
   }
