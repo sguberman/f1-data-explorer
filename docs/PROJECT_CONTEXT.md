@@ -798,6 +798,11 @@ since fonts render differently on different machines.
    nothing in this environment can reach them anyway. **`main` isn't built on Cloudflare** (production
    builds are off): the real site is GitHub Pages, so only PR branches get previews (#52). Previews stay up
    indefinitely and never need cleaning up; the free plan's limit is 500 builds a month, far above our use.
+   Every push builds (a WIP commit, an automated data commit, a merge of `main`), so batch pushes. Builds queue and can finish
+   out of order or fail (seen on #168, where the check appeared minutes late, and #170, whose last build failed after
+   45 minutes while earlier ones succeeded): trust the **Cloudflare Pages check on the PR's current head**, not the single PR
+   comment (it is edited by whichever build finished last); if it failed, retry the deployment from the Cloudflare dashboard
+   or push a real change.
 4. The owner tries the preview (phone included). Requested changes are pushed to the same PR, and the
    preview updates.
 5. When the owner merges (or says to merge), the change goes live on GitHub Pages and GitHub closes the
