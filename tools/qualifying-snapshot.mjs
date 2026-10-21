@@ -70,9 +70,11 @@ export async function buildGrid(year, fetchImpl, { now = Date.now(), pause = asy
     const { race, rows } = results.get(round), q = quali.get(round);
     const grid = {};
     for(const x of rows){ const g = parseInt(x.grid, 10); if(Number.isFinite(g)) grid[canon(x.Driver)] = g; }
+    const circuit = race.Circuit || {};
     return {
       round,
       raceName: race.raceName,
+      circuitId: circuit.circuitId || null, // the same id for a track in every season (track history, #164)
       qualifying: (q ? q.rows : []).map(x => ({
         driverId: canon(x.Driver), code: x.Driver.code || null, teamId: x.Constructor.constructorId,
         position: parseInt(x.position, 10), q1: lapMs(x.Q1), q2: lapMs(x.Q2), q3: lapMs(x.Q3),
