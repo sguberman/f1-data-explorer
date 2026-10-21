@@ -87,6 +87,7 @@ const F1Controls = (() => {
     }
     state.year = year;
     F1Common.setSeason(year); // #72: season-specific team colours
+    state.fresh = fresh; // Refresh data: the pages that load more (the qualifying file, #167) re-download it too
     state.seasonRounds = rounds;
     state.maxRound = rounds.length;
     state.round = rounds.length; // default to "as of the latest round loaded"

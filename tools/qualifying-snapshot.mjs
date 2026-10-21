@@ -7,6 +7,7 @@
 //   node tools/qualifying-snapshot.mjs --all      write every season again
 //   node tools/qualifying-snapshot.mjs 2019 2024  only these years
 //
+// A round that has qualifying but no result yet (the next race) has an empty `grid`.
 // File: {v:1, year, generatedAt, complete, source:'jolpica', rounds:[{round, raceName, qualifying:[{driverId, code,
 // teamId, position, q1, q2, q3}], grid:{driverId: startingPosition}}]}. Times are milliseconds (null when the driver
 // set none); grid 0 is a pit-lane start; a driver missing from `grid` didn't start. A finished season is never
@@ -66,13 +67,17 @@ export async function buildGrid(year, fetchImpl, { now = Date.now(), pause = asy
   const quali = await seasonTable(year, 'qualifying', 'QualifyingResults', fetchImpl, pause, wait);
   const calendar = await seasonTable(year, '', 'none', fetchImpl, pause, wait);
   if(!results.size) throw new Error(`${year}: no results`);
-  const rounds = [...results.keys()].sort((a, b) => a - b).map(round => {
-    const { race, rows } = results.get(round), q = quali.get(round);
+  // every round with results, plus the upcoming one(s) with qualifying but no results yet (#167: the next race's qualifying)
+  const withResults = [...results.keys()].length, all = [...new Set([...results.keys(), ...quali.keys()])].sort((a, b) => a - b);
+  const rounds = all.map(round => {
+    const { race, rows } = results.get(round) || { race: quali.get(round).race, rows: [] }, q = quali.get(round);
     const grid = {};
     for(const x of rows){ const g = parseInt(x.grid, 10); if(Number.isFinite(g)) grid[canon(x.Driver)] = g; }
+    const circuit = race.Circuit || {};
     return {
       round,
       raceName: race.raceName,
+      circuitId: circuit.circuitId || null, // the same id for a track in every season (track history, #164)
       qualifying: (q ? q.rows : []).map(x => ({
         driverId: canon(x.Driver), code: x.Driver.code || null, teamId: x.Constructor.constructorId,
         position: parseInt(x.position, 10), q1: lapMs(x.Q1), q2: lapMs(x.Q2), q3: lapMs(x.Q3),
@@ -80,7 +85,7 @@ export async function buildGrid(year, fetchImpl, { now = Date.now(), pause = asy
       grid,
     };
   });
-  return { v: 1, year, generatedAt: now, complete: rounds.length >= calendar.size, source: 'jolpica', rounds };
+  return { v: 1, year, generatedAt: now, complete: withResults >= calendar.size, source: 'jolpica', rounds };
 }
 
 const sameData = (a, b) => a && b && JSON.stringify([a.rounds, a.complete]) === JSON.stringify([b.rounds, b.complete]);

@@ -65,7 +65,8 @@ tools/                snapshot.mjs: builds site/data/{year}.json from f1api.dev 
                       eras-snapshot.mjs (#135): builds site/data/eras.json (standings since 1950) from Jolpica (same workflow).
                       history-snapshot.mjs (#141): builds site/data/{1950..2020}.json (per-round results) from Jolpica (same workflow).
                       qualifying-snapshot.mjs (#158): builds site/data/grid/{2014..}.json (qualifying position and Q1–Q3 times, starting grid
-                      per driver, 0 = pit lane) from Jolpica (same workflow). Nothing on the site reads them yet; the backtest will.
+                      per driver, 0 = pit lane, plus each round's circuit id and the upcoming round's qualifying) from Jolpica (same workflow); read by the
+                      Simulator and What-If (#167) and the backtest.
 tests/                Browser tests, run on every PR (see "Tests" below). Not deployed.
 docs/                 Project docs (not deployed): PROJECT_CONTEXT.md (this file), DONE.md (archive of
                       legacy issues #1–#55), TODO.md (legacy → GitHub issue numbers).
@@ -123,7 +124,7 @@ Move something into `common.js` only once it's genuinely identical on every page
   points, and sprint results (`session:'sprint'`). It only patches when both sources agree on the rounds and
   drivers and the sprint rounds match the calendar; otherwise it warns and keeps the file as it was. A patched
   file carries `patched:{source:'jolpica', version}`; bumping `PATCH_VERSION` re-patches those seasons once.
-  **Workflow:** `snapshot.yml` runs daily, hourly on Sundays and Mondays (UTC), by hand (Actions → Update
+  **Workflow:** `snapshot.yml` runs daily, hourly on Saturdays, Sundays and Mondays (UTC), by hand (Actions → Update
   season data, optionally "all"), and on pushes that change the generator or `data.js`. It commits
   `issue #13: update season data (automated)` and, on `main`, starts the Pages deploy itself (commits made
   by a workflow don't trigger other workflows).
@@ -473,6 +474,16 @@ most common exact total in it. Both are ordered by that most common value. Defau
 tracked set is the top 8.
 
 **Round slider on the simulator (#112):** (the floating controls are now on every page with a slider, #132: `.f1c` is sticky and `F1Controls` adds `.compact` once scrolled) the controls card is sticky at the top of the page and, once scrolled, folds to just the slider and round label. Once a run exists, moving the slider re-simulates by itself (`autoRun()`): each drag step runs a quick preview of `QUICK_N` = 2,000 seasons (about 50 ms; "(quick preview)" in the status; a newer step silently cancels the run in progress), and releasing the slider (`F1Controls` also dispatches `f1roundcommit` on `change`) runs the chosen "Simulations" size. No run yet: the slider starts nothing. Settings changes (form window, DNFs, wins, collisions) still only mark the results out of date. Never fetches.
+
+**Qualifying and the starting grid (#167, `data/grid/{year}.json` from #158):** `F1Data.loadGrid(year, fresh)` loads the file with the
+season (null when missing or broken: the model runs without it; `controls.js` passes `state.fresh` so Refresh data re-downloads it).
+The race model adds extra evidence to a driver's place weights (`F1RaceModel.evidence`, `weightMatrix`): this season's earlier
+qualifying positions (rounds ≤ L; `QUALI_FORM` 0.5 each) for every simulated race, and, for the **next Grand Prix** (round L+1)
+once it has a starting grid (0 = pit lane = last) or else a qualifying result, that position (`QUALI_KNOWN` 16). The engine gives
+that one event its own weights (`ctx.eventW[e]`, restored after each season). Sprints use the base weights. The Simulator's description
+and What-If's note say "Round N is simulated from its starting grid / qualifying result" when it applies. What-If uses it for the
+Grand Prix of the round being predicted (T = L+1); a past round uses its real grid. The qualifying file also holds the upcoming round
+(qualifying, empty grid) once Saturday's session is in; `snapshot.yml` also runs hourly on Saturdays for that. Tested in `45-quali-model`.
 
 **Result plots (#108, #114, simulator):** both ridge plots (final position, final points) have a dashed median line (exact
 median of the simulated totals / ranks) and their own "Sort by" Most common / Median dropdown (one shared setting, `rsort`),
