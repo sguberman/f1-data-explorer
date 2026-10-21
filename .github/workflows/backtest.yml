@@ -1,0 +1,36 @@
+# #155: run the simulator backtest (tools/backtest.mjs) by hand; the output goes in the run's summary.
+name: Backtest
+
+on:
+  workflow_dispatch:
+    inputs:
+      command:
+        description: "race (race level), season (season level) or tune (fit the race model)"
+        type: choice
+        options: [race, season, tune]
+        default: race
+      from:
+        description: "First season"
+        default: "2014"
+      to:
+        description: "Last season"
+        default: "2025"
+
+permissions:
+  contents: read
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Run the backtest
+        run: |
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          node tools/backtest.mjs "${{ inputs.command }}" --from "${{ inputs.from }}" --to "${{ inputs.to }}" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
