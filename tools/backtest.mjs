@@ -112,7 +112,7 @@ function knownFor(gridRound, driverId, n) {
   return q ? q.position : null;
 }
 const isFinish = r => Number.isFinite(r.position) && r.position >= 1;
-// A round's rows with each driver once: the 2024 file has Pérez twice in round 24, and a driver can start a race only once.
+// A round's rows with each driver once (a driver starts a race once; a guard, as 2024 round 24 once listed Pérez twice, #157).
 const rowsOf = rs => { const seen = new Set(); return (rs || []).filter(x => !seen.has(x.driverId) && seen.add(x.driverId)); };
 const table = (tbl, pos) => pos >= 1 && pos <= tbl.length ? tbl[pos - 1] : 0;
 

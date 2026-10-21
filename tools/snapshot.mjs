@@ -110,6 +110,38 @@ export async function patchFromJolpica(snap, fetchImpl, pause){
   return { snap: { ...snap, rounds, patched: { source: 'jolpica', version: PATCH_VERSION, what: ['sprints', 'classification'] } }, report };
 }
 
+// #157: f1api.dev sometimes repeats a driver within a round and leaves another out (2024 round 24 lists Pérez twice and has no
+// Lawson). A driver starts a race once, so a round whose rows repeat a driver is rebuilt from Jolpica's result for that round:
+// its drivers, positions and points, with each driver's details (name, code, team, number, ...) from their existing row in the
+// round or, for one that is missing, from their latest row elsewhere in the season.
+export const repeatedDrivers = rows => { const seen = new Set(), dup = new Set(); for(const x of rows || []){ if(seen.has(x.driverId)) dup.add(x.driverId); seen.add(x.driverId); } return [...dup]; };
+export const hasRepeatedDrivers = snap => snap.rounds.some(r => repeatedDrivers(r.raceResults).length || repeatedDrivers(r.sprintResults).length);
+export async function repairRepeatedDrivers(snap, fetchImpl, pause){
+  const latest = new Map(); // driver -> their latest row in a round without repeats
+  for(const r of snap.rounds) if(!repeatedDrivers(r.raceResults).length) for(const q of r.raceResults) latest.set(q.driverId, q);
+  const repaired = [];
+  const rounds = [];
+  for(const r of snap.rounds){
+    if(!repeatedDrivers(r.raceResults).length && !repeatedDrivers(r.sprintResults).length){ rounds.push(r); continue; }
+    const res = await fetchImpl(`${JOLPICA}/${snap.year}/${r.round}/results.json`);
+    if(!res.ok) throw new Error(`Jolpica ${snap.year} round ${r.round}: HTTP ${res.status}`);
+    const race = (await res.json()).MRData.RaceTable.Races[0];
+    if(!race || !(race.Results || []).length) throw new Error(`round ${r.round}: no race result on Jolpica to repair from`);
+    if(pause) await pause();
+    const own = new Map(); for(const q of r.raceResults) if(!own.has(q.driverId)) own.set(q.driverId, q);
+    const raceResults = race.Results.map(x => {
+      const base = own.get(x.Driver.driverId) || latest.get(x.Driver.driverId);
+      if(!base) throw new Error(`round ${r.round}: ${x.Driver.driverId} has no other row this season to take details from`);
+      return { ...base, position: classifiedPosition(x.positionText), points: +x.points, session: 'race' };
+    });
+    let sprintResults = r.sprintResults;
+    if(repeatedDrivers(sprintResults).length) throw new Error(`round ${r.round}: repeated drivers in the sprint, not repaired`);
+    repaired.push(r.round);
+    rounds.push({ ...r, raceResults, sprintResults });
+  }
+  return { snap: { ...snap, rounds }, repaired };
+}
+
 const sameData = (a, b) => a && b && JSON.stringify([a.calendar, a.rounds, a.patched]) === JSON.stringify([b.calendar, b.rounds, b.patched]);
 
 async function main(){
@@ -121,6 +153,15 @@ async function main(){
     const file = path.join(OUT, `${year}.json`);
     const old = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : null;
     const needsPatch = PATCH_YEARS.includes(year) && !(old && old.patched && old.patched.version === PATCH_VERSION);
+    // #157: a stored season that repeats a driver in a round is repaired in place, however complete it is
+    if(old && hasRepeatedDrivers(old)){
+      try{
+        const fixed = await repairRepeatedDrivers(old, fetch, () => new Promise(r => setTimeout(r, 400)));
+        fs.writeFileSync(file, JSON.stringify(fixed.snap)); changed++;
+        console.log(`${year}: repaired round(s) ${fixed.repaired.join(', ')} that repeated a driver, from Jolpica`);
+        continue;
+      }catch(e){ console.log(`::warning::${year}: ${e.message} — repeated driver not repaired`); }
+    }
     if(!all && old && old.complete && year < thisYear && !needsPatch){ console.log(`${year}: complete, skipped`); continue; }
     let snap;
     try{
@@ -132,6 +173,10 @@ async function main(){
       }
     }
     catch(e){ console.log(`::warning::${year}: ${e.message} — file left as it was`); continue; } // other seasons still get committed
+    if(hasRepeatedDrivers(snap)){ // the same for a season just built (#157)
+      try{ const fixed = await repairRepeatedDrivers(snap, fetch, () => new Promise(r => setTimeout(r, 400))); snap = fixed.snap; console.log(`${year}: repaired round(s) ${fixed.repaired.join(', ')} that repeated a driver, from Jolpica`); }
+      catch(e){ console.log(`::warning::${year}: ${e.message} — repeated driver not repaired`); }
+    }
     if(!snap.rounds.length){ console.log(`${year}: no results yet, skipped`); continue; }
     if(sameData(old, snap)){ console.log(`${year}: unchanged (${snap.rounds.length} rounds)`); continue; }
     fs.writeFileSync(file, JSON.stringify(snap));

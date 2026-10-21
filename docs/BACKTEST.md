@@ -160,4 +160,5 @@ projection; it is kept at the owner's request.
 
 ## Data note
 
-`site/data/2024.json` round 24 lists Pérez twice and has no Lawson (#157). The script keeps each driver once per race.
+`site/data/2024.json` round 24 used to list Pérez twice and have no Lawson (f1api.dev); it was repaired from Jolpica (#157), and
+`tools/snapshot.mjs` now repairs any round that repeats a driver. The script still keeps each driver once per race, as a guard.
