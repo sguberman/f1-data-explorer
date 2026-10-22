@@ -31,7 +31,8 @@ const F1Common = (() => {
 // `beta` is team strength: a driver's weights include beta times the average of their teammates' (0 = off).
 // `known` and `form` (#167): the weight of this race's starting grid / qualifying position (when known) and of this season's
 // earlier qualifying positions, as extra evidence about where a driver will finish (0 = off). `track` (#169): the weight of the
-// expected position at this circuit from the driver's earlier visits (0 = off).
+// expected position at this circuit from the driver's earlier visits (0 = off). `sigma` (#177): the size of a per-race, per-team "good weekend"
+// factor, a lognormal multiplier (mean 1) on both of a team's cars' weights, the same for the whole race (0 = off, the Simulator).
 export const DEFAULT = { window: Infinity, nearBonus: F1RaceModel.NEAR_BONUS, nearDecay: F1RaceModel.NEAR_DECAY, floor: F1RaceModel.WEIGHT_FLOOR, dnfPrior: F1RaceModel.DNF_PRIOR_RACES, beta: F1RaceModel.TEAM_SHARE, known: F1RaceModel.QUALI_KNOWN, form: F1RaceModel.QUALI_FORM, track: F1RaceModel.TRACK_WEIGHT };
 export const PREVIOUS = { window: 8, nearBonus: 0.5, nearDecay: 0.5, floor: 0.01, dnfPrior: 4, beta: 0, known: 0, form: 0, track: 0 };
 const GRID = { // what `tune` tries for each number
@@ -44,6 +45,7 @@ const GRID = { // what `tune` tries for each number
   known: [0, 1, 2, 4, 8, 16, 32],
   form: [0, 0.25, 0.5, 1, 2],
   track: [0, 1, 2, 4],
+  sigma: [0, 0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.6, 0.8, 1, 1.5], // #177: size of the per-team "good weekend" factor (0 = off)
 };
 // Named models for `--model`. `retuned` = the previous model with the window, floor and DNF smoothing refitted;
 // `team` = those plus team strength (the Simulator after #162); `quali` = plus qualifying (#167); `current` = the Simulator now (plus track history, #169), fitted
@@ -54,6 +56,8 @@ export const MODELS = {
   team: { ...DEFAULT, known: 0, form: 0, track: 0 }, // the Simulator after #162: refitted numbers and team strength, no qualifying
   quali: { ...DEFAULT, track: 0 }, // plus the grid / qualifying result and qualifying form (#167)
   current: DEFAULT, // plus track history (#169)
+  refit: { ...DEFAULT, floor: 0.001 }, // #177: `current` with the floor refitted (what the per-team factor is compared against)
+  teamfx: { ...DEFAULT, floor: 0.001, nearBonus: 0.25, sigma: 0.6 }, // #177: plus a per-team "good weekend" factor, numbers fitted on 2014–2023
 };
 const windowOf = (res, p) => p.window === Infinity || res.length <= p.window ? res : res.slice(-p.window);
 // Weight for finishing at `place`: the same formula as F1RaceModel.placeWeight, with the numbers as parameters.
@@ -147,12 +151,44 @@ export function raceLogLik(c, p) {
   const res = c.hist.map(h => windowOf(h, p)), mates = c.mates || (c.mates = matesOf(c.team || c.racers.map((_, i) => '-' + i)));
   res.forEach((r, i) => { const q = clamp(dnfRate(r, c.gridRate, p)); ll += Math.log(c.dnf.has(i) ? q : 1 - q); });
   const m = c.order.length;
+  if (p.sigma > 0) return ll + orderLogLikTeam(c, res, mates, p);
   for (let s = 0; s < m; s++) {
     let den = 0, num = 0;
     for (let x = s; x < m; x++) { const i = c.order[x], w = pooledWeight(res, i, mates, s + 1, p) + (c.known ? extraWeight(c.known[i], c.form[i], c.track[i], s + 1, p) : 0); den += w; if (x === s) num = w; }
     ll += Math.log(num / den);
   }
   return ll;
+}
+// #177: the finishing order's log-probability with a per-team "good weekend" factor. Given the factors the order's probability is
+// exact (the place-by-place draw with each car's weights times its team's factor), so the model's probability of the real order is
+// that, averaged over draws of the factors: K seeded draws per race, the same for every parameter value (so tuning is smooth).
+export const TEAM_DRAWS = 64;
+function teamDraws(c) {
+  if (!c.Z) {
+    const teams = [...new Set(c.team)], nt = teams.length, rand = mulberry32(c.year * 100 + c.round + 7919), Z = new Float64Array(TEAM_DRAWS * nt);
+    for (let k = 0; k < Z.length; k += 2) { const r = Math.sqrt(-2 * Math.log(rand() || 1e-12)), a = 2 * Math.PI * rand(); Z[k] = r * Math.cos(a); if (k + 1 < Z.length) Z[k + 1] = r * Math.sin(a); }
+    c.Z = Z; c.teamIdx = c.team.map(t => teams.indexOf(t)); c.nTeams = nt;
+  }
+  return c;
+}
+function orderLogLikTeam(c, res, mates, p) {
+  teamDraws(c);
+  const m = c.order.length, W = new Float64Array(m * m);
+  for (let s = 0; s < m; s++) for (let x = s; x < m; x++) { const i = c.order[x]; W[x * m + s] = pooledWeight(res, i, mates, s + 1, p) + (c.known ? extraWeight(c.known[i], c.form[i], c.track[i], s + 1, p) : 0); }
+  const nt = c.nTeams, mult = new Float64Array(m), lls = new Float64Array(TEAM_DRAWS), half = p.sigma * p.sigma / 2;
+  let best = -Infinity;
+  for (let k = 0; k < TEAM_DRAWS; k++) {
+    for (let x = 0; x < m; x++) mult[x] = Math.exp(p.sigma * c.Z[k * nt + c.teamIdx[c.order[x]]] - half);
+    let ll = 0;
+    for (let s = 0; s < m; s++) {
+      let den = 0;
+      for (let x = s; x < m; x++) den += W[x * m + s] * mult[x];
+      ll += Math.log(W[s * m + s] * mult[s] / den);
+    }
+    lls[k] = ll; if (ll > best) best = ll;
+  }
+  let sum = 0; for (let k = 0; k < TEAM_DRAWS; k++) sum += Math.exp(lls[k] - best);
+  return best + Math.log(sum / TEAM_DRAWS);
 }
 // The same race with no information: finishers in a random order, everyone retiring at the grid's rate.
 export function uniformLogLik(c) {
@@ -178,7 +214,7 @@ const lateMean = (scores, years) => mean(years.flatMap(y => scores[y].late));
 
 // ---- Tuning ----
 // Coordinate descent: try each number's grid with the others fixed, keep the best, repeat until nothing improves.
-export function tune(allCases, years, start = PREVIOUS, keys = Object.keys(GRID).filter(k => k !== 'beta')) {
+export function tune(allCases, years, start = PREVIOUS, keys = Object.keys(GRID).filter(k => !['beta', 'sigma'].includes(k))) {
   let best = { ...start }, bestScore = lateMean(scoreRaces(pick(allCases, years), best), years);
   for (let pass = 0; pass < 6; pass++) {
     let improved = false;
@@ -261,7 +297,9 @@ export function simContext(snap, p) {
     }
     (eventW = eventW || [])[ei] = cache[key];
   });
-  return { eventW, roster, n, E, events, isGp: events.map(e => e.type === 'gp'), gpIdx: events.map((e, i) => e.type === 'gp' ? i : -1).filter(i => i >= 0),
+  const teamIds = [...new Set(roster.filter(q => q.active).map(q => q.teamId))], sigma = p.sigma > 0 ? p.sigma : 0;
+  return { sigma, nTeams: teamIds.length, teamOf: roster.map(q => q.active ? teamIds.indexOf(q.teamId) : -1), zbuf: new Float64Array(teamIds.length), Wz: sigma ? new Float64Array(n * n) : null,
+           eventW, roster, n, E, events, isGp: events.map(e => e.type === 'gp'), gpIdx: events.map((e, i) => e.type === 'gp' ? i : -1).filter(i => i >= 0),
            wins: roster.map(() => null), dnfs: roster.map(() => null), cols: [], W, dnfRate: dnf, active: roster.map(q => q.active), fin0,
            rank: roster.map(q => q.rank), winDrivers: [], nowPts, forcedWinner: roster.map(() => false), dec,
            decidedNow: F1RaceModel.titleSettled(nowPts, n, dec.room0) ? snap.L : 0,
@@ -398,7 +436,7 @@ async function main() {
     // Three variants: the previous numbers, the numbers refitted (window, floor, DNF smoothing, near bonus) and refitted
     // with team strength. Each is fitted leave-one-season-out inside the pool, then on the whole pool and scored once on the holdout.
     const cases = Object.fromEntries(years.map(y => [y, raceCases(y)])), pool = years.filter(y => y < holdout), hold = years.filter(y => y >= holdout);
-    const keys = { retuned: Object.keys(GRID).filter(k => !['beta', 'known', 'form'].includes(k)), team: Object.keys(GRID).filter(k => !['known', 'form'].includes(k)), quali: Object.keys(GRID) };
+    const keys = { retuned: Object.keys(GRID).filter(k => !['beta', 'known', 'form', 'sigma'].includes(k)), team: Object.keys(GRID).filter(k => !['known', 'form', 'sigma'].includes(k)), quali: Object.keys(GRID).filter(k => k !== 'sigma') };
     const base = scoreRaces(cases, PREVIOUS), cv = {}, folds = {}, fin = {};
     for (const v of Object.keys(keys)) {
       cv[v] = {}; folds[v] = [];
@@ -413,10 +451,24 @@ async function main() {
       quali: { ...compare(Object.fromEntries(pool.map(y => [y, base[y]])), cv.quali, pool), holdout: compare(holdBase, fin.quali.scores, hold), params: fin.quali.params, folds: folds.quali },
       teamOverRetuned: { ...compare(cv.retuned, cv.team, pool), holdout: compare(fin.retuned.scores, fin.team.scores, hold) },
       qualiOverTeam: { ...compare(cv.team, cv.quali, pool), holdout: compare(fin.team.scores, fin.quali.scores, hold) } };
+  } else if (cmd === 'team') {
+    // #177 step 1: the per-team good-weekend factor. Both variants refit the same numbers (beta, floor, known, form, near bonus), the challenger
+    // also sigma; each is fitted leave-one-season-out inside the pool, then on the whole pool and scored once on the holdout.
+    const cases = Object.fromEntries(years.map(y => [y, raceCases(y)])), pool = years.filter(y => y < holdout), hold = years.filter(y => y >= holdout);
+    const baseKeys = ['beta', 'floor', 'known', 'form', 'nearBonus'], keys = { base: baseKeys, team: [...baseKeys, 'sigma'] }, cv = {}, folds = {}, fin = {};
+    for (const v of Object.keys(keys)) {
+      cv[v] = {}; folds[v] = [];
+      for (const y of pool) { const t = tune(cases, pool.filter(x => x !== y), DEFAULT, keys[v]); cv[v][y] = scoreRaces(pick(cases, [y]), t.params)[y]; folds[v].push({ heldOut: y, params: t.params }); }
+      const final = tune(cases, pool, DEFAULT, keys[v]);
+      fin[v] = { params: final.params, scores: scoreRaces(pick(cases, hold), final.params) };
+    }
+    const cur = scoreRaces(pick(cases, hold), DEFAULT);
+    out.team = { pool, hold, ...compare(cv.base, cv.team, pool), holdout: compare(fin.base.scores, fin.team.scores, hold), baseParams: fin.base.params, teamParams: fin.team.params, folds: folds.team,
+      sigmas: folds.team.map(f => f.params.sigma), baseMean: lateMean(cv.base, pool), teamMean: lateMean(cv.team, pool), holdoutBase: lateMean(fin.base.scores, hold), holdoutTeam: lateMean(fin.team.scores, hold), holdoutCurrent: lateMean(cur, hold) };
   } else if (cmd === 'season') {
     out.season = seasonCompare(years, modelsArg(), runs);
   } else {
-    console.error('usage: node tools/backtest.mjs race|season|tune [--model previous,retuned,current] [--from Y] [--to Y] [--holdout Y] [--runs N] [--calibration] [--json]'); process.exit(2);
+    console.error('usage: node tools/backtest.mjs race|season|tune|team [--model previous,retuned,current] [--from Y] [--to Y] [--holdout Y] [--runs N] [--calibration] [--json]'); process.exit(2);
   }
   if (json) { console.log(JSON.stringify(out, J, 1)); return; }
   if (out.race) {
@@ -432,6 +484,16 @@ async function main() {
     console.log('  refitted numbers:     ' + JSON.stringify(t.retuned.params, J));
     console.log('  with team strength:   ' + JSON.stringify(t.team.params, J));
     console.log('  with qualifying:      ' + JSON.stringify(t.quali.params, J));
+  }
+  if (out.team) {
+    const t = out.team;
+    console.log(`Per-team good-weekend factor (#177), fitted on ${from}–${holdout - 1} (leave-one-season-out), holdout ${holdout}–${to}: mean log-probability per race`);
+    console.log(`  without the factor (numbers refitted): cross-validated ${f(t.baseMean)}   holdout ${f(t.holdoutBase)}   (shipped numbers on the holdout ${f(t.holdoutCurrent)})`);
+    console.log(`  with the factor:                       cross-validated ${f(t.teamMean)}   holdout ${f(t.holdoutTeam)}`);
+    console.log(`  gain: cross-validated ${f(t.meanDiff, 3)} ± ${f(t.se, 3)} per race (better in ${t.seasonsBetter} of ${t.seasons} seasons)   holdout ${f(t.holdout.meanDiff, 3)} ± ${f(t.holdout.se, 3)}`);
+    console.log('  sigma chosen in each fold: ' + t.sigmas.join(', '));
+    console.log('  numbers without: ' + JSON.stringify(t.baseParams, J));
+    console.log('  numbers with:    ' + JSON.stringify(t.teamParams, J));
   }
   if (out.season) {
     const s = out.season, label = { miss: 'points miss', rankErr: 'order error (places)', champLog: 'champion log score', brier: 'title Brier', clinchErr: 'clinch round miss' };

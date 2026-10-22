@@ -63,6 +63,8 @@ site/                 The website (deployed as the site root, so URLs are unchan
 tools/                snapshot.mjs: builds site/data/{year}.json from f1api.dev (run by snapshot.yml).
                       backtest.mjs (#155): scores simulator models against 2014–2025 and tunes them; see docs/BACKTEST.md.
                       export-features.mjs + lgbm_experiment.py (#173): the LightGBM comparison (win / podium / points marginals), run by lgbm.yml; see docs/BACKTEST.md.
+                      correlation-diagnostic.mjs (#177): do real results move together more than the race model's own draws? The per-team good-weekend
+                      factor (`sigma`, `teamScaled` in racemodel.js; off unless a context sets it) was tested and not built in; see docs/BACKTEST.md.
                       eras-snapshot.mjs (#135): builds site/data/eras.json (standings since 1950) from Jolpica (same workflow).
                       history-snapshot.mjs (#141): builds site/data/{1950..2020}.json (per-round results) from Jolpica (same workflow).
                       qualifying-snapshot.mjs (#158): builds site/data/grid/{2014..}.json (qualifying position and Q1–Q3 times, starting grid

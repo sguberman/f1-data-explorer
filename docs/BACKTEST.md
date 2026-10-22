@@ -1,4 +1,4 @@
-# Backtest (#155, #160, #162, #167, #169, #173)
+# Backtest (#155, #160, #162, #167, #169, #173, #177)
 
 `tools/backtest.mjs` scores simulator models against history and tunes their numbers. It reads `site/data/{year}.json`
 (no network) and runs the site's own model and season engine (`site/racemodel.js`, #153) and standings code
@@ -8,6 +8,8 @@
 node tools/backtest.mjs race   --model previous,retuned,current # race level: the exact probability each model gave the real results
 node tools/backtest.mjs season --model previous,retuned,current # season level: projections from every cut point vs the real season
 node tools/backtest.mjs tune                                   # fit the numbers (leave-one-season-out, then the holdout)
+node tools/backtest.mjs team                                   # #177: the per-team good-weekend factor, with and without (leave-one-season-out, holdout)
+node tools/correlation-diagnostic.mjs                          # #177: do real results move together more than the model's own draws?
   --from 2014 --to 2025 --holdout 2024 --runs 2000 --calibration --json
 ```
 
@@ -201,6 +203,70 @@ LightGBM minus `current` (log loss, ± standard error across seasons; negative =
   cross-validated), where LightGBM is closer; LightGBM's win probabilities above 10% rest on few cases and are noisy.
 - The extra freedom of a tree model (interactions, non-linear grid effects) finds nothing the hand-built model misses with these features and
   about 4,800 driver-races. Practice pace and weather, the other inputs in #172, are not in our data; the proposal does not say where they would come from.
+
+## Correlated outcomes: step 0 (#177)
+
+Question: do real results move together more than the race model produces on its own? `tools/correlation-diagnostic.mjs` draws each
+Grand Prix (rounds 4+, 2014–2025) 3,000 times from `current` and compares the real result with the model's own, for finishing position (a
+retirement counts as last) and for "scores points". Walk-forward, per-season means, standard errors across the 12 seasons.
+
+| | real | model | |
+|---|---|---|---|
+| teammate covariance, position | +1.59 | −1.50 | excess +3.09 ± 0.56, real above the model in 11 of 12 seasons |
+| teammate covariance, scores points | +0.010 | −0.009 | excess +0.019 ± 0.003, 12 of 12 |
+| dispersion, position (real / model variance) | | | 0.87 ± 0.03, above 1 in 1 of 12 |
+| dispersion, scores points | | | 0.91 ± 0.02, above 1 in 0 of 12 |
+
+- **Teammates move together, and the model has none of it.** The model's own draws make teammates slightly negatively related (a place can be
+  taken only once); the real covariance is positive in 11–12 of 12 seasons. A per-team "good weekend" factor is supported.
+- **No race-wide chaos.** Real races are not more spread out than the model says (dispersion 0.87–0.91, below 1 in 11–12 seasons); if
+  anything the model is a little too uncertain about each driver. A factor that flattens every race (the planned "chaos") is not supported.
+
+## Correlated outcomes: the per-team factor (#177, steps 1–2)
+
+`sigma` (backtest models `refit` and `teamfx`): in each race (each simulated event, in the season engine) every team draws a "good weekend"
+`exp(sigma·z − sigma²/2)`, z standard normal, the same for both of its cars, and multiplies both cars' weights for every place. At race
+level the probability of the real order is the exact place-by-place probability averaged over 64 seeded draws of the factors (the same
+draws for every parameter value, so tuning is smooth). `sigma = 0` is the Simulator exactly. In the season engine (`teamScaled` in
+`racemodel.js`) it is off unless a context sets `sigma`, and then it is the only thing that draws extra random numbers, so the pages are unchanged.
+
+**Race level** (`node tools/backtest.mjs team`; beta, floor, known, form and near bonus refitted in both variants, sigma also in the challenger;
+leave-one-season-out on 2014–2023, then fitted on 2014–2023 and scored on 2024–25), mean log-probability per race:
+
+| | cross-validated | holdout 2024–25 |
+|---|---|---|
+| numbers refitted, no factor | −33.615 | −34.661 (shipped numbers: −34.681) |
+| plus the team factor | −33.441 | −34.652 |
+| gain | **+0.168 ± 0.060, better in 9 of 10 seasons** | +0.009 ± 0.043 |
+
+The fitted sigma is 0.6 in 8 of 10 folds and 0.4 in two (0.6 is the optimum, not the edge of the grid; the grid now goes to 1.5). The factor
+makes the tuner prefer a smaller near bonus (0.25) and floor 0.001.
+
+**Season level** (`teamfx` = floor 0.001, near bonus 0.25, sigma 0.6, against `refit` = `current` with floor 0.001; 2,000 runs per cut point;
+lower is better; paired difference ± standard error across the 12 seasons):
+
+| | refit | teamfx | teamfx − refit |
+|---|---|---|---|
+| points miss | 23.19 | 22.82 | −0.36 ± 0.19 (lower in 10 of 12 seasons) |
+| order error (places) | 0.94 | 0.94 | +0.003 ± 0.009 |
+| champion log score | 0.39 | 0.38 | −0.011 ± 0.008 |
+| title Brier | 0.26 | 0.25 | −0.005 ± 0.006 |
+| clinch round miss | 1.07 | 1.05 | −0.018 ± 0.020 |
+
+Calibration (mean absolute gap between predicted and observed, over all 10% buckets): P(title) 0.0048 → 0.0048, P(top 3) 0.0042 → 0.0023,
+P(top 10) 0.0376 → 0.0401.
+
+**Result: the gate was not passed, so the factor is not built into the Simulator.** The gate asked for better calibration (P(top 10),
+P(top 3), title) and a better title Brier or champion log score by more than one standard error, with the other measures no worse. The
+points miss improves (−0.36, 1.9 standard errors) and the champion log score by 1.4 standard errors, but the title Brier does not (0.9), P(top 3) is already
+well calibrated, and P(top 10), the weak spot that motivated the stage, gets slightly worse. Teammates really do move together
+(step 0), but a season total is a sum over many races, so the shared team effect mostly cancels in the expected points and the title odds; it
+widens the tails only a little.
+
+- **The P(top 10) overconfidence is not a correlation problem.** At a predicted 70–90% the observed rate is 48–72%, with and without the
+  factor. The cause is something else (the roster, how ties near the top 10 are counted, or the weights being too sharp for the middle of the
+  field); that is the lead for the next stage.
+- The engine option and the `teamfx` model stay in the repository so the result can be reproduced; nothing in the Simulator or What-If uses them.
 
 ## Data note
 
