@@ -1,4 +1,4 @@
-# Backtest (#155, #160, #162, #167, #169, #173, #177, #179)
+# Backtest (#155, #160, #162, #167, #169, #173, #177, #179, #180)
 
 `tools/backtest.mjs` scores simulator models against history and tunes their numbers. It reads `site/data/{year}.json`
 (no network) and runs the site's own model and season engine (`site/racemodel.js`, #153) and standings code
@@ -11,6 +11,7 @@ node tools/backtest.mjs tune                                   # fit the numbers
 node tools/backtest.mjs team                                   # #177: the per-team good-weekend factor, with and without (leave-one-season-out, holdout)
 node tools/correlation-diagnostic.mjs                          # #177: do real results move together more than the model's own draws?
 node tools/clinch-diagnostic.mjs                               # #179: is the clinch-round error bias or natural spread?
+node tools/backtest.mjs drift --runs 400                       # #180: season-long pace drift, fitted at season level (about 5 minutes)
   --from 2014 --to 2025 --holdout 2024 --runs 2000 --calibration --json
 ```
 
@@ -290,6 +291,49 @@ absolute error from 1.02 to 1.11 rounds (gain **−0.05 ± 0.09**, better in 7 o
 claims (a little wider than needed late in the season). What differs between seasons, a runaway one against a title that goes to the last round, is not
 visible in the lead, the win share or the rounds left at the cut point. The card already shows the whole distribution of settling rounds, which is the
 honest answer. If the season-long pace drift (#180) improves the top-10 calibration it may also tighten this, and the backtest will show it.
+
+## Season-long pace drift (#180)
+
+Hypothesis (from the top-10 overconfidence, #151): the Simulator treats each team's pace as known for the rest of the season, while real
+pace drifts. `driftTeam` / `driftDriver` (and `driftWalk`) give every team (and optionally driver) a strength offset per simulated season that
+multiplies its weights as `exp(offset − variance/2)`: a random walk with one step per round after the first round simulated (`driftWalk`, the spread grows with the
+rounds ahead, like car development) or one level shift drawn at the start of the season. The next race is never drifted, so What-If's
+single-race forecast is unchanged. In the engine (`driftReset`, `driftStep`, `driftScaled` in `racemodel.js`) it is off unless a context sets it
+and then draws extra random numbers only when it is on.
+
+New season-level measures: the Brier score of P(top 3) and P(top 10) against the real final ranking (sum over drivers; lower is better).
+Race level cannot see drift (a one-step forecast), so everything is at season level. `node tools/backtest.mjs drift` tries 28 walk models, 24 level models
+and a control that refits the existing numbers (floor, near bonus, team strength) at season level, chooses each family's best by the top-10 Brier
+leave-one-season-out on 2014–2023, and scores the 2024–25 holdout.
+
+**Drift improves the top-10 Brier, and at a cost.** A random walk in each team's strength (sd per round; all 12 seasons, 1,000 runs per cut point, paired against `current`, in
+standard errors across seasons; negative = better):
+
+| sd per round | top 10 Brier | top 3 Brier | title Brier | champion log score | points miss | order error | top-10 calibration gap |
+|---|---|---|---|---|---|---|---|
+| 0.07 | −0.009 (−2.3) | −0.004 (−0.9) | −0.001 (−0.5) | −0.000 (−0.1) | −0.02 (−0.5) | −0.005 (−1.1) | 0.0349 |
+| 0.10 | −0.016 (−3.1) | −0.006 (−0.8) | −0.000 (−0.1) | +0.003 (+0.6) | +0.00 (0.0) | −0.007 (−1.4) | 0.0349 |
+| 0.15 | −0.031 (−4.4) | −0.009 (−0.8) | +0.000 (0.0) | +0.008 (+1.3) | +0.06 (+0.7) | −0.008 (−1.5) | 0.0320 |
+| 0.20 | −0.042 (−3.9) | −0.011 (−0.6) | +0.002 (+0.5) | +0.017 (+1.9) | +0.13 (+1.0) | −0.006 (−1.1) | 0.0296 |
+| 0.30 | −0.073 (−4.2) | −0.006 (−0.2) | +0.008 (+1.3) | +0.039 (+2.8) | +0.41 (+1.6) | −0.007 (−1.3) | 0.0238 |
+
+(`current`: top-10 gap 0.0354, top-3 gap 0.0028, title gap 0.0045.) Chosen on the top-10 Brier alone, the fit runs to the edge of any grid and takes the
+title odds and the points with it (walk, sd 0.3: top-10 Brier −0.060 ± 0.021 cross-validated, 8 of 10 seasons, holdout −0.095; champion log score
++0.027 ± 0.010, title Brier +0.007 ± 0.008, points miss +0.47 ± 0.29; level shift: top-10 −0.086 ± 0.040 but champion log score +0.080 ± 0.012, points miss
++1.2 ± 0.5). The control, flatter weights (floor 1, near bonus 1) refitted at season level, reaches the same top-10 Brier (−0.076 ± 0.032) and cuts the
+top-10 gap to 0.0118, at +3.9 ± 1.0 points miss.
+
+**Result: the gate was not passed, so drift is not built into the Simulator.** The gate asked for a better top-10 Brier **and** a smaller top-10 calibration gap, top-3 and title
+gaps no worse, a better title Brier or champion log score by more than one standard error, and points miss and order error no worse. The top-10 Brier clears it easily
+(−3 to −4 standard errors), but the title measures do not improve (they get worse from 0.15 per round), the top-3 and title gaps tick up, and the top-10 gap barely moves
+below 0.15 per round (0.0354 → 0.0349 at 0.10).
+
+- **The overconfidence is mostly still there.** With drift of 0.10–0.15 per round, drivers given 70–80% for the final top 10 still finish there about 45% of the time (50% without drift).
+  The cause is not season-long drift of a team's pace. Making every race noisier (flat weights) moves the gap far more than drift does and costs the points; so the
+  mid-field order is noisier than independent-race weights say, in a way a smooth pace drift does not represent.
+- **A free small gain exists** (sd 0.07–0.10 per round: top-10 Brier −0.009 to −0.016, order error −1.1 to −1.4 standard errors, nothing else moves), but it is not visible in the
+  calibration table, it changes every seeded share link, and the gate says no.
+- The engine option and the models `drift04` … `drift30` stay in the repository to reproduce this; nothing in the Simulator or What-If uses them.
 
 ## Data note
 

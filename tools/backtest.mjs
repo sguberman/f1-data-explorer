@@ -57,6 +57,9 @@ export const MODELS = {
   quali: { ...DEFAULT, track: 0 }, // plus the grid / qualifying result and qualifying form (#167)
   current: DEFAULT, // plus track history (#169)
   refit: { ...DEFAULT, floor: 0.001 }, // #177: `current` with the floor refitted (what the per-team factor is compared against)
+  // #180: season-long pace drift on top of `current`: a random walk in each team's strength, this sd per round (docs/BACKTEST.md)
+  drift04: { ...DEFAULT, driftTeam: 0.04, driftWalk: true }, drift07: { ...DEFAULT, driftTeam: 0.07, driftWalk: true }, drift10: { ...DEFAULT, driftTeam: 0.1, driftWalk: true },
+  drift15: { ...DEFAULT, driftTeam: 0.15, driftWalk: true }, drift20: { ...DEFAULT, driftTeam: 0.2, driftWalk: true }, drift30: { ...DEFAULT, driftTeam: 0.3, driftWalk: true },
   teamfx: { ...DEFAULT, floor: 0.001, nearBonus: 0.25, sigma: 0.6 }, // #177: plus a per-team "good weekend" factor, numbers fitted on 2014–2023
 };
 const windowOf = (res, p) => p.window === Infinity || res.length <= p.window ? res : res.slice(-p.window);
@@ -298,7 +301,8 @@ export function simContext(snap, p) {
     (eventW = eventW || [])[ei] = cache[key];
   });
   const teamIds = [...new Set(roster.filter(q => q.active).map(q => q.teamId))], sigma = p.sigma > 0 ? p.sigma : 0;
-  return { sigma, nTeams: teamIds.length, teamOf: roster.map(q => q.active ? teamIds.indexOf(q.teamId) : -1), zbuf: new Float64Array(teamIds.length), Wz: sigma ? new Float64Array(n * n) : null,
+  const driftTeam = p.driftTeam > 0 ? p.driftTeam : 0, driftDriver = p.driftDriver > 0 ? p.driftDriver : 0; // #180
+  return { driftTeam, driftDriver, driftWalk: !!p.driftWalk, sigma, nTeams: teamIds.length, teamOf: roster.map(q => q.active ? teamIds.indexOf(q.teamId) : -1), zbuf: new Float64Array(teamIds.length), Wz: sigma ? new Float64Array(n * n) : null,
            eventW, roster, n, E, events, isGp: events.map(e => e.type === 'gp'), gpIdx: events.map((e, i) => e.type === 'gp' ? i : -1).filter(i => i >= 0),
            wins: roster.map(() => null), dnfs: roster.map(() => null), cols: [], W, dnfRate: dnf, active: roster.map(q => q.active), fin0,
            rank: roster.map(q => q.rank), winDrivers: [], nowPts, forcedWinner: roster.map(() => false), dec,
@@ -362,11 +366,14 @@ export function scoreProjection(pred, outcome) {
     const champ = real[0];
     out.champLog = -Math.log(Math.max(byId[champ].p1, 1e-4));
     out.brier = rows.reduce((s, r) => s + (r.p1 - (r.driverId === champ ? 1 : 0)) ** 2, 0);
+    // #180: the same for finishing in the final top 3 and top 10 (the real ranking among the drivers on the grid at the cut point)
+    out.brier3 = rows.reduce((s, r) => s + (r.p3 - (real.indexOf(r.driverId) < 3 ? 1 : 0)) ** 2, 0);
+    out.brier10 = rows.reduce((s, r) => s + (r.p10 - (real.indexOf(r.driverId) < 10 ? 1 : 0)) ** 2, 0);
   }
   return out;
 }
 const bucketOf = p => Math.min(9, Math.floor(p * 10));
-export const MEASURES = ['miss', 'rankErr', 'champLog', 'brier', 'clinchErr'];
+export const MEASURES = ['miss', 'rankErr', 'champLog', 'brier', 'clinchErr', 'brier3', 'brier10'];
 
 // Season-level study over `years`: every cut point from round 4 to the second-last round, for each named model and for
 // plain baselines. clinchErr = how many rounds the median predicted settling round is off the real one, counted only
@@ -465,10 +472,35 @@ async function main() {
     const cur = scoreRaces(pick(cases, hold), DEFAULT);
     out.team = { pool, hold, ...compare(cv.base, cv.team, pool), holdout: compare(fin.base.scores, fin.team.scores, hold), baseParams: fin.base.params, teamParams: fin.team.params, folds: folds.team,
       sigmas: folds.team.map(f => f.params.sigma), baseMean: lateMean(cv.base, pool), teamMean: lateMean(cv.team, pool), holdoutBase: lateMean(fin.base.scores, hold), holdoutTeam: lateMean(fin.team.scores, hold), holdoutCurrent: lateMean(cur, hold) };
+  } else if (cmd === 'drift') {
+    // #180: season-long pace drift, fitted at season level (the race-level likelihood cannot see it: the next race is never drifted). Candidates
+    // in four families (drift as a random walk or as one level shift, team only or with a driver part, and a control that refits the existing numbers at
+    // season level); each family's best member by the top-10 Brier is chosen leave-one-season-out on the pool, then on the whole pool for the holdout.
+    const pool = years.filter(y => y < holdout), hold = years.filter(y => y >= holdout), fam = { walk: [], level: [], control: [] };
+    const dn = x => String(x).replace('0.', '.');
+    for (const t of [0.02, 0.04, 0.07, 0.1, 0.15, 0.2, 0.3]) for (const d of [0, 0.02, 0.04, 0.08]) { const n = `walk_t${dn(t)}_d${dn(d)}`; MODELS[n] = { ...DEFAULT, driftTeam: t, driftDriver: d, driftWalk: true }; fam.walk.push(n); }
+    for (const t of [0.1, 0.2, 0.3, 0.45, 0.7, 1]) for (const d of [0, 0.1, 0.2, 0.4]) { const n = `level_t${dn(t)}_d${dn(d)}`; MODELS[n] = { ...DEFAULT, driftTeam: t, driftDriver: d, driftWalk: false }; fam.level.push(n); }
+    for (const fl of [0.001, 0.03, 0.1, 0.3, 1, 3]) for (const b of [0.25, 0.5, 1]) for (const nb of [0.5, 1]) { const n = `refit_f${dn(fl)}_b${dn(b)}_n${dn(nb)}`; MODELS[n] = { ...DEFAULT, floor: fl, beta: b, nearBonus: nb }; fam.control.push(n); }
+    const all = ['current', ...Object.values(fam).flat()], r = seasonCompare(years, all, runs), sum = r.summary;
+    const val = (n, m, y) => sum[n][m] && sum[n][m].perSeason[y];
+    const best = (names, ys) => names.reduce((b, n) => (mean(ys.map(y => val(n, 'brier10', y))) < mean(ys.map(y => val(b, 'brier10', y))) ? n : b), names[0]);
+    const gapOf = (n, k) => { const bs = r.calibration[n][k].filter(b => b.n); return bs.reduce((s, b) => s + b.n * Math.abs(b.predicted - b.observed), 0) / bs.reduce((s, b) => s + b.n, 0); };
+    out.drift = { runs, pool, hold, families: {} };
+    for (const [fname, names] of Object.entries(fam)) {
+      const folds = pool.map(y => ({ heldOut: y, chosen: best(names, pool.filter(x => x !== y)) })), finalName = best(names, pool), res = { folds, final: finalName, finalParams: MODELS[finalName], cv: {}, holdout: {} };
+      for (const m of MEASURES) {
+        const cvd = pool.map((y, i) => val(folds[i].chosen, m, y) - val('current', m, y)).filter(Number.isFinite), hod = hold.map(y => val(finalName, m, y) - val('current', m, y)).filter(Number.isFinite);
+        if (cvd.length) res.cv[m] = { diff: mean(cvd), se: sd(cvd) / Math.sqrt(cvd.length), lower: cvd.filter(d => d < 0).length, seasons: cvd.length };
+        if (hod.length) res.holdout[m] = { diff: mean(hod), se: hod.length > 1 ? sd(hod) / Math.sqrt(hod.length) : NaN, lower: hod.filter(d => d < 0).length, seasons: hod.length };
+      }
+      res.gaps = Object.fromEntries(['top10', 'top3', 'title'].map(k => [k, { current: gapOf('current', k), final: gapOf(finalName, k) }]));
+      out.drift.families[fname] = res;
+    }
+    out.drift.current = Object.fromEntries(MEASURES.map(m => [m, sum.current[m] ? sum.current[m].all : null]));
   } else if (cmd === 'season') {
     out.season = seasonCompare(years, modelsArg(), runs);
   } else {
-    console.error('usage: node tools/backtest.mjs race|season|tune|team [--model previous,retuned,current] [--from Y] [--to Y] [--holdout Y] [--runs N] [--calibration] [--json]'); process.exit(2);
+    console.error('usage: node tools/backtest.mjs race|season|tune|team|drift [--model previous,retuned,current] [--from Y] [--to Y] [--holdout Y] [--runs N] [--calibration] [--json]'); process.exit(2);
   }
   if (json) { console.log(JSON.stringify(out, J, 1)); return; }
   if (out.race) {
@@ -485,6 +517,16 @@ async function main() {
     console.log('  with team strength:   ' + JSON.stringify(t.team.params, J));
     console.log('  with qualifying:      ' + JSON.stringify(t.quali.params, J));
   }
+  if (out.drift) {
+    const d = out.drift, label = { miss: 'points miss', rankErr: 'order error', champLog: 'champion log score', brier: 'title Brier', clinchErr: 'clinch round miss', brier3: 'top 3 Brier', brier10: 'top 10 Brier' };
+    console.log(`Season-long pace drift (#180), ${d.runs} runs per cut point; chosen on the top-10 Brier, leave-one-season-out over ${d.pool[0]}–${d.pool.at(-1)}, then the holdout ${d.hold[0]}–${d.hold.at(-1)}; differences are against \`current\` (lower is better)`);
+    console.log('  current: ' + Object.entries(d.current).filter(([, v]) => v != null).map(([m, v]) => `${label[m]} ${f(v, 3)}`).join(', '));
+    for (const [fname, r] of Object.entries(d.families)) {
+      console.log(`\n${fname}: chosen per fold ${r.folds.map(x => x.chosen).join(', ')}\n  final (fitted on the pool): ${r.final} ${JSON.stringify(r.finalParams, J)}`);
+      for (const m of MEASURES) if (r.cv[m]) console.log(`  ${label[m].padEnd(20)} cross-validated ${f(r.cv[m].diff, 3).padStart(7)} ± ${f(r.cv[m].se, 3)} (lower in ${r.cv[m].lower} of ${r.cv[m].seasons})   holdout ${r.holdout[m] ? f(r.holdout[m].diff, 3).padStart(7) + ' (lower in ' + r.holdout[m].lower + ' of ' + r.holdout[m].seasons + ')' : '–'}`);
+      console.log('  calibration gap (all seasons, final model): ' + Object.entries(r.gaps).map(([k, g]) => `${k} ${f(g.current, 4)} → ${f(g.final, 4)}`).join(', '));
+    }
+  }
   if (out.team) {
     const t = out.team;
     console.log(`Per-team good-weekend factor (#177), fitted on ${from}–${holdout - 1} (leave-one-season-out), holdout ${holdout}–${to}: mean log-probability per race`);
@@ -496,7 +538,7 @@ async function main() {
     console.log('  numbers with:    ' + JSON.stringify(t.teamParams, J));
   }
   if (out.season) {
-    const s = out.season, label = { miss: 'points miss', rankErr: 'order error (places)', champLog: 'champion log score', brier: 'title Brier', clinchErr: 'clinch round miss' };
+    const s = out.season, label = { miss: 'points miss', rankErr: 'order error (places)', champLog: 'champion log score', brier: 'title Brier', clinchErr: 'clinch round miss', brier3: 'top 3 Brier', brier10: 'top 10 Brier' };
     console.log(`Season level, ${from}–${to}, cut points from round 4 (${runs} runs each); lower is better. all = mean of the per-season means; early / mid / late = thirds of the season`);
     for (const m of MEASURES) {
       console.log(`\n${label[m]}`);

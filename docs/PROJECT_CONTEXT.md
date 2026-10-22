@@ -66,6 +66,7 @@ tools/                snapshot.mjs: builds site/data/{year}.json from f1api.dev 
                       correlation-diagnostic.mjs (#177): do real results move together more than the race model's own draws? The per-team good-weekend
                       factor (`sigma`, `teamScaled` in racemodel.js; off unless a context sets it) was tested and not built in; see docs/BACKTEST.md.
                       clinch-diagnostic.mjs (#179): is the simulated settling-round error bias or natural spread? (natural spread: no model change.)
+                      Season-long pace drift (`driftTeam`/`driftDriver`/`driftWalk`, `driftStep` in racemodel.js; off unless a context sets it) was tested and not built in (#180); see docs/BACKTEST.md.
                       eras-snapshot.mjs (#135): builds site/data/eras.json (standings since 1950) from Jolpica (same workflow).
                       history-snapshot.mjs (#141): builds site/data/{1950..2020}.json (per-round results) from Jolpica (same workflow).
                       qualifying-snapshot.mjs (#158): builds site/data/grid/{2014..}.json (qualifying position and Q1–Q3 times, starting grid
