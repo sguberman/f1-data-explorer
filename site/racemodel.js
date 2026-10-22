@@ -176,12 +176,15 @@ const F1RaceModel = (()=>{
  // #117: only drivers who raced in the latest round take part (ctx.active); every classified place is drawn, and each
  // Grand Prix place is added to fin (finishes by position, for countback) — the sprint counts for points only.
  function simulateSeason(ctx, rand, ptsGP, ptsSprint, keepOrders){
-   const plan=planSeason(ctx, rand), totals=ctx.nowPts.slice(), orders=keepOrders?[]:null, alive=ctx.alive, dec=ctx.dec;
+   const plan=planSeason(ctx, rand), drift=ctx.driftTeam>0 || ctx.driftDriver>0;
+   if(drift) driftReset(ctx, rand);
+   const totals=ctx.nowPts.slice(), orders=keepOrders?[]:null, alive=ctx.alive, dec=ctx.dec;
    const n=ctx.n, fin=ctx.fin0.slice(), active=ctx.active, W0=ctx.W;
    let decided=ctx.decidedNow;
    for(let e=0;e<ctx.E;e++){
      ctx.W = (ctx.eventW && ctx.eventW[e]) || W0; // #167: an event can have its own weights (the next race, once its qualifying is known)
      if(ctx.sigma>0) ctx.W = teamScaled(ctx, rand); // #177: a per-event "good weekend" for each team (off by default: no random draws)
+     if(drift){ driftStep(ctx, e, rand); ctx.W = driftScaled(ctx); } // #180: season-long pace drift (off by default: no random draws)
      const gp=ctx.isGp[e], w=plan.winnerOf[e], pts = gp ? ptsGP : ptsSprint;
      let len=0; for(let i=0;i<n;i++) if(active[i] && !plan.out[i][e] && i!==w) alive[len++]=i;
      // A driver with a set number of wins wins exactly those GPs: they're never drawn for P1 elsewhere.
@@ -200,6 +203,39 @@ const F1RaceModel = (()=>{
    const n=ctx.n, sg=ctx.sigma, z=ctx.zbuf, base=ctx.W, out=ctx.Wz, half=sg*sg/2;
    for(let t=0;t<ctx.nTeams;t++){ const u=rand(), v=rand(); z[t]=Math.exp(sg*Math.sqrt(-2*Math.log(u||1e-12))*Math.cos(2*Math.PI*v)-half); }
    for(let i=0;i<n;i++){ const m=ctx.teamOf[i]>=0 ? z[ctx.teamOf[i]] : 1; for(let s=0;s<n;s++) out[i*n+s]=base[i*n+s]*m; }
+   return out;
+ }
+ // #180: season-long pace drift. Each simulated season every team (ctx.driftTeam = sd) and optionally every driver (ctx.driftDriver = sd)
+ // gets a strength offset that multiplies their weights, exp(offset - variance/2) so the average stays 1. ctx.driftWalk: the offset is a
+ // random walk, one step per round after the first round simulated (so the spread grows with the rounds ahead, like car development);
+ // otherwise it is one level shift drawn at the start of the season and applied from the second round on. The first round simulated (the next
+ // race) is never changed. Off (both sds 0) it draws no random numbers.
+ function gauss(rand){ return Math.sqrt(-2*Math.log(rand()||1e-12))*Math.cos(2*Math.PI*rand()); }
+ function driftReset(ctx, rand){
+   const nt=ctx.nTeams, n=ctx.n;
+   if(!ctx.dT){ ctx.dT=new Float64Array(nt); ctx.dD=new Float64Array(n); ctx.Wd=new Float64Array(n*n); }
+   ctx.dRound=-1; ctx.dSteps=0; ctx.dActive=false;
+   for(let t=0;t<nt;t++) ctx.dT[t]= !ctx.driftWalk && ctx.driftTeam>0 ? ctx.driftTeam*gauss(rand) : 0;
+   for(let i=0;i<n;i++) ctx.dD[i]= !ctx.driftWalk && ctx.driftDriver>0 ? ctx.driftDriver*gauss(rand) : 0;
+ }
+ function driftStep(ctx, e, rand){
+   const round=ctx.events[e].round;
+   if(ctx.dRound<0){ ctx.dRound=round; return; }
+   if(round===ctx.dRound) return;
+   ctx.dRound=round; ctx.dSteps++; ctx.dActive=true;
+   if(ctx.driftWalk){
+     if(ctx.driftTeam>0) for(let t=0;t<ctx.nTeams;t++) ctx.dT[t]+=ctx.driftTeam*gauss(rand);
+     if(ctx.driftDriver>0) for(let i=0;i<ctx.n;i++) ctx.dD[i]+=ctx.driftDriver*gauss(rand);
+   }
+ }
+ function driftScaled(ctx){
+   if(!ctx.dActive) return ctx.W;
+   const n=ctx.n, base=ctx.W, out=ctx.Wd, k=ctx.driftWalk ? ctx.dSteps : 1;
+   const half=0.5*k*(ctx.driftTeam*ctx.driftTeam)+0.5*k*(ctx.driftDriver*ctx.driftDriver);
+   for(let i=0;i<n;i++){
+     const m=Math.exp((ctx.teamOf[i]>=0 ? ctx.dT[ctx.teamOf[i]] : 0)+ctx.dD[i]-half);
+     for(let s=0;s<n;s++) out[i*n+s]=base[i*n+s]*m;
+   }
    return out;
  }
  // issue #30 / #117: draw a race order place by place (who takes P1, then P2, ...), weighting the still-unplaced
