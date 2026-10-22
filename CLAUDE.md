@@ -41,4 +41,4 @@ requirements, decisions, known issues, tests, and the owner's standing rules. Th
   for new features.
 - One branch and PR per issue. Use the branch the Claude session assigns (`claude/<random-name>`; don't rename it,
   Cloudflare names the preview after it). Open the PR ready for review, **not as a draft**, so Cloudflare Pages posts
-  its preview comment (#175). Merge only when the owner asks. See "Review and merge" in docs/PROJECT_CONTEXT.md.
+  its preview comment (confirmed in #175: a draft PR got none, a ready one did). Merge only when the owner asks. See "Review and merge" in docs/PROJECT_CONTEXT.md.

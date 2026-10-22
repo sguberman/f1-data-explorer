@@ -847,7 +847,7 @@ since fonts render differently on different machines.
     [ideas](https://github.com/sguberman/f1-data-explorer/issues?q=is%3Aissue+is%3Aopen+label%3Aidea).
 11. Work each issue on its own branch (the session's assigned `claude/<random-name>`) and open a PR when it's ready for review, so it
     gets a preview (legacy #52). **Open it ready for review, not as a draft**: a draft PR (#174) got its Cloudflare preview built but no
-    comment (#175; Cloudflare's behaviour on drafts is unconfirmed, and a tests-only PR, #166, did get one, so it is not about changes outside `site/`). Merge only when the owner asks. Rebase-merge, so each `issue #xx:` commit
+    comment, while the next PR (#176), opened ready for review, got one (#175; it is not about changes outside `site/`: a tests-only PR, #166, got one too). Merge only when the owner asks. Rebase-merge, so each `issue #xx:` commit
     lands on `main` as written.
 12. Add or update tests in `tests/` with every feature or fix (issue #53). Before pushing, run the tests for what
     changed; GitHub runs the full suite on the PR (#54).
