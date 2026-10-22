@@ -57,11 +57,11 @@ export function diagnose(rows, years) {
   let before = [], after = [];
   for (const y of years) {
     const train = rows.filter(r => r.year !== y), test = rows.filter(r => r.year === y);
-    if (!test.length) continue;
+    if (!test.length || !train.length) continue;
     const b = ols(train.map(feats), train.map(err));
     for (const r of test) { const p = feats(r).reduce((s, v, i) => s + v * b[i], 0); before.push(Math.abs(err(r))); after.push(Math.abs(err(r) - p)); (pred[y] = pred[y] || []).push(Math.abs(err(r)) - Math.abs(err(r) - p)); }
   }
-  const perSeasonGain = Object.values(pred).map(mean), all = ols(rows.map(feats), rows.map(err));
+  const perSeasonGain = Object.values(pred).map(mean), all = ols(rows.map(feats), rows.map(err)); // (no gain to report with a single season: nothing to train on)
   return { cutPoints: rows.length, byPart, bySeason, coefficients: { intercept: all[0], lead: all[1], winShare: all[2], roundsLeftShare: all[3] },
     errorBefore: mean(before), errorAfter: mean(after), gain: mean(perSeasonGain), gainSe: sd(perSeasonGain) / Math.sqrt(perSeasonGain.length), seasonsBetter: perSeasonGain.filter(g => g > 0).length, seasons: perSeasonGain.length };
 }
