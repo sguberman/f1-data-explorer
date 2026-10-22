@@ -1,4 +1,4 @@
-# Backtest (#155, #160, #162, #167, #169, #173)
+# Backtest (#155, #160, #162, #167, #169, #173, #177)
 
 `tools/backtest.mjs` scores simulator models against history and tunes their numbers. It reads `site/data/{year}.json`
 (no network) and runs the site's own model and season engine (`site/racemodel.js`, #153) and standings code
@@ -201,6 +201,24 @@ LightGBM minus `current` (log loss, ± standard error across seasons; negative =
   cross-validated), where LightGBM is closer; LightGBM's win probabilities above 10% rest on few cases and are noisy.
 - The extra freedom of a tree model (interactions, non-linear grid effects) finds nothing the hand-built model misses with these features and
   about 4,800 driver-races. Practice pace and weather, the other inputs in #172, are not in our data; the proposal does not say where they would come from.
+
+## Correlated outcomes: step 0 (#177)
+
+Question: do real results move together more than the race model produces on its own? `tools/correlation-diagnostic.mjs` draws each
+Grand Prix (rounds 4+, 2014–2025) 3,000 times from `current` and compares the real result with the model's own, for finishing position (a
+retirement counts as last) and for "scores points". Walk-forward, per-season means, standard errors across the 12 seasons.
+
+| | real | model | |
+|---|---|---|---|
+| teammate covariance, position | +1.59 | −1.50 | excess +3.09 ± 0.56, real above the model in 11 of 12 seasons |
+| teammate covariance, scores points | +0.010 | −0.009 | excess +0.019 ± 0.003, 12 of 12 |
+| dispersion, position (real / model variance) | | | 0.87 ± 0.03, above 1 in 1 of 12 |
+| dispersion, scores points | | | 0.91 ± 0.02, above 1 in 0 of 12 |
+
+- **Teammates move together, and the model has none of it.** The model's own draws make teammates slightly negatively related (a place can be
+  taken only once); the real covariance is positive in 11–12 of 12 seasons. A per-team "good weekend" factor is supported.
+- **No race-wide chaos.** Real races are not more spread out than the model says (dispersion 0.87–0.91, below 1 in 11–12 seasons); if
+  anything the model is a little too uncertain about each driver. A factor that flattens every race (the planned "chaos") is not supported.
 
 ## Data note
 
