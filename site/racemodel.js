@@ -181,6 +181,7 @@ const F1RaceModel = (()=>{
    let decided=ctx.decidedNow;
    for(let e=0;e<ctx.E;e++){
      ctx.W = (ctx.eventW && ctx.eventW[e]) || W0; // #167: an event can have its own weights (the next race, once its qualifying is known)
+     if(ctx.sigma>0) ctx.W = teamScaled(ctx, rand); // #177: a per-event "good weekend" for each team (off by default: no random draws)
      const gp=ctx.isGp[e], w=plan.winnerOf[e], pts = gp ? ptsGP : ptsSprint;
      let len=0; for(let i=0;i<n;i++) if(active[i] && !plan.out[i][e] && i!==w) alive[len++]=i;
      // A driver with a set number of wins wins exactly those GPs: they're never drawn for P1 elsewhere.
@@ -192,6 +193,14 @@ const F1RaceModel = (()=>{
    }
    ctx.W=W0;
    return {totals, plan, orders, fin, decided: decided || dec.lastRound};
+ }
+ // #177: scales every car's weights by its team's "good weekend" for this event: exp(sigma*z - sigma^2/2), z standard normal, the same for
+ // both cars of a team (ctx.teamOf[i] = team index, or -1 for none). Returns ctx.Wz (a reused buffer); ctx.W is untouched.
+ function teamScaled(ctx, rand){
+   const n=ctx.n, sg=ctx.sigma, z=ctx.zbuf, base=ctx.W, out=ctx.Wz, half=sg*sg/2;
+   for(let t=0;t<ctx.nTeams;t++){ const u=rand(), v=rand(); z[t]=Math.exp(sg*Math.sqrt(-2*Math.log(u||1e-12))*Math.cos(2*Math.PI*v)-half); }
+   for(let i=0;i<n;i++){ const m=ctx.teamOf[i]>=0 ? z[ctx.teamOf[i]] : 1; for(let s=0;s<n;s++) out[i*n+s]=base[i*n+s]*m; }
+   return out;
  }
  // issue #30 / #117: draw a race order place by place (who takes P1, then P2, ...), weighting the still-unplaced
  // drivers by their weight for that place (placeWeight: finishes at that place or better in the data window, a bonus
