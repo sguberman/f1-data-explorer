@@ -1,0 +1,36 @@
+# #173: LightGBM against the Simulator's race model on win / podium / points probabilities; the output goes in the run's summary.
+name: LightGBM comparison
+
+on:
+  workflow_dispatch:
+    inputs:
+      holdout:
+        description: "First holdout season"
+        default: "2024"
+
+permissions:
+  contents: read
+
+jobs:
+  lgbm:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install LightGBM
+        run: pip install lightgbm numpy pandas scikit-learn
+      - name: Export the features
+        run: node tools/export-features.mjs --out features.csv
+      - name: Compare
+        run: |
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          python3 tools/lgbm_experiment.py features.csv --holdout "${{ inputs.holdout }}" --calibration | tee -a "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"

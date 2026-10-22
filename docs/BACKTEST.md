@@ -1,4 +1,4 @@
-# Backtest (#155, #160, #162, #167, #169)
+# Backtest (#155, #160, #162, #167, #169, #173)
 
 `tools/backtest.mjs` scores simulator models against history and tunes their numbers. It reads `site/data/{year}.json`
 (no network) and runs the site's own model and season engine (`site/racemodel.js`, #153) and standings code
@@ -157,6 +157,50 @@ cross-validated against the Stage 3 model, +0.02 on the 2024–25 holdout.
 Season level (`current` − `quali`): points miss +0.09 ± 0.09 (lower in 2 of 12 seasons), order error 0.00, champion log score 0.00 ± 0.01,
 title Brier 0.00 ± 0.01, clinch round 0.00. So track history helps the next-race forecast a little and does not move the season
 projection; it is kept at the owner's request.
+
+## LightGBM challenger (#173, from the proposal in #172)
+
+Question: does a gradient-boosted model (LightGBM) predict win / podium / points-finish probabilities better than the Simulator's
+race model (`current`)? `tools/export-features.mjs` writes one row per driver per Grand Prix (2014–2025, rounds 2+) with only
+pre-race information (this race's grid / qualifying position, earlier starts, finish, DNF and podium rates, teammates' finish,
+earlier qualifying, track history, the grid's DNF rate) and the real result; `current`'s own probabilities come from a seeded
+20,000-draw Monte Carlo of its race model. `tools/lgbm_experiment.py` trains one binary LightGBM per market (7 leaves, 250 trees,
+learning rate 0.03, strong regularisation, no tuning) and scores both, plus a smoothed "finish = grid" baseline (the rate at which each
+grid position reached the market). Same splits as above: leave-one-season-out over 2014–2023, and trained on 2014–2023 and scored on
+2024–25. Rounds 4+; paired per-season differences. Run by hand: Actions → LightGBM comparison.
+
+**Gate (fixed before running):** go on to feed LightGBM into the engine only if it beats `current` by more than one standard error, in
+log loss and Brier, in the cross-validation on at least two of the three markets, and is also ahead on the 2024–25 holdout there.
+
+Mean over seasons, log loss / Brier (lower is better):
+
+| | | current | LightGBM | grid baseline |
+|---|---|---|---|---|
+| cross-validated 2014–23 | win | 0.1079 / 0.0320 | 0.1088 / 0.0322 | 0.1139 / 0.0322 |
+| | podium | 0.2167 / 0.0668 | 0.2144 / 0.0667 | 0.2387 / 0.0703 |
+| | points | 0.4742 / 0.1540 | 0.4754 / 0.1554 | 0.5218 / 0.1715 |
+| holdout 2024–25 | win | 0.1157 / 0.0349 | 0.1183 / 0.0370 | 0.1135 / 0.0327 |
+| | podium | 0.2218 / 0.0687 | 0.2117 / 0.0645 | 0.2284 / 0.0663 |
+| | points | 0.4319 / 0.1378 | 0.4397 / 0.1402 | 0.4760 / 0.1516 |
+
+LightGBM minus `current` (log loss, ± standard error across seasons; negative = LightGBM better):
+
+| | cross-validated | holdout |
+|---|---|---|
+| win | +0.0008 ± 0.0037 (better in 5 of 10) | +0.0026 ± 0.0053 (0 of 2 on Brier) |
+| podium | −0.0023 ± 0.0025 (6 of 10) | −0.0101 ± 0.0015 (2 of 2) |
+| points | +0.0012 ± 0.0046 (5 of 10) | +0.0078 ± 0.0018 (0 of 2) |
+
+**Result: gate not passed (no market beats `current` by more than one standard error in the cross-validation), so Phase 2 does not go ahead.**
+- On three markets, LightGBM and `current` are statistically level over 2014–2023; the largest difference (podium log loss, −0.0023) is under one
+  standard error. On the 2024–25 holdout LightGBM is better for the podium and worse for win and points (two seasons only, so the standard errors there are
+  rough).
+- Both clearly beat the grid baseline on podium and points (cross-validated, 10 of 10 seasons) and are no better than it for the win, where grid
+  position already carries almost everything.
+- Calibration is similar. `current` is a little over-confident in the middle of P(points) (40–50% predicted, 39% observed
+  cross-validated), where LightGBM is closer; LightGBM's win probabilities above 10% rest on few cases and are noisy.
+- The extra freedom of a tree model (interactions, non-linear grid effects) finds nothing the hand-built model misses with these features and
+  about 4,800 driver-races. Practice pace and weather, the other inputs in #172, are not in our data; the proposal does not say where they would come from.
 
 ## Data note
 
