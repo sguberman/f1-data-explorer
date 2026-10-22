@@ -791,7 +791,8 @@ since fonts render differently on different machines.
 
 ## Review and merge (legacy #52; issues on GitHub since #9)
 
-1. Each GitHub issue gets its own branch (`claude/issue-NN`, NN = the issue number) and pull request.
+1. Each GitHub issue gets its own branch and pull request. The branch is the one the Claude session assigns (`claude/<random-name>`, e.g.
+   `claude/funny-hopper-94lvkh`; earlier work used `claude/issue-NN`). Don't rename it: Cloudflare names the preview after it (#175).
    Closely related issues can share one PR when the owner agrees.
 2. The PR carries the code, tests and doc updates, and its description says `Closes #NN` so GitHub closes
    the issue when the PR is merged. No issue-list files are edited.
@@ -812,7 +813,7 @@ since fonts render differently on different machines.
 5. When the owner merges (or says to merge), the change goes live on GitHub Pages and GitHub closes the
    issue in the same step. If a PR is closed without merging, its issue stays open.
 6. **`main` is protected (#66):** force pushes and deletion are blocked (GitHub branch protection, set by
-   the owner). Never force-push `main`; rewriting history on a `claude/issue-NN` branch is still allowed.
+   the owner). Never force-push `main`; rewriting history on a feature branch is still allowed.
    Deliberately **not** turned on: *require a pull request* and *require status checks* (both would block
    `snapshot.yml`, which commits season files straight to `main`), and *require approvals* (Claude works
    under the owner's GitHub account, so its PRs count as the owner's, and GitHub doesn't let an author
@@ -844,10 +845,12 @@ since fonts render differently on different machines.
     issue labelled `idea`. When the owner promotes one, swap `idea` for `enhancement` (or `bug`); when they
     reject one, close it as "not planned". Links: [open work, excluding ideas](https://github.com/sguberman/f1-data-explorer/issues?q=is%3Aissue+is%3Aopen+-label%3Aidea),
     [ideas](https://github.com/sguberman/f1-data-explorer/issues?q=is%3Aissue+is%3Aopen+label%3Aidea).
-11. Work each issue on its own branch (`claude/issue-NN`) and open a PR when it's ready for review, so it
-    gets a preview (legacy #52). Merge only when the owner asks. Rebase-merge, so each `issue #xx:` commit
+11. Work each issue on its own branch (the session's assigned `claude/<random-name>`) and open a PR when it's ready for review, so it
+    gets a preview (legacy #52). **Open it ready for review, not as a draft**: a draft PR (#174) got its Cloudflare preview built but no
+    comment, while the next PR (#176), opened ready for review, got one (#175; it is not about changes outside `site/`: a tests-only PR, #166, got one too). Merge only when the owner asks. Rebase-merge, so each `issue #xx:` commit
     lands on `main` as written.
 12. Add or update tests in `tests/` with every feature or fix (issue #53). Before pushing, run the tests for what
     changed; GitHub runs the full suite on the PR (#54).
 13. **When done with a piece of work, always give the owner a link to the homepage on the dev site**: the
-    PR's Cloudflare branch preview, `https://claude-issue-NN.f1-data-explorer.pages.dev/`.
+    PR's Cloudflare branch preview, `https://<branch with / as ->.f1-data-explorer.pages.dev/` (e.g. `claude-funny-hopper-94lvkh`); the link is on the
+    PR's Cloudflare Pages check and, normally, in Cloudflare's comment.

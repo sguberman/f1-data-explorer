@@ -33,11 +33,12 @@ requirements, decisions, known issues, tests, and the owner's standing rules. Th
   merge) closes it.
 - Explain proposed changes before applying them. Make/show mockups only when the owner needs to choose between
   options; otherwise build it. When done, always give a link to the dev-site homepage (the PR's Cloudflare branch
-  preview, `https://claude-issue-NN.f1-data-explorer.pages.dev/`).
+  preview, `https://<branch with / as ->.f1-data-explorer.pages.dev/`; the link is on the PR's Cloudflare Pages check).
   Preserve the current design and behavior unless asked.
 - Commit messages start with `issue #xx: `. No `Co-Authored-By`, session links or other attribution lines.
 - Interactions (slider, toggles, sort, pickers) never fetch; only loading a season, Refresh data and Retry do.
 - Verify visual changes by rendering them in light and dark at desktop and ~390px phone width, and add tests
   for new features.
-- One branch (`claude/issue-NN`) and PR per issue, opened when ready for review so Cloudflare Pages posts a
-  preview link. Merge only when the owner asks. See "Review and merge" in docs/PROJECT_CONTEXT.md.
+- One branch and PR per issue. Use the branch the Claude session assigns (`claude/<random-name>`; don't rename it,
+  Cloudflare names the preview after it). Open the PR ready for review, **not as a draft**, so Cloudflare Pages posts
+  its preview comment (confirmed in #175: a draft PR got none, a ready one did). Merge only when the owner asks. See "Review and merge" in docs/PROJECT_CONTEXT.md.
