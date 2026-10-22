@@ -1,4 +1,4 @@
-# Backtest (#155, #160, #162, #167, #169, #173, #177)
+# Backtest (#155, #160, #162, #167, #169, #173, #177, #179)
 
 `tools/backtest.mjs` scores simulator models against history and tunes their numbers. It reads `site/data/{year}.json`
 (no network) and runs the site's own model and season engine (`site/racemodel.js`, #153) and standings code
@@ -10,6 +10,7 @@ node tools/backtest.mjs season --model previous,retuned,current # season level: 
 node tools/backtest.mjs tune                                   # fit the numbers (leave-one-season-out, then the holdout)
 node tools/backtest.mjs team                                   # #177: the per-team good-weekend factor, with and without (leave-one-season-out, holdout)
 node tools/correlation-diagnostic.mjs                          # #177: do real results move together more than the model's own draws?
+node tools/clinch-diagnostic.mjs                               # #179: is the clinch-round error bias or natural spread?
   --from 2014 --to 2025 --holdout 2024 --runs 2000 --calibration --json
 ```
 
@@ -267,6 +268,28 @@ widens the tails only a little.
   factor. The cause is something else (the roster, how ties near the top 10 are counted, or the weights being too sharp for the middle of the
   field); that is the lead for the next stage.
 - The engine option and the `teamfx` model stay in the repository so the result can be reproduced; nothing in the Simulator or What-If uses them.
+
+## Clinch timing: is the error bias or natural spread? (#179)
+
+The simulated settling round (the Simulator's "title decided" card) is off by about one round and no model change has improved it.
+`tools/clinch-diagnostic.mjs` takes every cut point from round 4 to the real settling round (181 of them, 2014–2025), simulates the rest of the
+season with `current` (1,000 runs) and compares the median simulated settling round with the real one.
+
+| part of season | cut points | simulated median − real | mean absolute error | real round inside the 10–90% band (nominal 80%) |
+|---|---|---|---|---|
+| early | 69 | +0.59 | 1.46 | 83% (band 2.7 rounds wide) |
+| mid | 64 | +0.34 | 1.03 | 88% (2.1 wide) |
+| late | 48 | +0.06 | 0.35 | 98% (1.3 wide) |
+
+By season the model leans late in runaway seasons (2015 +1.8, 2017 +1.1, 2018 +0.8, 2020 +1.3, 2022 +2.3, 2023 +1.4 rounds) and early in seasons settled in the last
+round (2014 −0.7, 2016 −0.9, 2021 −0.7, 2025 −0.8). Could the error be predicted from what is known at the cut point? A least-squares fit on the leader's lead over second
+place as a share of the points still available, the leader's share of wins so far and the share of rounds left, fitted leave-one-season-out, takes the mean
+absolute error from 1.02 to 1.11 rounds (gain **−0.05 ± 0.09**, better in 7 of 12 seasons): it removes nothing.
+
+**Result: natural spread, not a bias to fix. No model change.** The median is close to unbiased and the 80% band holds the real round about as often as it
+claims (a little wider than needed late in the season). What differs between seasons, a runaway one against a title that goes to the last round, is not
+visible in the lead, the win share or the rounds left at the cut point. The card already shows the whole distribution of settling rounds, which is the
+honest answer. If the season-long pace drift (#180) improves the top-10 calibration it may also tighten this, and the backtest will show it.
 
 ## Data note
 
