@@ -9,14 +9,14 @@ module.exports = async (t, h) => {
   // ---- weekends ----
   const wk = O.weekends(fx.SESSIONS);
   t.check('three weekends in date order; pre-season testing is not one', wk.length === 3 && wk.map(w => w.label).join() === 'Silverstone,Budapest,Zandvoort', wk.map(w => w.label).join());
-  t.check('the Race is left out; practice and qualifying are kept, in time order', wk[2].sessions.map(s => s.short).join() === 'FP1,FP2,FP3,Quali', wk[2].sessions.map(s => s.short).join());
+  t.check('practice, qualifying and the Race are kept, in time order', wk[2].sessions.map(s => s.short).join() === 'FP1,FP2,FP3,Quali,Race', wk[2].sessions.map(s => s.short).join());
   t.check('a cancelled session is left out', O.weekends([{ ...fx.SESSIONS[1], is_cancelled: true }]).length === 0);
   t.check('sprint sessions are kept and named', O.weekends([{ ...fx.SESSIONS[1], session_name: 'Sprint Qualifying' }, { ...fx.SESSIONS[2], session_name: 'Sprint' }])[0].sessions.map(s => s.short).join() === 'Sprint Quali,Sprint');
   const now = Date.parse(fx.NOW);
   t.check('opens the latest weekend that has started', O.defaultWeekend(wk, now).label === 'Zandvoort');
   t.check('before the season, the first weekend', O.defaultWeekend(wk, Date.parse('2026-01-01')).label === 'Silverstone');
   t.check('opens the latest session that has started (FP2 on Friday evening)', O.defaultSession(wk[2], now).short === 'FP2');
-  t.check('…and the last one once the weekend is over', O.defaultSession(wk[1], now).short === 'Quali');
+  t.check('…and the Race once the weekend is over', O.defaultSession(wk[1], now).short === 'Race');
 
   // ---- a round's weekend ----
   const cal = { raceDates: { 11: '2026-07-19', 12: '2026-08-02', 13: '2026-08-30' } };
@@ -73,5 +73,14 @@ module.exports = async (t, h) => {
   t.check('bin width: about 24 bins, never under 0.1 s', O.binWidth(90, 91) === 0.1 && O.binWidth(90, 96) === 0.3 && O.binWidth(90, 90) === 0.1);
   t.check('lap time format', O.fmt(83.456) === '1:23.456' && O.fmt(65.0) === '1:05.000' && O.fmt(28.1234) === '28.123' && O.fmt(83.456, 1) === '1:23.5' && O.fmt(null) === '–');
   t.check('gap format', O.gapText(0.0614) === '+0.061' && O.gapText(-0.2) === '−0.200' && O.gapText(null) === '–');
-  t.check('speeds: km/h as they are, mph in whole miles per hour', O.speedIn(321, 'kmh') === 321 && O.speedIn(321, 'mph') === 199 && O.speedIn(100, 'mph') === 62 && O.speedIn(null, 'mph') === null);
+  t.check('speeds: km/h as they are, mph to the nearest 0.1', O.speedIn(321, 'kmh') === 321 && O.speedIn(321, 'mph') === 199.5 && O.speedIn(100, 'mph') === 62.1 && O.speedIn(null, 'mph') === null);
+
+  // ---- qualifying parts, lap start times ----
+  t.check('qualifying and sprint qualifying are told from other sessions', O.isQualifying('Qualifying') && O.isQualifying('Sprint Qualifying') && O.isQualifying('Sprint Shootout') && !O.isQualifying('Sprint') && !O.isQualifying('Race') && !O.isQualifying('Practice 1'));
+  const rc = fx.raceControlFor(204), seg = O.qualiSegments(rc, false), mins = (x, k) => (x - Date.parse(fx.SESSIONS.find(q => q.session_key === k).date_start)) / 60000;
+  t.check('three parts from the race control messages, a red flag and restart inside Q1 does not make a fourth', seg.map(g => g.label).join() === 'Q1,Q2,Q3' && seg.map(g => [mins(g.from, 204), mins(g.to, 204)].join('-')).join() === '0-18,25-40,47-60', JSON.stringify(seg));
+  t.check('sprint qualifying parts are SQ1…', O.qualiSegments(rc, true).map(g => g.label).join() === 'SQ1,SQ2,SQ3' && O.qualiSegments([], false).length === 0 && O.qualiSegments(null, false).length === 0);
+  t.check('a part still running (no finish yet) ends at the last message', O.qualiSegments(rc.slice(0, 7), false).length === 2 && O.qualiSegments(rc.slice(0, 1), false).length === 1);
+  const q = O.build(fx.lapsFor(204), fx.stintsFor(204), fx.driversFor(204));
+  t.check('every lap has the time it started', q.laps.every(l => l.at > 0) && mins(q.laps.find(l => l.d === 63 && l.n === 1).at, 204) === 0 && mins(q.laps.find(l => l.d === 63 && l.n === 5).at, 204) === 25 && mins(q.laps.find(l => l.d === 63 && l.n === 9).at, 204) === 47);
 };

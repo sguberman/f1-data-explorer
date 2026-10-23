@@ -36,8 +36,12 @@ const driversFor = key => roster(key).map(([n, a, name, team, c]) => ({ meeting_
 // Each driver: lap 1 pit-out, laps 2–5 push on softs, lap 6 in-lap; lap 7 pit-out, laps 8–10 push on mediums, lap 11 a slow cool-down lap
 // (no in-lap flag: it is the last lap). Driver 6's lap 4 has no time at all, driver 5's lap 3 has no sector 1. The bests of the three sectors
 // come from different laps, so the ideal lap is quicker than the best lap.
+const startOf = key => Date.parse(SESSIONS.find(x => x.session_key === key).date_start);
+const MIN = 60e3;
+// Qualifying runs in three parts, 18, 15 and 12 minutes long with breaks between; a driver's laps 1–4 are in Q1, 5–8 in Q2 and 9–11 in Q3.
+const qualiOffset = k => k <= 4 ? (k - 1) * 4 * MIN : k <= 8 ? 25 * MIN + (k - 5) * 4 * MIN : 47 * MIN + (k - 9) * 4 * MIN;
 const lapsFor = key => {
-  const out = [];
+  const out = [], quali = key % 100 === 4;
   roster(key).forEach(([n], i) => {
     for(let k = 1; k <= 11; k++){
       const push = (k >= 2 && k <= 5) || (k >= 8 && k <= 10);
@@ -46,7 +50,7 @@ const lapsFor = key => {
       if(k === 6) t += 12;
       if(k === 11) t = t * 1.3;
       const r = x => Math.round(x * 1000) / 1000;
-      out.push({ meeting_key: 0, session_key: key, driver_number: n, lap_number: k, date_start: '2026-10-23T17:40:00+00:00',
+      out.push({ meeting_key: 0, session_key: key, driver_number: n, lap_number: k, date_start: new Date(startOf(key) + (quali ? qualiOffset(k) : (k - 1) * 150e3) + i * 5e3).toISOString(),
         duration_sector_1: r(s1), duration_sector_2: r(s2), duration_sector_3: r(s3), lap_duration: r(t),
         i1_speed: 280 + i, i2_speed: 190 + k, st_speed: 320 - i * 2 + (push ? k % 2 : -20), is_pit_out_lap: k === 1 || k === 7,
         segments_sector_1: [], segments_sector_2: [], segments_sector_3: [] });
@@ -60,15 +64,25 @@ const stintsFor = key => roster(key).flatMap(([n]) => [
   { meeting_key: 0, session_key: key, stint_number: 1, driver_number: n, lap_start: 1, lap_end: 6, compound: 'SOFT', tyre_age_at_start: 0 },
   { meeting_key: 0, session_key: key, stint_number: 2, driver_number: n, lap_start: 7, lap_end: 11, compound: 'MEDIUM', tyre_age_at_start: 3 }]);
 
+// Race control: when each qualifying part starts and finishes (and a red flag in Q1 that stops it and restarts it).
+const raceControlFor = key => {
+  if(key % 100 !== 4) return [];
+  const t0 = startOf(key), at = m => new Date(t0 + m * MIN).toISOString(), row = (m, category, message) => ({ date: at(m), category, message, flag: null, session_key: key, meeting_key: 0 });
+  return [row(0, 'SessionStatus', 'SESSION STARTED'), row(0, 'Flag', 'GREEN LIGHT - PIT EXIT OPEN'), row(5, 'SessionStatus', 'SESSION ABORTED'), row(7, 'SessionStatus', 'SESSION STARTED'),
+    row(18, 'SessionStatus', 'SESSION FINISHED'), row(20, 'Other', 'FIA STEWARDS: Q1 INCIDENT NOTED'), row(25, 'SessionStatus', 'SESSION STARTED'), row(40, 'SessionStatus', 'SESSION FINISHED'),
+    row(47, 'SessionStatus', 'SESSION STARTED'), row(60, 'SessionStatus', 'SESSION FINISHED')];
+};
+
 // Answers a request to https://api.openf1.org/v1/…; `empty` lists session keys with no data yet.
 function answer(url, { empty = [] } = {}){
   const u = new URL(url), key = +u.searchParams.get('session_key');
   const path = u.pathname.replace(/^\/v1/, '');
   if(path === '/sessions') return SESSIONS;
   if(empty.includes(key)) return [];
+  if(path === '/race_control') return raceControlFor(key);
   if(path === '/laps') return lapsFor(key);
   if(path === '/stints') return stintsFor(key);
   if(path === '/drivers') return driversFor(key);
   return null;
 }
-module.exports = { NOW, SESSIONS, DRIVERS, RESERVE, answer, lapsFor, stintsFor, driversFor };
+module.exports = { NOW, SESSIONS, DRIVERS, RESERVE, raceControlFor, answer, lapsFor, stintsFor, driversFor };

@@ -45,8 +45,9 @@ const F1OpenF1 = (() => {
   const SHORT = { 'Practice 1': 'FP1', 'Practice 2': 'FP2', 'Practice 3': 'FP3', 'Qualifying': 'Quali', 'Sprint Qualifying': 'Sprint Quali',
     'Sprint Shootout': 'Sprint Quali' };
   const shortName = n => SHORT[n] || n;
-  // The lap-based sessions this page can show; the Race is left out (it is not practice or qualifying pace).
-  const KINDS = new Set(['Practice 1', 'Practice 2', 'Practice 3', 'Qualifying', 'Sprint Qualifying', 'Sprint Shootout', 'Sprint']);
+  // The lap-based sessions this page can show: practice, qualifying, sprint and the Grand Prix itself (pre-season testing has none of these names).
+  const KINDS = new Set(['Practice 1', 'Practice 2', 'Practice 3', 'Qualifying', 'Sprint Qualifying', 'Sprint Shootout', 'Sprint', 'Race']);
+  const isQualifying = name => /Qualifying|Shootout/.test(name || '');
 
   // A year's sessions grouped into weekends, in date order: [{key, label, country, start, sessions:[{key, name, short, start, end}]}].
   function weekends(rows){
@@ -86,7 +87,7 @@ const F1OpenF1 = (() => {
   // ---- one session ----
   // Joins the three lists into {drivers, laps}. Drivers: {num, code, name, team, color}. Laps: {d (driver number), n (lap number),
   // t (lap time, s), s [s1, s2, s3], i1, i2, st (speeds, km/h), out (pit-out lap), inn (in-lap: last lap of a stint
-  // that another stint follows), c (compound), age (tyre age on the lap)}; a missing value is null.
+  // that another stint follows), c (compound), age (tyre age on the lap), at (when the lap started, ms)}; a missing value is null.
   function build(laps, stints, drivers){
     const ds = (drivers || []).map(d => ({ num: d.driver_number, code: d.name_acronym, name: d.full_name || d.broadcast_name || d.name_acronym,
       team: d.team_name || '', color: '#' + (d.team_colour || '888888').replace('#', '') }));
@@ -100,17 +101,34 @@ const F1OpenF1 = (() => {
         s: [num(l.duration_sector_1), num(l.duration_sector_2), num(l.duration_sector_3)],
         i1: num(l.i1_speed), i2: num(l.i2_speed), st: num(l.st_speed), out: !!l.is_pit_out_lap,
         inn: !!(st && later && l.lap_number === st.lap_end),
-        c: st ? st.compound : null, age: st ? (st.tyre_age_at_start || 0) + (l.lap_number - st.lap_start) : null };
+        c: st ? st.compound : null, age: st ? (st.tyre_age_at_start || 0) + (l.lap_number - st.lap_start) : null,
+        at: l.date_start ? Date.parse(l.date_start) : null };
     }).sort((a, b) => (a.d - b.d) || (a.n - b.n));
     // only drivers who set a lap
     const seen = new Set(out.map(l => l.d));
     return { drivers: ds.filter(d => seen.has(d.num)), laps: out };
   }
+  // Qualifying (and sprint qualifying) is run in three parts. OpenF1's race control messages say when each starts and finishes
+  // ("SESSION STARTED" / "SESSION FINISHED"); the parts come back as [{label: 'Q1', from, to}] in ms. A restart while a part is
+  // open is ignored; a part still open (the session is live) runs to the last message.
+  function qualiSegments(rows, sprint){
+    const ev = (rows || []).filter(r => r.category === 'SessionStatus' && /^SESSION (STARTED|FINISHED)$/.test(r.message || '')).sort((a, b) => a.date < b.date ? -1 : 1);
+    const out = []; let open = null;
+    ev.forEach(r => {
+      const t = Date.parse(r.date);
+      if(r.message === 'SESSION STARTED' && !open) open = t;
+      else if(r.message === 'SESSION FINISHED' && open != null){ out.push({ from: open, to: t }); open = null; }
+    });
+    if(open != null && ev.length) out.push({ from: open, to: Date.parse(ev[ev.length - 1].date) });
+    return out.map((g, i) => ({ label: (sprint ? 'SQ' : 'Q') + (i + 1), from: g.from, to: g.to }));
+  }
   async function load(session, {fresh=false, now=Date.now()}={}) {
     const over = now - Date.parse(session.end) > 2 * HOUR;
     const ttl = over ? DAY : 5 * 60e3, q = '?session_key=' + session.key;
-    const [l, s, d] = await Promise.all([get('/laps' + q, ttl, fresh), get('/stints' + q, ttl, fresh), get('/drivers' + q, ttl, fresh)]);
-    return Object.assign(build(l.data, s.data, d.data), { at: Math.min(l.at, s.at, d.at) });
+    const quali = isQualifying(session.name);
+    const [l, s, d, rc] = await Promise.all([get('/laps' + q, ttl, fresh), get('/stints' + q, ttl, fresh), get('/drivers' + q, ttl, fresh),
+      quali ? get('/race_control' + q, ttl, fresh).catch(() => ({ data: [], at: Infinity })) : Promise.resolve({ data: [], at: Infinity })]);
+    return Object.assign(build(l.data, s.data, d.data), { at: Math.min(l.at, s.at, d.at), segments: quali ? qualiSegments(rc.data, /Sprint/.test(session.name)) : [] });
   }
 
   // ---- numbers ----
@@ -164,11 +182,11 @@ const F1OpenF1 = (() => {
     const m = Math.floor(t / 60), s = (t - m * 60).toFixed(digits).padStart(digits + 3, '0');
     return m ? m + ':' + s : (t - m * 60).toFixed(digits);
   }
-  // Speeds come in km/h; "mph" is the same speed in whole miles per hour.
-  const speedIn = (kmh, unit) => kmh == null ? null : unit === 'mph' ? Math.round(kmh * 0.621371) : kmh;
+  // OpenF1 gives speeds in whole km/h; "mph" is the same speed to the nearest 0.1 mph.
+  const speedIn = (kmh, unit) => kmh == null ? null : unit === 'mph' ? Math.round(kmh * 0.621371 * 10) / 10 : kmh;
   const gapText = g => g == null ? '–' : (g >= 0 ? '+' : '−') + Math.abs(g).toFixed(3);
 
-  const api = { BASE, SLOW, weekends, weekendForRound, defaultWeekend, defaultSession, sessions, build, load, sessionBest, pace, entities, lapsOf, stats, bin, binWidth, fmt, gapText, speedIn, shortName };
+  const api = { BASE, SLOW, weekends, weekendForRound, defaultWeekend, defaultSession, sessions, build, load, qualiSegments, isQualifying, sessionBest, pace, entities, lapsOf, stats, bin, binWidth, fmt, gapText, speedIn, shortName };
   return api;
 })();
 if(typeof module !== 'undefined' && module.exports) module.exports = F1OpenF1; // Node (the tests)
