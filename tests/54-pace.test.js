@@ -391,6 +391,18 @@ module.exports = async (t, h) => {
   t.check('choosing the live session yourself says OpenF1 is closed (until when) and that it is not saved yet, with Retry', closedMsg.err && /OpenF1 is closed to the public while a session is live \(until about [\d:]+\s?[AP]M\), and Practice 3 is not saved here yet\. Retry/.test(closedMsg.text) && (await state(p)).lines === null, closedMsg.text);
   await p.done();
 
+  // the default session is not saved and nothing else is: the closed message, once (no endless switching between sessions)
+  const justList = { list: { 2026: listFile }, sessions: {} };
+  p = await open({ openf1: { live: true }, pace: justList }); await h.loaded(p); await p.waitForSelector('#retry', { timeout: 10000 });
+  await p.waitForTimeout(500);
+  t.check('closed, the sessions list saved but no session: one closed message for the session, and no loop of fallbacks', /Practice 2 is not saved here yet/.test(await p.$eval('#paceStatus', e => e.textContent)) && p.openf1Hits.length <= 8, `${p.openf1Hits.length} requests`);
+  await p.done();
+  // the default session is not saved but an earlier one is: that one is shown
+  p = await open({ openf1: { live: true }, pace: { list: { 2026: listFile }, sessions: { 201: snapOf(201) } } }); await ready(p);
+  s = await state(p);
+  t.check('…with an earlier session saved, that one is shown (FP1), and the page says why', s.chips.find(c => c[1])[0] === 'FP1' && /Practice 2 is live: OpenF1 is closed .*showing Practice 1/.test(s.status) && s.lines.length === 6, s.status);
+  await p.done();
+
   // nothing saved and OpenF1 closed: a plain message, and it recovers when OpenF1 opens
   const gate = { live: true };
   p = await open({ openf1: gate }); await h.loaded(p); await p.waitForSelector('#retry', { timeout: 10000 });

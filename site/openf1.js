@@ -110,6 +110,7 @@ const F1OpenF1 = (() => {
     return j;
   }
   const savedSession = s => savedFile(`data/pace/${s.year}/${s.key}.json`);
+  const hasSaved = async s => !!(await savedSession(s));
 
   // ---- sessions ----
   const SHORT = { 'Practice 1': 'FP1', 'Practice 2': 'FP2', 'Practice 3': 'FP3', 'Qualifying': 'Quali', 'Sprint Qualifying': 'Sprint Quali',
@@ -305,7 +306,7 @@ const F1OpenF1 = (() => {
   const speedIn = (kmh, unit) => kmh == null ? null : unit === 'mph' ? Math.round(kmh * 0.621371 * 10) / 10 : kmh;
   const gapText = g => g == null ? '–' : (g >= 0 ? '+' : '−') + Math.abs(g).toFixed(3);
 
-  const api = { BASE, SLOW, weekends, weekendForRound, defaultWeekend, defaultSession, sessions, build, load, liveUntil, live, compact, inflate, makeLimiter, SESSION_FIELDS, KINDS, qualiSegments, isQualifying, results, resultOrder, resultKind, RESULT_KINDS, sessionBest, pace, entities, lapsOf, stats, bin, binWidth, fmt, gapText, speedIn, shortName };
+  const api = { BASE, SLOW, weekends, weekendForRound, defaultWeekend, defaultSession, sessions, build, load, hasSaved, liveUntil, live, compact, inflate, makeLimiter, SESSION_FIELDS, KINDS, qualiSegments, isQualifying, results, resultOrder, resultKind, RESULT_KINDS, sessionBest, pace, entities, lapsOf, stats, bin, binWidth, fmt, gapText, speedIn, shortName };
   return api;
 })();
 if(typeof module !== 'undefined' && module.exports) module.exports = F1OpenF1; // Node (the tests)

@@ -329,11 +329,12 @@ function showRound(r){
   $('sessChips').innerHTML = weekend.sessions.map(x =>
     `<button type="button" class="sessBtn" data-key="${x.key}" title="${esc(x.name)}"${Date.parse(x.start) > now ? ' disabled' : ''}>${esc(x.short)}</button>`).join('');
   const want = weekend.sessions.find(s => s.short === linkSession && Date.parse(s.start) <= now); linkSession = null;
-  loadSession(want || O.defaultSession(weekend, now), fresh, !want);
+  loadSession(want || O.defaultSession(weekend, now), fresh, want ? '' : 'auto');
 }
-// `auto`: the page chose the session (not you): if it is live and OpenF1 is closed, the latest finished session of the weekend is shown instead.
-async function loadSession(s, fresh, auto = false){
-  const my = ++token; clearTimeout(retryTimer); session = s; model = null; pinned = null; if(!auto) notice = '';
+// mode 'auto': the page chose the session (not you): if OpenF1 is closed for a live session, the latest finished session of the weekend that has a
+// saved copy is shown instead (mode 'fallback', which does not try again). Any other mode is your choice.
+async function loadSession(s, fresh, mode = ''){
+  const my = ++token; clearTimeout(retryTimer); session = s; model = null; pinned = null; if(!mode) notice = '';
   [...$('sessChips').children].forEach(b => { const on = +b.dataset.key === s.key; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); });
   $('refreshSession').hidden = false;
   loadOutliers();
@@ -347,8 +348,10 @@ async function loadSession(s, fresh, auto = false){
     if(my !== token) return;
     model = null;
     const until = e.live ? O.liveUntil(weekends) : null, now = Date.now();
-    const done = auto && e.live && weekend.sessions.filter(x => x.key !== s.key && Date.parse(x.end) <= now).pop(); // the latest finished one
-    if(done){ notice = `${s.name} is live: ${closedText(until)}; showing ${done.name}`; return loadSession(done, false, true); }
+    let done = null; // the latest finished session with a saved copy
+    if(mode === 'auto' && e.live) for(const x of weekend.sessions.filter(x => x.key !== s.key && Date.parse(x.end) <= now).reverse()){ if(await O.hasSaved(x)){ done = x; break; } }
+    if(my !== token) return;
+    if(done){ notice = `${s.name} is live: ${closedText(until)}; showing ${done.name}`; return loadSession(done, false, 'fallback'); }
     render();
     const again = () => loadSession(s, true);
     status(e.live ? `${closedText(until)}, and ${esc(s.name)} is not saved here yet. <button type="button" class="f1c-link" id="retry">Retry</button>` : 'Couldn’t load this session from OpenF1. <button type="button" class="f1c-link" id="retry">Retry</button>', true);
