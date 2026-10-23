@@ -40,6 +40,8 @@ site/                 The website (deployed as the site root, so URLs are unchan
   racemodel.js        F1RaceModel (#133, #153): the simulator's race model (weights, DNF rate) and season engine (planSeason,
                       simulateSeason, sampleOrder, decidedContext, countback). Shared by simulator.html, What-If's Simulated
                       preset and Node (`require`); takes the random generator and points tables as arguments.
+  pace.html           Weekend Pace (#186): practice, sprint and qualifying laps from OpenF1; season controls with `upcoming:true` (see "Weekend Pace").
+  openf1.js           F1OpenF1 (#186): OpenF1 fetch + cache and the pure helpers behind pace.html (also `require`d by Node tests).
   eras.html / eras.js Eras (#135): championship position per season since 1950 against rule eras; F1Eras = lineage map + model.
   whatif.html         What-if: drag a finishing order for a round, see both championships after it, with the title race (#85).
   common.js           F1Common: helpers shared by the chart pages (issue #44 and later).
@@ -69,6 +71,7 @@ tools/                snapshot.mjs: builds site/data/{year}.json from f1api.dev 
                       Season-long pace drift (`driftTeam`/`driftDriver`/`driftWalk`, `driftStep` in racemodel.js; off unless a context sets it) was tested and not built in (#180); see docs/BACKTEST.md.
                       eras-snapshot.mjs (#135): builds site/data/eras.json (standings since 1950) from Jolpica (same workflow).
                       history-snapshot.mjs (#141): builds site/data/{1950..2020}.json (per-round results) from Jolpica (same workflow).
+                      pace-snapshot.mjs (#186): saved copies of finished OpenF1 sessions, site/data/pace/ (own workflow, pace.yml); read by the Weekend Pace page.
                       qualifying-snapshot.mjs (#158): builds site/data/grid/{2014..}.json (qualifying position and Q1–Q3 times, starting grid
                       per driver, 0 = pit lane, plus each round's circuit id, the whole calendar's circuit ids and the upcoming round's qualifying) from
                       Jolpica (same workflow); read by the Simulator and What-If (#167) and the backtest.
@@ -651,6 +654,83 @@ champion: that would need the full results, which may lag the race). It comes fr
 season (for the clinch line) are the only data the homepage loads, both on page load; nothing on it fetches on
 interaction. If the calendar fails or has no dates, the strip stays hidden.
 
+### Weekend Pace (`pace.html`, `openf1.js`, #186)
+
+The one page that uses another API: **OpenF1** (`https://api.openf1.org/v1`), because f1api.dev has no session laps, sectors, speeds or tyres
+and Jolpica has only race laps and Q1–Q3 times. Called straight from the browser (OpenF1 sends `access-control-allow-origin`), no key,
+data from 2023 (an earlier season says so). **OpenF1 closes its API to everyone without an account while an F1 session is live, even for past sessions**
+(HTTP 401 "Live F1 session in progress…"); see "Saved copies" below. It is a normal season page: the shared `F1Controls` (season dropdown, slider, "Round N of M — flag
+name", Refresh data, Share) with the **`upcoming` option**: `F1Controls.mount('f1controls', {upcoming:true})` adds each calendar round after
+the loaded ones whose weekend has begun (its race date is within 4 days) as a round with no results (`{upcoming:true, raceResults:[]}`), so the
+slider reaches the race weekend that is on, before its Grand Prix. Only this page turns it on; the other pages' sliders are unchanged.
+- **Order of the cards:** the driver picker, the session buttons, Lap times, Lap time distribution, Best sectors and ideal lap (table), Best lap vs
+  ideal lap, Top speed.
+- **The round picks the weekend** (`F1OpenF1.weekendForRound`: the OpenF1 weekend whose first session starts within 6 days before the round's
+  race date in the calendar). Because that needs OpenF1, **the slider fetches when it is let go** (`f1roundcommit`), not on every step (a
+  deliberate exception to "the slider never fetches", like the Simulator's run on release, #112); cached weekends cost nothing.
+- **Saved copies (the live-session problem):** `tools/pace-snapshot.mjs`, run by `.github/workflows/pace.yml` (every 20 minutes Friday–Monday UTC, daily
+  for the list, on a change to the tool, or by hand with `all` for 2023 on), saves each finished session 20 minutes after it ends to
+  `site/data/pace/{year}/{sessionKey}.json` (`F1OpenF1.compact()`: laps, stints, drivers, qualifying's start/finish messages and the classification as arrays
+  with their field names, times in ms; about a sixth of the API's size) and the year's sessions list to `site/data/pace/{year}.json`; it commits them and
+  redeploys, never fetches a saved session twice, and ends quietly (nothing saved) when OpenF1 answers the live-session 401. The page reads a finished session
+  from its saved copy before asking OpenF1 (`F1OpenF1.load`, `results`), the sessions list from OpenF1 and then, if closed, from the saved list, and
+  uses an older cached answer last (marked "older saved copy"). **Refresh session** skips the saved copy. If the default session is the one that is live
+  and has no copy, the latest finished session of the weekend is shown with a line saying why; choosing a live session yourself says OpenF1 is closed (until
+  about when it ends, from the sessions list), that it is not saved yet, and retries by itself when it should reopen (OpenF1 was still closed 26 minutes after Austin FP1's scheduled end and open 46 minutes after it, so the page assumes
+  the closed window runs until 45 minutes after a session ends).
+- **OpenF1's free limit** is 3 requests a second: requests go out 350 ms apart (`F1OpenF1.makeLimiter`; tests set `window.F1O_SPACING = 0`), and a 429 is
+  waited out and retried (twice at most).
+- **Sessions:** Practice 1–3, Qualifying, Sprint Qualifying/Shootout, Sprint and the **Race** (no pre-season testing). Opens on the weekend's
+  latest session that has started. Per session `/laps`, `/stints`, `/drivers` (plus `/race_control` for qualifying), joined by `F1OpenF1.build` into
+  laps `{d, n, t, s[3], i1, i2, st, out, inn, c, age, at}` (`inn`: the last lap of a stint another stint follows; `at`: when the lap started).
+  Cached in localStorage (`f1o:v1:`): a session over more than 2 h for a day, a live one 5 min, the session list 30 min. Fetching happens on
+  loading the page or season, a season switch, letting go of the slider, choosing a session, Refresh data / **Refresh session** and Retry; the
+  pickers and toggles never fetch.
+- Subtitles use the site's short race names (`F1Common.shortGP`: "Singapore GP"; "Round 13" when the calendar has no proper name).
+- **Drivers are the site's** (no teams view): each OpenF1 driver is matched by its three-letter code to the season's results (`resolve()`), which
+  gives the site's driver id, name, flag, number, team id and **team colour** (`F1Common.teamColor`); OpenF1's own colours are used only for a driver
+  not in the season data (an FP1 reserve), who is listed last, unpicked, without a flag. The picker is the other pages' (Sort by, see below,
+  presets All, None, Top 5/10, Top 4 teams, Best of the rest, Title contention, plus Fastest 5/10, fold-away, flags and numbers via
+  `F1Common.driverPickerRowHTML`, whose right-hand column here is the best lap) and the picks use the shared saved selection
+  (`F1Common.loadPickerSelection`/`savePickerSelection`), so they carry to and from the Drivers page, as do season and round.
+- **One sort for the driver list and both lap plots** (the same "Sort by" dropdown in the picker and on the Lap times and Lap time distribution cards, all kept
+  in step): Team, Ranking, Fastest Lap, Median Lap (of the laps shown, outliers left out) and, for each session of the weekend that has finished, **GP Result,
+  Sprint Result, Quali Result, Sprint Quali Result** (OpenF1 `/session_result`, fetched with the weekend, `F1OpenF1.results`; a driver with no position goes last).
+  The list, the lap lines and their legend, and the dot plot's rows and legend follow it. **Defaults follow the session** (Fastest Lap in practice, the session's
+  own result in qualifying, the Sprint and the Race). A **lock** next to the dropdown (unlocked by default, also after picking a sort) decides whether a session
+  change resets the sort to the session's default (unlocked) or keeps it (locked; it still falls back to the default if the sort no longer exists, e.g. a result
+  the next weekend doesn't have yet). The table and the best-vs-ideal plot have their own shared sort (below).
+- **Link keys** (besides `season`/`round`): `session` (FP1/FP2/FP3/Quali/Sprint…/Race), `d`, `sort` (only when it isn't the session's default), `lock=1`, `slow=1`, `out=0`, `box=0`, `speed=i1|i2`,
+  `unit=kph`, `tsort=ideal|gap`; defaults are left out.
+- **Pace laps** (`F1OpenF1.pace`): a time, not a pit-out or in lap, and within 107% of the session's best and not under the safety car or a virtual one, unless **Include slow laps** is on. Safety car laps come from race control (`category SafetyCar`: `SAFETY CAR DEPLOYED` … `SAFETY CAR IN THIS LAP`, `VSC DEPLOYED` … `VSC ENDING`, by the leader's lap number, both ends included; `F1OpenF1.neutralLaps`), fetched for qualifying, the Sprint and the Race and kept in the saved copies (`rc: 2`; `tools/pace-snapshot.mjs` saves a sprint or race again if its copy lacks it). The two lap
+  plots (lines, dots) use them; the table, best-vs-ideal plot and top speeds use every lap. **Include slow laps, Show outliers and Reset outliers are
+  on both lap plots and kept in step; the tyre key (soft, medium, hard…) comes first on both.**
+- **Lap times (lines):** site team colours, a team's second driver dashed, dots coloured by tyre compound, a driver's line **breaks where the compound
+  changes** and otherwise joins the laps in order past hidden in/out laps; faster is lower. **Only the Sprint and the Race use lap number on x; every other
+  session (practice, qualifying, sprint qualifying) uses minutes into the session** (drivers' lap numbers don't line up there), with, in the two qualifying
+  sessions, a dashed line between the parts and Q1/Q2/Q3 (SQ1…) named, from OpenF1's race control "SESSION STARTED/FINISHED" messages (`F1OpenF1.qualiSegments`; a red flag inside a part doesn't start a new one).
+  **Hover** (or tap) shows a tooltip with every driver's time at that lap, fastest first (in qualifying the lap nearest the moment, within 45 s), and a
+  vertical guide. **Click a line, a dot or a legend name** to follow that driver (the others fade to 16%, also on the dot plot); click it again or the empty
+  chart to let go.
+- **Outliers:** right-click a dot (long-press on a phone) on either lap plot to mark that lap as an outlier; it leaves the line and the box and is drawn
+  as a faded cross while **Show outliers** is on (hidden, both plots' axes fit the laps that are left); right-click it again to unmark; **Reset outliers (n)** clears. Kept per session in localStorage
+  (`f1cache:paceOutliers`, the latest 30 sessions); outliers affect only the two lap plots.
+- **Lap time distribution:** a dot plot, a row per driver (in the shared sort), a dot per lap filled with its tyre compound and ringed in the team
+  colour (laps within 0.05 s fan out vertically; rows in the shared sort); the **Box plot** checkbox (on by default, at the right of the options line) overlays, in front of the dots, the quartiles, median and quickest/slowest whiskers
+  (no violins).
+- **Best sectors table, then the best lap vs ideal lap plot:** the two share one **Sort by** (best lap, ideal lap, gap to ideal; kept in step). The table has
+  session-best cells in purple, gap = best − ideal (never negative). The plot: lap time on x, a row per driver in the table's order, a filled best-lap dot and
+  a hollow ideal-lap dot joined by a line, each dot labelled with its time (best to its right, ideal to its left; sorted by the gap, one gap label to the
+  right of the best-lap dot); no tooltip. **Laps marked as outliers are left out of both** (and each has Reset outliers (n)).
+- **Top speed:** bars at the speed trap or intermediate 1/2, **mph by default (to the nearest 0.1; OpenF1 gives whole km/h)** or kph; kept in
+  `f1cache:speedUnit` and the link. PNG and CSV on every card.
+- **Not built yet:** tyre use against allocation (#187; OpenF1 has no set allocation).
+- Tests: `53-openf1` (the pure helpers, in Node), `54-pace` (the page; the harness's `openf1` option serves `lib/openf1-fixture.js`, whose
+  weekends are rounds 11–13 of the fake season, whose drivers have the fake f1api.dev drivers' codes and whose qualifying has race control messages) and
+  `55-upcoming-round` (the option), `56-pace-snapshot` (the saved-copy tool: which sessions are saved and when, never twice, the live 401, 429, failures,
+  sessions without laps) and, in `54-pace`, the saved copies, the closed API, older cached answers and the request spacing (harness options `pace`,
+  `spacing` and `openf1.live` / `openf1.rate`).
+
 ## Design requirements (owner-approved — keep these)
 
 - Site name: **F1 Data Explorer**. Page headings: Drivers' Championship, Constructors' Championship, Race
@@ -785,6 +865,9 @@ since fonts render differently on different machines.
   never serves the real `site/data/*.json`: tests pass `snapshots` built from the fake season. The fixture's names mix country names and demonyms, with
   one unknown. Logic is checked against
   independent calculations written in the tests, not against the site's own helpers.
+- `53-openf1` / `54-pace` / `55-upcoming-round` (#186; the harness's `openf1` option answers api.openf1.org from `lib/openf1-fixture.js`: sessions grouped
+  into weekends, a round's weekend, joins, pace laps, sectors and the ideal lap, the page's views, shared pickers and colours, carry-over of season,
+  round and picks, link, cache, Refresh, empty and failing sessions, the slider's `upcoming` option, themes, phone width).
 - `40-eras` (#135; the harness's `eras` option serves a small fake `eras.json`; the lineage map, era table, model, picker, presets,
   link keys, chart data and tooltips, CSV, themes, phone width, load failure) and `41-eras-snapshot` (a fake Jolpica: 404 before
   1958, "not ranked" rows, 429 retry, updates fetching only the open seasons, failures leaving the file alone).

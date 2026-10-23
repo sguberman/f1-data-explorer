@@ -1,0 +1,61 @@
+# #186: save finished practice, qualifying, sprint and race sessions from OpenF1 (site/data/pace/), commit them if anything
+# changed, and redeploy the site. OpenF1 closes its API to everyone without an account while an F1 session is live, even for
+# past sessions; the Weekend Pace page reads these files instead, so a finished session is there during the next live one.
+# A run while a session is live finds the API closed, saves nothing and ends; the next run tries again.
+name: Save weekend pace data
+
+on:
+  schedule:
+    - cron: "*/20 * * * 5,6,0,1"   # every 20 minutes Friday to Monday (UTC): sessions end and OpenF1 reopens
+    - cron: "37 6 * * *"           # every day: the sessions list
+  workflow_dispatch:
+    inputs:
+      all:
+        description: "Save every year since 2023, not just this one"
+        type: boolean
+        default: false
+  # also when the tool or the data code changes, so a branch's preview gets the files
+  push:
+    paths:
+      - "tools/pace-snapshot.mjs"
+      - "site/openf1.js"
+      - ".github/workflows/pace.yml"
+
+permissions:
+  contents: write   # commit the data files
+  actions: write    # start the Pages deploy (commits made by this workflow don't trigger it on their own)
+
+concurrency:
+  group: pace-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Save the sessions
+        run: node tools/pace-snapshot.mjs ${{ github.event.inputs.all == 'true' && '--all' || '' }}
+      - name: Commit if changed
+        id: commit
+        run: |
+          if git diff --quiet -- site/data/pace && [ -z "$(git ls-files --others --exclude-standard site/data/pace)" ]; then
+            echo "No data changes."; echo "changed=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add site/data/pace
+          git commit -m "issue #186: save weekend pace data (automated)"
+          git pull --rebase --autostash origin "$GITHUB_REF_NAME"
+          git push
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+      - name: Redeploy the site
+        if: steps.commit.outputs.changed == 'true' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run static.yml --ref main

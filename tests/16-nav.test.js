@@ -7,7 +7,7 @@ module.exports = async (t, h) => {
   const full = await buildSnapshot(2026, fakeFetch, Date.now());
   const snapshots = { 2026: full, 2025: { ...full, year: 2025, complete: true } };
   const PAGES = { drivers:"Drivers' Championship", constructors:"Constructors' Championship", whatif:'What-If Results',
-    position:'Race Finishing Positions', simulator:'Title Simulator' }; // #107: the homepage's card order
+    position:'Race Finishing Positions', simulator:'Title Simulator', pace:'Weekend Pace' }; // #107: the homepage's card order
   const ALL = { eras:'Eras', ...PAGES }; // #135: the Eras page reads its own file and has no season controls; #142: first, like the homepage's cards
 
   for(const [name, title] of Object.entries(PAGES)){
@@ -20,7 +20,7 @@ module.exports = async (t, h) => {
     }));
     t.check(`${name}: link home`, nav.home === 'index.html', nav.home);
     t.check(`${name}: Pages menu names the current page`, nav.label === title, nav.label);
-    t.check(`${name}: menu lists all six pages, current one marked`,
+    t.check(`${name}: menu lists all seven pages, current one marked`,
       JSON.stringify(nav.links.map(l => l[0])) === JSON.stringify(Object.keys(ALL).map(n => n + '.html')) &&
       nav.links.filter(l => l[2] === 'page').map(l => l[0]).join() === name + '.html', JSON.stringify(nav.links));
     t.check(`${name}: menu starts closed`, nav.hidden === true);

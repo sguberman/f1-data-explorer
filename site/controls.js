@@ -8,6 +8,24 @@ const F1Controls = (() => {
   const YEARS = F1Common.YEARS; // newest first — add a season by adding its row to F1Common.SEASON_META
 
   let state = { year:null, round:null, maxRound:null, seasonRounds:[] };
+  let options = {}; // mount() options: upcoming (#186)
+
+  // #186: the Weekend Pace page also needs the race weekend that is on now, before its Grand Prix has any results. With
+  // `upcoming`, each calendar round after the loaded ones whose weekend has begun (its race date is within 4 days) is added
+  // as a round with no results ({upcoming:true}); the slider then reaches it. Nothing is fetched beyond the calendar.
+  const WEEKEND_DAYS = 4;
+  async function withUpcoming(year, rounds){
+    let cal = null;
+    try{ cal = await F1Data.getCalendar(year, {dates:true}); }catch(e){}
+    if(!cal || !cal.raceDates) return rounds;
+    const out = rounds.slice();
+    for(let r = out.length + 1; r <= cal.totalRounds; r++){
+      const date = cal.raceDates[r];
+      if(!date || Date.now() < Date.parse(date + 'T00:00:00Z') - WEEKEND_DAYS*864e5) break;
+      out.push({ round:r, raceName:cal.raceNames[r] || ('Round '+r), country:cal.countries && cal.countries[r], raceResults:[], sprintResults:null, upcoming:true });
+    }
+    return out;
+  }
 
   // "Round 5 of 12 — [flag] Miami Grand Prix" (#18: the circuit country's flag before the race name).
   function roundLabelHTML(round){
@@ -72,9 +90,12 @@ const F1Controls = (() => {
     errorEl.hidden = true; refreshBtn.disabled = true;
     fetchedAt = null; container.querySelector('.f1c-age').hidden = true;
     statusEl.textContent = `Loading ${year} season…`;
-    const { rounds, failed, fetchedAt: newest } = await F1Data.loadSeason(year, { fresh,
+    const loaded = await F1Data.loadSeason(year, { fresh,
       onProgress:(round)=>{ if(token===loadToken) statusEl.textContent = `Loading ${year} season… round ${round}`; }
     });
+    const { failed, fetchedAt: newest } = loaded;
+    const withResults = loaded.rounds.length;
+    const rounds = options.upcoming ? await withUpcoming(year, loaded.rounds) : loaded.rounds;
     if(token!==loadToken) return; // superseded by a newer load
     root.classList.remove('f1-loading');
     refreshBtn.disabled = false;
@@ -99,7 +120,7 @@ const F1Controls = (() => {
     slider.max = state.maxRound || 1;
     slider.value = state.round || 1;
     container.querySelector('.f1c-roundlabel').innerHTML = roundLabelHTML(state.round);
-    loadedMsg = state.maxRound ? `${state.maxRound} rounds loaded` : (failed ? 'No rounds loaded' : `Couldn't find any results for ${year}.`);
+    loadedMsg = state.maxRound ? `${withResults} rounds loaded${rounds.length > withResults ? ` · race weekend of round ${rounds.length}` : ''}` : (failed ? 'No rounds loaded' : `Couldn't find any results for ${year}.`);
     renderStatus(container);
     emit();
   }
@@ -116,6 +137,7 @@ const F1Controls = (() => {
   }
 
   function mount(containerId, opts={}){
+    options = opts;
     const container = document.getElementById(containerId);
     // #62: the season chosen on any page wins, so moving between pages keeps it; otherwise the newest season.
     const savedYear = (()=>{ try{ const y = +localStorage.getItem(SEASON_KEY); return YEARS.includes(y) ? y : null; }catch(e){ return null; } })();

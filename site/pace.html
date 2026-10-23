@@ -1,0 +1,817 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Weekend Pace · F1 Data Explorer</title>
+<link rel="icon" href="favicon.ico" sizes="48x48">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="stylesheet" href="theme.css">
+<script src="theme.js"></script>
+<script src="nav.js"></script>
+<script src="common.js"></script>
+<script src="data.js"></script>
+<script src="openf1.js"></script>
+<script src="share.js"></script>
+<script src="export.js"></script>
+<script src="controls.js"></script>
+<style>
+:root,:root[data-theme="light"]{--pb:#8e24aa;}
+:root[data-theme="dark"]{--pb:#ce93d8;}
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;padding:24px 16px 40px;}
+.wrap{max-width:820px;margin:0 auto;}
+h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
+.sub{font-size:12.5px;color:var(--sub);margin:0 0 16px;}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:16px;}
+.note{font-size:11.5px;color:var(--sub);line-height:1.5;margin-top:10px;}
+.paceStatus{font-size:12px;color:var(--sub);margin:10px 0 0;}
+.paceStatus.err{color:var(--elim);}
+.paceHead{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:10px;}
+.cardTitle{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px;margin:0 0 10px;}
+.cardTitle b{font-size:13px;font-weight:600;color:var(--ink);}
+.cardTitle span{font-size:12px;color:var(--sub);}
+.sessChips{display:flex;flex-wrap:wrap;align-items:center;gap:6px;}
+.sessBtn{background:var(--inset);color:var(--ink2);border:1px solid var(--line);border-radius:6px;padding:5px 11px;font:inherit;font-size:12px;cursor:pointer;}
+.sessBtn:hover:not(:disabled){border-color:var(--ink2);}
+.sessBtn:focus-visible{outline:2px solid var(--line-strong);outline-offset:2px;}
+.sessBtn.on{background:var(--ink);color:var(--on-ink);border-color:var(--ink);}
+.sessBtn:disabled{opacity:.45;cursor:default;}
+.paceChartBox{position:relative;width:100%;}
+.paceLegend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--ink2);margin:0 0 10px;}
+.paceLegend .lgItem{display:inline-flex;align-items:center;gap:6px;}
+.paceLegend span.lgItem{cursor:default;}
+.paceLegend i{display:inline-block;width:20px;height:0;border-top:3px solid var(--c);}
+.paceLegend i.dash{border-top-style:dashed;}
+.paceLegend .tyre{display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--c);border:1px solid var(--line-strong);}
+.paceTip{position:absolute;z-index:10;pointer-events:none;background:var(--panel);color:var(--ink);border:1px solid var(--line-strong);border-radius:8px;
+  box-shadow:0 4px 14px var(--shadow);padding:6px 9px;font-size:12px;line-height:1.5;white-space:nowrap;}
+.paceTip[hidden]{display:none;}
+.paceTip .tipHead{color:var(--sub);margin-bottom:2px;}
+.paceTip .tipRow{display:flex;align-items:center;gap:6px;font-variant-numeric:tabular-nums;}
+.paceTip .tipDot{width:8px;height:8px;border-radius:50%;flex:none;}
+.paceTip .tipTime{font-weight:600;margin-left:auto;padding-left:10px;}
+.paceTip .tipSub{color:var(--sub);}
+.paceLegend .lgItem{background:none;border:none;font:inherit;color:inherit;padding:2px 0;cursor:pointer;border-radius:4px;}
+.paceLegend .lgItem:focus-visible{outline:2px solid var(--line-strong);outline-offset:2px;}
+.paceLegend .lgItem.dim{opacity:.4;}
+.paceLegend .lgItem.on{font-weight:600;color:var(--ink);}
+.paceLegend .tyre{cursor:default;}
+.sortCtl{display:inline-flex;align-items:center;gap:6px;}
+.sortLbl{font-size:12px;color:var(--sub);}
+.sortLock{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;padding:0;background:var(--inset);color:var(--ink2);border:1px solid var(--line);border-radius:6px;cursor:pointer;}
+.sortLock:hover{border-color:var(--ink2);}
+.sortLock:focus-visible{outline:2px solid var(--line-strong);outline-offset:2px;}
+.sortLock[aria-pressed="true"]{background:var(--ink);color:var(--on-ink);border-color:var(--ink);}
+.sortLock svg{width:14px;height:14px;}
+.pickerCollapsed .sortLock.pickerSort{display:none;}
+.plotOpts{display:flex;flex-wrap:wrap;align-items:center;gap:6px 16px;margin:0 0 10px;}
+.dumbKey .dumbDot{display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--sub);border:2px solid var(--sub);}
+.dumbKey .dumbDot.hollow{background:var(--panel);}
+.paceEmpty{font-size:12.5px;color:var(--sub);display:none;margin-top:8px;}
+.paceTable{width:100%;border-collapse:collapse;font-size:12.5px;font-variant-numeric:tabular-nums;}
+.paceTable th{font-size:11.5px;font-weight:600;color:var(--sub);text-align:right;padding:4px 8px;border-bottom:1px solid var(--line);white-space:nowrap;}
+.paceTable td{text-align:right;padding:5px 8px;border-bottom:1px solid var(--line);white-space:nowrap;}
+.paceTable th:first-child,.paceTable td:first-child{text-align:left;padding-left:2px;}
+.paceTable td.who{font-weight:600;}
+.paceTable td.best{color:var(--pb);font-weight:700;}
+.paceTable .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;vertical-align:baseline;}
+.tableScroll{overflow-x:auto;}
+.sideBySide{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;}
+@media (max-width:600px){ .paceTable{font-size:10.5px;} .paceTable th{font-size:10.5px;} .paceTable th,.paceTable td{padding:5px 3px;} .paceTable .dot{margin-right:4px;} }
+</style>
+</head>
+<body>
+<div class="wrap">
+<div class="theme-bar"><nav id="siteNav" class="site-nav" aria-label="Site"></nav><div id="themeToggle"></div></div>
+<h1>Weekend Pace</h1>
+<p class="sub">Practice, sprint, qualifying and Grand Prix lap times, sectors, top speeds and tyres for a race weekend, from OpenF1. Move the slider to the round, pick the drivers to compare, then a session. The numbers are there soon after each session ends.</p>
+<div id="f1controls" class="f1c"></div>
+
+<div class="card" id="pickCard">
+<div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:10px;">
+ <button type="button" class="pickerToggle" id="pickerToggle" aria-expanded="true" aria-controls="pacePicker" title="Show or hide the list"><span class="chev" aria-hidden="true">▾</span><span id="pickerLabel">Drivers shown</span></button><span id="pickerSummary" class="pickerSummary"></span>
+ <span style="flex:1;"></span>
+ <span class="pickerSort" style="font-size:12px;color:var(--sub);">Sort by</span>
+ <select class="ddSelect pickerSort sortSeg" aria-label="Sort the list and the lap plots"></select>
+ <button type="button" class="sortLock pickerSort" aria-pressed="false"></button>
+</div>
+<div class="btnrow" id="presetRow" style="margin-bottom:10px;"></div>
+<div id="pacePicker" class="f1-skel"></div>
+</div>
+
+<div class="card" id="sessionCard">
+<div class="paceHead" style="margin-bottom:0;">
+ <div class="sessChips" id="sessChips" role="group" aria-label="Session"></div>
+ <span style="flex:1;"></span>
+ <button type="button" class="f1c-link" id="refreshSession" title="Fetch this session from OpenF1 again" hidden>Refresh session</button>
+</div>
+<div class="paceStatus" id="paceStatus">Loading the season…</div>
+</div>
+
+<div class="card" id="lapCard">
+<div class="cardTitle"><b>Lap times</b><span id="lapSub"></span></div>
+<div class="plotOpts">
+ <span class="sortCtl"><span class="sortLbl">Sort by</span><select class="ddSelect sortSeg" aria-label="Sort the drivers on this plot, the list and the other lap plot"></select><button type="button" class="sortLock" aria-pressed="false"></button></span>
+ <label class="optCheck" title="Laps more than 107% of the session's best, such as cool-down laps and laps lost to traffic or a spin, and laps under the safety car or a virtual safety car"><input type="checkbox" class="slowChk"> Include slow laps</label>
+ <label class="optCheck" title="Laps you marked as outliers (right-click a dot) are drawn faded; untick to hide them"><input type="checkbox" class="outChk"> Show outliers</label>
+ <button type="button" class="f1c-link resetOut" hidden>Reset outliers</button>
+</div>
+<div class="paceLegend" id="lapLegend"></div>
+<div class="paceChartBox" id="lapWrap" style="height:380px;"><canvas id="lapCanvas" role="img" aria-label="Lap time of every lap for the picked drivers, with the tyre compound marked"></canvas><div class="paceTip" id="lapTip" hidden></div></div>
+<div class="paceEmpty" id="lapEmpty">Nothing to show.</div>
+<div class="note" id="lapNote"></div>
+</div>
+
+<div class="card" id="dotCard">
+<div class="cardTitle"><b>Lap time distribution</b><span id="dotSub"></span></div>
+<div class="plotOpts">
+ <span class="sortCtl"><span class="sortLbl">Sort by</span><select class="ddSelect sortSeg" aria-label="Sort the drivers on this plot, the list and the other lap plot"></select><button type="button" class="sortLock" aria-pressed="false"></button></span>
+ <label class="optCheck"><input type="checkbox" class="slowChk"> Include slow laps</label>
+ <label class="optCheck"><input type="checkbox" class="outChk"> Show outliers</label>
+ <button type="button" class="f1c-link resetOut" hidden>Reset outliers</button>
+ <label class="optCheck" style="margin-left:auto;" title="Draw each driver's quartiles, median and range over the dots"><input type="checkbox" id="boxChk"> Box plot</label>
+</div>
+<div class="paceLegend" id="dotLegend"></div>
+<div class="paceChartBox" id="dotWrap"><canvas id="dotCanvas" role="img" aria-label="Every lap time of each picked driver as a dot coloured by tyre compound, with an optional box plot"></canvas><div class="paceTip" id="dotTip" hidden></div></div>
+<div class="paceEmpty" id="dotEmpty">Nothing to show.</div>
+<div class="note" id="dotNote"></div>
+</div>
+
+<div class="card" id="sectorCard">
+<div class="cardTitle"><b>Best sectors and ideal lap</b><span id="sectorSub"></span></div>
+<div class="paceHead">
+ <span style="font-size:12px;color:var(--sub);">Sort by</span>
+ <select class="ddSelect tsortSel" aria-label="Sort the table and the plot below it">
+  <option value="best">Best lap</option>
+  <option value="ideal">Ideal lap</option>
+  <option value="gap">Gap to ideal</option>
+ </select>
+ <button type="button" class="f1c-link resetOut" hidden>Reset outliers</button>
+</div>
+<div class="tableScroll"><table class="paceTable" id="sectorTable"></table></div>
+<div class="paceEmpty" id="sectorEmpty">Nothing to show.</div>
+<div class="note" id="sectorNote"></div>
+</div>
+
+<div class="card" id="dumbCard">
+<div class="cardTitle"><b>Best lap vs ideal lap</b><span id="dumbSub"></span></div>
+<div class="paceHead">
+ <span style="font-size:12px;color:var(--sub);">Sort by</span>
+ <select class="ddSelect tsortSel" aria-label="Sort the plot and the table above it">
+  <option value="best">Best lap</option>
+  <option value="ideal">Ideal lap</option>
+  <option value="gap">Gap to ideal</option>
+ </select>
+ <button type="button" class="f1c-link resetOut" hidden>Reset outliers</button>
+</div>
+<div class="paceChartBox" id="dumbWrap"><canvas id="dumbCanvas" role="img" aria-label="Best lap and ideal lap of each picked driver, joined by a line and labelled with the times"></canvas></div>
+<div class="paceEmpty" id="dumbEmpty">Nothing to show.</div>
+<div class="ridgeKey dumbKey" id="dumbKey"></div>
+<div class="note" id="dumbNote"></div>
+</div>
+
+<div class="card" id="speedCard">
+<div class="cardTitle"><b>Top speed</b><span id="speedSub"></span></div>
+<div class="paceHead">
+ <span style="font-size:12px;color:var(--sub);">Measured at</span>
+ <select id="speedSel" class="ddSelect" aria-label="Where the speed is measured">
+  <option value="st">Speed trap</option>
+  <option value="i1">Intermediate 1</option>
+  <option value="i2">Intermediate 2</option>
+ </select>
+ <span style="flex:1;"></span>
+ <div class="btnrow" id="unitRow" role="group" aria-label="Speed unit">
+  <button type="button" class="pill" data-unit="mph">mph</button>
+  <button type="button" class="pill" data-unit="kph">kph</button>
+ </div>
+</div>
+<div class="paceChartBox" id="speedWrap"><canvas id="speedCanvas" role="img" aria-label="Top speed of each picked driver"></canvas></div>
+<div class="paceEmpty" id="speedEmpty">Nothing to show.</div>
+<div class="note" id="speedNote">OpenF1 gives each speed in whole kph (km/h); mph is converted to the nearest 0.1. Each speed is read at one point on the lap, so it depends on the fuel load and engine mode of that run, not only on the car.</div>
+</div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+const ff = getComputedStyle(document.body).fontFamily;
+const $ = id => document.getElementById(id);
+const esc = t => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+const O = F1OpenF1;
+const FIRST_YEAR = 2023; // OpenF1's first season
+const TYRES = { SOFT: '#e53935', MEDIUM: '#fbc02d', HARD: '#eceff1', INTERMEDIATE: '#43a047', WET: '#1e88e5' };
+const TYRE_ORDER = ['SOFT', 'MEDIUM', 'HARD', 'INTERMEDIATE', 'WET']; // the order of the tyre keys on both plots
+const tyreKeyHTML = compounds => TYRE_ORDER.filter(c => compounds.includes(c)).map(c => `<span class="lgItem"><span class="tyre" style="--c:${TYRES[c]}"></span>${c.charAt(0) + c.slice(1).toLowerCase()}</span>`).join('');
+const DASH = [6, 4]; // a team's second driver
+const UNIT_KEY = 'f1cache:speedUnit', OUT_KEY = 'f1cache:paceOutliers';
+const DIM = 0.16; // how faint the drivers that are not followed become
+
+// the season and round come from F1Controls (the slider's last, upcoming round is this weekend: upcoming:true)
+let year = null, calendar = null, seasonRounds = [], resultRounds = [], round = 0, fresh = false;
+let weekends = [], weekend = null, session = null, model = null, loadedAt = 0, token = 0, linkSession = null;
+let slow = false, showOut = true, boxplot = true, speedKind = 'st', unit = 'mph', tableSort = 'best';
+let sortKey = 'fast', sortLocked = false, linkSortKey = null, results = {}, resultsCache = {}; // the driver sort of the list and both lap plots; locked = it stays when the session changes
+try{ if(['kph', 'kmh'].includes(localStorage.getItem(UNIT_KEY))) unit = 'kph'; }catch(e){}
+let selected = null; // site driver ids; null = the default (follows the standings)
+let pinned = null; // the driver code being followed on the lap plots (the others are dimmed)
+let outliers = new Set(); // laps marked as outliers in this session: 'driverNumber:lapNumber'
+let lapChart = null, dotChart = null, dumbChart = null, speedChart = null, dotRows = [];
+let notice = '', retryTimer = null; // a line about where the data came from; a retry set for when a live session ends
+
+const status = (text, err) => { const s = $('paceStatus'); s.className = 'paceStatus' + (err ? ' err' : ''); s.innerHTML = text; };
+const color = c => F1Theme.team(c);
+const resultsThrough = () => resultRounds.filter(r => r.round <= round).length; // rounds with results up to the slider's round
+const isOut = l => outliers.has(l.d + ':' + l.n);
+
+// ---- outliers are remembered per session ----
+function loadOutliers(){
+  outliers = new Set();
+  try{ outliers = new Set((JSON.parse(localStorage.getItem(OUT_KEY)) || {})[session.key] || []); }catch(e){}
+}
+function saveOutliers(){
+  try{
+    const all = JSON.parse(localStorage.getItem(OUT_KEY)) || {};
+    if(outliers.size) all[session.key] = [...outliers]; else delete all[session.key];
+    const keys = Object.keys(all); keys.slice(0, Math.max(0, keys.length - 30)).forEach(k => delete all[k]); // keep the latest 30 sessions
+    localStorage.setItem(OUT_KEY, JSON.stringify(all));
+  }catch(e){}
+}
+function toggleOutlier(d, n){
+  const k = d + ':' + n;
+  if(outliers.has(k)) outliers.delete(k); else outliers.add(k);
+  saveOutliers(); render();
+}
+
+// ---- state in the URL: the season and round are F1Controls' (F1Share), the rest is registered here ----
+const defaultSessionShort = () => weekend ? O.defaultSession(weekend, Date.now()).short : null;
+F1Share.register(() => ({
+  session: session && session.short !== defaultSessionShort() ? session.short : null,
+  d: selected ? selected.join(',') : null,
+  sort: session && sortKey !== defaultSort(session) ? sortKey : null,
+  lock: sortLocked ? '1' : null,
+  slow: slow ? '1' : null,
+  out: showOut ? null : '0',
+  box: boxplot ? null : '0',
+  speed: speedKind === 'st' ? null : speedKind,
+  unit: unit === 'mph' ? null : unit,
+  tsort: tableSort === 'best' ? null : tableSort,
+}));
+
+// ---- the sort of the driver list and both lap plots ----
+const SORTS = [['team', 'Team'], ['rank', 'Ranking'], ['fast', 'Fastest Lap'], ['median', 'Median Lap'], ['gp', 'GP Result'], ['sprint', 'Sprint Result'], ['quali', 'Quali Result'], ['sprintquali', 'Sprint Quali Result']];
+const sortAvailable = k => !O.RESULT_KINDS[k] || !!results[k]; // a result sort needs that session to have finished
+// the session's own sort: the fastest lap in practice, the session's result in qualifying, the sprint and the race
+const defaultSort = s => { const k = O.resultKind(s.name); return k && results[k] ? k : 'fast'; };
+const LOCK_ICON = { off: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 7.6-1.6"/></svg>',
+  on: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>' };
+async function ensureResults(fresh){ // the weekend's classifications, once per weekend
+  if(!weekend) return;
+  if(fresh || !resultsCache[weekend.key]) resultsCache[weekend.key] = await O.results(weekend, { fresh });
+  results = resultsCache[weekend.key];
+}
+// Unlocked, the sort goes back to the session's own whenever the session changes; locked, it stays (unless it is no longer possible).
+function chooseSort(s){
+  if(linkSortKey){ const k = linkSortKey; linkSortKey = null; if(SORTS.some(x => x[0] === k) && sortAvailable(k)){ sortKey = k; return; } }
+  if(!sortLocked || !sortAvailable(sortKey)) sortKey = defaultSort(s);
+}
+
+// ---- OpenF1 closed for a live session ----
+const clock = ms => new Date(ms).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+// OpenF1 answers nobody without an account while an F1 session is live (finished sessions are read from saved copies, data/pace/, when there are some).
+const closedText = until => `OpenF1 is closed to the public while a session is live${until ? ` (until about ${clock(until)})` : ''}`;
+function retryWhenOver(until, again){ // try again just after the live session ends, if the page is still showing the failure
+  clearTimeout(retryTimer); const wait = until ? until - Date.now() + 60e3 : 0;
+  if(wait > 0 && wait < 4 * 3600e3) retryTimer = setTimeout(again, wait);
+}
+
+// ---- season and round ----
+async function onSelection(detail){
+  const my = ++token; clearTimeout(retryTimer); notice = '';
+  year = detail.year; seasonRounds = detail.seasonRounds; resultRounds = seasonRounds.filter(r => !r.upcoming); round = detail.round; fresh = !!detail.fresh;
+  weekends = []; weekend = null; session = null; model = null; results = {}; resultsCache = {};
+  const link = F1Share.take(); // a shared link's setup, first season only
+  const valid = Object.keys(F1Data.cumulative(resultRounds, resultRounds.length).drivers);
+  const saved = F1Common.loadPickerSelection('drivers', year, valid); // remembered between pages (#104), or from the link
+  selected = saved && saved.length ? saved : null;
+  if(link){
+    const ids = F1Share.ids(link.get('d'), valid); if(ids) selected = ids;
+    linkSortKey = link.get('sort'); sortLocked = link.get('lock') === '1';
+    slow = link.get('slow') === '1'; showOut = link.get('out') !== '0'; boxplot = link.get('box') !== '0';
+    if(['st', 'i1', 'i2'].includes(link.get('speed'))) speedKind = link.get('speed');
+    if(link.get('unit') === 'mph' || link.get('unit') === 'kph' || link.get('unit') === 'kmh') unit = link.get('unit') === 'mph' ? 'mph' : 'kph';
+    if(['best', 'ideal', 'gap'].includes(link.get('tsort'))) tableSort = link.get('tsort');
+    linkSession = link.get('session');
+    syncControls();
+  }
+  try{ calendar = await F1Data.getCalendar(year, { dates: true }); }catch(e){ calendar = null; }
+  if(my !== token) return;
+  if(year < FIRST_YEAR){ render(); status(`OpenF1 has lap data from ${FIRST_YEAR} on, so there is nothing to show for ${year}.`, true); return; }
+  status('Loading the sessions…');
+  try{
+    const r = await O.sessions(year, { fresh }); weekends = r.list;
+    if(r.source === 'stale') notice = 'an older saved list of the sessions' + (r.blocked ? '; ' + closedText(O.liveUntil(weekends)) : '');
+  }catch(e){
+    if(my !== token) return;
+    const again = () => onSelection({ year, seasonRounds, round, fresh: true });
+    render(); status(e.live ? `${closedText(null)}, and this season’s sessions are not saved here yet. <button type="button" class="f1c-link" id="retry">Retry</button>` : 'Couldn’t load the sessions from OpenF1. <button type="button" class="f1c-link" id="retry">Retry</button>', true);
+    $('retry').addEventListener('click', again);
+    if(e.live) retryTimer = setTimeout(again, 20 * 60e3);
+    return;
+  }
+  if(my !== token) return;
+  showRound(round);
+  if(link) F1Share.sync();
+}
+function showRound(r){
+  round = r; weekend = O.weekendForRound(weekends, calendar, r);
+  $('sessChips').innerHTML = '';
+  if(!weekend){ model = null; session = null; render(); status(`OpenF1 has no sessions for round ${r}.`, true); return; }
+  const now = Date.now();
+  $('sessChips').innerHTML = weekend.sessions.map(x =>
+    `<button type="button" class="sessBtn" data-key="${x.key}" title="${esc(x.name)}"${Date.parse(x.start) > now ? ' disabled' : ''}>${esc(x.short)}</button>`).join('');
+  const want = weekend.sessions.find(s => s.short === linkSession && Date.parse(s.start) <= now); linkSession = null;
+  loadSession(want || O.defaultSession(weekend, now), fresh, want ? '' : 'auto');
+}
+// mode 'auto': the page chose the session (not you): if OpenF1 is closed for a live session, the latest finished session of the weekend that has a
+// saved copy is shown instead (mode 'fallback', which does not try again). Any other mode is your choice.
+async function loadSession(s, fresh, mode = ''){
+  const my = ++token; clearTimeout(retryTimer); session = s; model = null; pinned = null; if(!mode) notice = '';
+  [...$('sessChips').children].forEach(b => { const on = +b.dataset.key === s.key; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); });
+  $('refreshSession').hidden = false;
+  loadOutliers();
+  status(`Loading ${esc(s.name)}…`);
+  try{
+    model = await O.load(s, { fresh }); loadedAt = model.at;
+    resolve(model);
+    await ensureResults(fresh); if(my !== token) return;
+    chooseSort(s);
+  }catch(e){
+    if(my !== token) return;
+    model = null;
+    const until = e.live ? O.liveUntil(weekends) : null, now = Date.now();
+    let done = null; // the latest finished session with a saved copy
+    if(mode === 'auto' && e.live) for(const x of weekend.sessions.filter(x => x.key !== s.key && Date.parse(x.end) <= now).reverse()){ if(await O.hasSaved(x)){ done = x; break; } }
+    if(my !== token) return;
+    if(done){ notice = `${s.name} is live: ${closedText(until)}; showing ${done.name}`; return loadSession(done, false, 'fallback'); }
+    render();
+    const again = () => loadSession(s, true);
+    status(e.live ? `${closedText(until)}, and ${esc(s.name)} is not saved here yet. <button type="button" class="f1c-link" id="retry">Retry</button>` : 'Couldn’t load this session from OpenF1. <button type="button" class="f1c-link" id="retry">Retry</button>', true);
+    $('retry').addEventListener('click', again);
+    if(e.live) retryWhenOver(until, again);
+    return;
+  }
+  if(my !== token) return;
+  if(model.source === 'stale') notice = `an older saved copy${model.blocked ? '; ' + closedText(O.liveUntil(weekends)) : ''}`;
+  render();
+}
+
+// Gives each OpenF1 driver the site's own id, name, team and team colour, found by the driver's code in the season's results; a driver
+// who has not raced (a reserve in practice) stays as OpenF1 has them, in OpenF1's colour.
+function resolve(m){
+  const cum = F1Data.cumulative(resultRounds, resultRounds.length), byCode = {};
+  Object.values(cum.drivers).forEach(d => { byCode[d.code] = d; });
+  m.drivers.forEach(d => {
+    const s = byCode[d.code];
+    if(s){ Object.assign(d, { id: s.driverId, name: s.name, teamId: s.teamId, teamName: s.teamName, teamLabel: F1Common.shortTeamName(s.teamId, s.teamName), color: F1Common.teamColor(s.teamId), site: true }); }
+    else Object.assign(d, { id: 'of1:' + d.code, teamId: 'of1:' + d.team, teamName: d.team, teamLabel: d.team, site: false });
+  });
+}
+
+// ---- what's picked ----
+const roster = () => model ? O.entities(model, 'drivers') : [];
+function standings(){ return resultsThrough() ? F1Common.standingsOrder(resultRounds, resultsThrough(), 'drivers') : []; }
+function sets(ents){
+  const L = resultsThrough(), ids = new Set(ents.map(e => e.id)), keep = a => a.filter(id => ids.has(id)), st = standings();
+  const ranked = [...keep(st), ...ents.map(e => e.id).filter(id => !st.includes(id))]; // then whoever has no ranking yet, fastest first
+  const comp = L ? F1Common.presetSets(resultRounds, L, 'drivers', { year, calendar }) : { top4: [], rest: [], contention: [] };
+  return { all: ents.map(e => e.id), none: [], 5: ranked.slice(0, 5), 10: ranked.slice(0, 10), top4: keep(comp.top4), rest: keep(comp.rest), contention: keep(comp.contention),
+    fast5: ents.slice(0, 5).map(e => e.id), fast10: ents.slice(0, 10).map(e => e.id), ranked };
+}
+function defaultIds(ents){
+  const s = sets(ents), d = F1Common.defaultSelection(s, s.ranked);
+  return d.length ? d : s.fast5;
+}
+const pickedIds = ents => selected || defaultIds(ents);
+function setPicked(ids, ents){
+  selected = F1Share.sameSet(ids, defaultIds(ents)) ? null : ids;
+  const real = a => a.filter(id => !String(id).startsWith('of1:'));
+  F1Common.savePickerSelection('drivers', year, real(ids), real(defaultIds(ents)));
+  render();
+}
+
+const PRESETS = [['all', 'All'], ['none', 'None'], ['5', 'Top 5'], ['10', 'Top 10'], ['top4', 'Top 4 teams', 'The drivers of the top 4 teams in the constructors’ standings'],
+  ['rest', 'Best of the rest', 'Everyone outside the top 4 teams'], ['contention', 'Title contention', 'The leader and everyone who can still win the title'],
+  ['fast5', 'Fastest 5', 'The five quickest in this session'], ['fast10', 'Fastest 10', 'The ten quickest in this session']];
+function renderPresets(ents, picked){
+  $('presetRow').innerHTML = PRESETS.map(([k, label, title]) => `<button type="button" class="pill" data-preset="${k}"${title ? ` title="${esc(title)}"` : ''}>${label}</button>`).join('');
+  const ids = new Set(ents.map(e => e.id));
+  F1Common.markActivePreset(sets(ents), picked.filter(id => ids.has(id)));
+}
+// The drivers in the shared sort: the list, the lap lines and their legend, and the dot plot's rows all follow it.
+// {list: entities in order, num: {id: the number shown in the list (rank, place or result), or null}, value(e): the right-hand column}
+function orderOf(ents, pl){
+  const rank = F1Common.standingsRank(resultRounds, resultsThrough(), 'drivers'), teamRank = F1Common.standingsRank(resultRounds, resultsThrough(), 'teams');
+  const byBest = (a, b) => (a.best ?? Infinity) - (b.best ?? Infinity), byRank = (a, b) => ((rank[a.id] ?? 999) - (rank[b.id] ?? 999)) || byBest(a, b);
+  const median = e => { const ts = pl.filter(l => e.nums.includes(l.d) && !isOut(l)).map(l => l.t).sort((a, b) => a - b); return ts.length ? quantile(ts, 0.5) : null; };
+  const num = {}; let list, value = e => O.fmt(e.best);
+  if(sortKey === 'team'){
+    const teams = [...new Set(ents.map(e => e.teamId))].sort((a, b) => ((teamRank[a] ?? 999) - (teamRank[b] ?? 999)));
+    list = teams.flatMap(t => ents.filter(e => e.teamId === t).sort(byRank));
+  }else if(sortKey === 'rank'){
+    list = [...ents].sort(byRank); list.forEach(e => { num[e.id] = rank[e.id] != null ? rank[e.id] + 1 : null; });
+  }else if(sortKey === 'median'){
+    const m = new Map(ents.map(e => [e.id, median(e)]));
+    list = [...ents].sort((a, b) => ((m.get(a.id) ?? Infinity) - (m.get(b.id) ?? Infinity)) || byBest(a, b));
+    list.forEach((e, i) => { num[e.id] = m.get(e.id) != null ? i + 1 : null; }); value = e => m.get(e.id) != null ? O.fmt(m.get(e.id)) : '–';
+  }else if(O.RESULT_KINDS[sortKey] && results[sortKey]){
+    const pos = e => results[sortKey][e.nums[0]] ?? null; // a driver not in that session, or unclassified, goes last
+    list = [...ents].sort((a, b) => ((pos(a) ?? Infinity) - (pos(b) ?? Infinity)) || byBest(a, b)); list.forEach(e => { num[e.id] = pos(e); });
+  }else{ // the fastest lap (entities come fastest best lap first)
+    list = [...ents]; list.forEach((e, i) => { num[e.id] = e.best != null ? i + 1 : null; });
+  }
+  return { list, num, value };
+}
+function renderPicker(ents, picked, order){
+  const row = (e, n) => { const d = e.drivers[0];
+    return F1Common.driverPickerRowHTML({ driverId: e.id, name: e.name, code: e.label, teamId: d.teamId, color: d.site ? null : d.color }, { rank: n, checked: picked.includes(e.id), valueText: order.value(e) }); };
+  let html = '', team = null;
+  order.list.forEach(e => {
+    if(sortKey === 'team' && e.teamId !== team){ team = e.teamId; html += F1Common.pickerTeamLabelHTML(team, e.drivers[0].teamName); }
+    html += row(e, sortKey === 'team' ? null : order.num[e.id]);
+  });
+  $('pacePicker').innerHTML = html;
+  F1Common.updatePickerSummary(picked.filter(id => ents.some(e => e.id === id)), ents.length, 'drivers');
+}
+
+// ---- render ----
+function show(card, any){ // a card's chart or table, or its "nothing to show" line
+  $(card + 'Empty').style.display = any ? 'none' : 'block';
+  const body = { lap: '#lapWrap', dot: '#dotWrap', dumb: '#dumbWrap', sector: '#sectorCard .tableScroll', speed: '#speedWrap' }[card];
+  document.querySelector(body).style.display = any ? '' : 'none';
+}
+function syncControls(){
+  document.querySelectorAll('.slowChk').forEach(c => { c.checked = slow; });
+  document.querySelectorAll('.outChk').forEach(c => { c.checked = showOut; });
+  document.querySelectorAll('.resetOut').forEach(b => { b.hidden = !outliers.size; b.textContent = `Reset outliers (${outliers.size})`; });
+  $('boxChk').checked = boxplot; $('speedSel').value = speedKind; document.querySelectorAll('.tsortSel').forEach(x => { x.value = tableSort; });
+  const opts = SORTS.filter(([k]) => sortAvailable(k)).map(([k, label]) => `<option value="${k}">${label}</option>`).join('');
+  document.querySelectorAll('.sortSeg').forEach(x => { x.innerHTML = opts; x.value = sortKey; });
+  document.querySelectorAll('.sortLock').forEach(b => { b.innerHTML = sortLocked ? LOCK_ICON.on : LOCK_ICON.off; b.setAttribute('aria-pressed', sortLocked);
+    b.title = sortLocked ? 'Locked: this sort stays when you change the session. Click to unlock.' : 'Unlocked: this sort follows each session’s own (fastest lap in practice, the result in qualifying, the sprint and the race). Click to lock it.';
+    b.setAttribute('aria-label', sortLocked ? 'Sort locked' : 'Sort unlocked'); });
+  document.querySelectorAll('#unitRow .pill').forEach(b => b.classList.toggle('active', b.dataset.unit === unit));
+}
+function render(){
+  [lapChart, dotChart, dumbChart, speedChart].forEach(c => c && c.destroy()); lapChart = dotChart = dumbChart = speedChart = null; dotRows = [];
+  syncControls();
+  if(!model){ ['lap', 'dot', 'dumb', 'sector', 'speed'].forEach(c => show(c, false)); $('pacePicker').innerHTML = ''; $('presetRow').innerHTML = ''; $('lapLegend').innerHTML = $('dotLegend').innerHTML = ''; F1Common.updatePickerSummary([], 0, 'drivers'); return; }
+  const ents = roster(), picked = pickedIds(ents), best = O.sessionBest(model.laps), pl = O.pace(model.laps, { slow, best });
+  const order = orderOf(ents, pl), chosen = order.list.filter(e => picked.includes(e.id));
+  if(pinned && !chosen.some(e => e.label === pinned)) pinned = null;
+  renderPresets(ents, picked); renderPicker(ents, picked, order);
+  const when = loadedAt ? new Date(loadedAt).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) : '';
+  const nLaps = model.laps.filter(l => l.t != null).length;
+  status((nLaps ? `${esc(session.name)} · ${model.drivers.length} drivers · ${nLaps} timed laps · ${model.source === 'saved' ? 'saved' : 'fetched'} ${when}`
+               : `${esc(session.name)}: no lap data yet. It appears soon after the session starts.`) + (notice ? ' · ' + esc(notice) : ''));
+  const P = F1Theme.chart(); Chart.defaults.font.family = ff; Chart.defaults.color = P.text;
+  const where = `${raceTitle()} · ${session.short}`;
+  $('lapSub').textContent = $('dotSub').textContent = `${where} · ${slow ? 'all laps' : `laps within 107% of the best, no in or out ${model.laps.some(l => l.sc) ? 'or safety car ' : ''}laps`}`;
+  $('dumbSub').textContent = $('sectorSub').textContent = $('speedSub').textContent = where;
+  drawLaps(chosen, pl); drawDots(chosen, pl); drawTable(chosen, ents); drawDumbbell(chosen); drawSpeed(chosen);
+  applyFocus();
+  F1Share.sync(); // the address follows what loading chose (the session's own sort, for one)
+}
+const raceTitle = () => F1Common.shortGP((calendar && calendar.raceNames && calendar.raceNames[round]) || (seasonRounds[round - 1] || {}).raceName) || `Round ${round}`; // "Singapore GP", as elsewhere on the site
+const drivingOf = chosen => chosen.flatMap(e => e.drivers);
+
+// ---- following one driver (click a line, a dot or a legend name; click again, or the empty chart, to release) ----
+const dimmed = (c, on) => on ? F1Common.withAlpha(c, DIM) : c;
+function applyFocus(){
+  const lit = code => !pinned || code === pinned;
+  if(lapChart){
+    lapChart.data.datasets.forEach(d => {
+      const on = lit(d._code);
+      d.borderColor = dimmed(d._color, !on);
+      d.pointBackgroundColor = d._outlier ? d._color : d._fills.map(f => dimmed(f, !on));
+      d.pointBorderColor = dimmed(d._color, !on);
+      d.order = on ? 0 : 1;
+    });
+    lapChart.update('none');
+  }
+  if(dotChart){
+    dotChart.data.datasets.forEach(d => {
+      d.pointBackgroundColor = d._pts.map(p => dimmed(p.outlier ? p.team : (TYRES[p.c] || p.team), !lit(p.code)));
+      d.pointBorderColor = d._pts.map(p => dimmed(p.team, !lit(p.code)));
+    });
+    dotChart.update('none');
+  }
+  document.querySelectorAll('.paceLegend .lgItem[data-code]').forEach(b => { b.classList.toggle('dim', !!pinned && b.dataset.code !== pinned); b.classList.toggle('on', pinned === b.dataset.code); b.setAttribute('aria-pressed', pinned === b.dataset.code); });
+}
+function setPinned(code){ pinned = pinned === code ? null : code; applyFocus(); }
+
+// The point of a chart nearest a pixel position (within `r` px): every dataset's points, and for the lap lines the segments between them.
+function hit(ch, ev, r, segments){
+  const x = ev.offsetX, y = ev.offsetY; let best = null;
+  ch.data.datasets.forEach((ds, di) => {
+    const pts = ch.getDatasetMeta(di).data; let prev = null;
+    pts.forEach((el, i) => {
+      const raw = ds.data[i]; if(!raw || raw.y == null){ prev = null; return; }
+      const d = Math.hypot(el.x - x, el.y - y);
+      if(d <= r && (!best || d < best.d)) best = { d, di, i, raw, ds };
+      if(segments && prev){ // distance to the line from the previous point
+        const ax = prev.x, ay = prev.y, bx = el.x, by = el.y, L = (bx - ax) ** 2 + (by - ay) ** 2;
+        const u = L ? Math.max(0, Math.min(1, ((x - ax) * (bx - ax) + (y - ay) * (by - ay)) / L)) : 0, dd = Math.hypot(ax + u * (bx - ax) - x, ay + u * (by - ay) - y);
+        if(dd <= r - 2 && (!best || dd < best.d - 1)) best = { d: dd, di, i, raw, ds, seg: true };
+      }
+      prev = el;
+    });
+  });
+  return best;
+}
+
+// ---- hover, click and right-click on the two lap plots (wired once, for whichever chart is showing) ----
+const lapTip = () => $('lapTip');
+function lapLeave(){ hoverX = null; lapTip().hidden = true; lapChart && lapChart.draw(); }
+function lapMove(ev){ // a tooltip for the lap under the pointer: every driver's time then, fastest first (like the rounds on the Drivers page)
+  if(!lapChart) return;
+  const a = lapChart.chartArea, tip = lapTip(), tm = timeMode(); if(ev.offsetX < a.left || ev.offsetX > a.right || ev.offsetY < a.top || ev.offsetY > a.bottom) return lapLeave();
+  const xv = lapChart.scales.x.getValueForPixel(ev.offsetX); hoverX = tm ? xv : Math.round(xv);
+  const rows = lapRowsAt(hoverX);
+  if(!rows.length) return lapLeave();
+  const head = tm ? `${Math.floor(hoverX)}:${String(Math.floor((hoverX % 1) * 60)).padStart(2, '0')} into the session` : `Lap ${Math.round(hoverX)}`;
+  tip.innerHTML = `<div class="tipHead">${head}</div>` + rows.map(r => `<div class="tipRow"><i class="tipDot" style="background:${r.p.c ? (TYRES[r.p.c] || r.color) : r.color};box-shadow:0 0 0 2px ${r.color}"></i>${esc(r.code)}${r.p.outlier ? ' <span class="tipSub">(outlier)</span>' : ''}<span class="tipTime">${O.fmt(r.p.y)}</span>${r.p.c ? `<span class="tipSub">${r.p.c.toLowerCase()}${tm ? ', lap ' + r.p.n : ''}</span>` : ''}</div>`).join('');
+  tip.hidden = false;
+  const box = $('lapWrap').getBoundingClientRect(), w = tip.offsetWidth, h = tip.offsetHeight;
+  tip.style.left = Math.max(4, Math.min(box.width - w - 4, ev.offsetX + 14 + w > box.width ? ev.offsetX - w - 14 : ev.offsetX + 14)) + 'px';
+  tip.style.top = Math.max(4, Math.min(box.height - h - 4, ev.offsetY - h / 2)) + 'px';
+  lapChart.draw();
+}
+const dotTip = () => $('dotTip');
+function dotLeave(){ dotTip().hidden = true; }
+function dotMove(ev){
+  if(!dotChart) return;
+  const h = hit(dotChart, ev, 9, false), tip = dotTip(); if(!h){ tip.hidden = true; return; }
+  const p = h.raw; tip.innerHTML = `<div class="tipRow"><i class="tipDot" style="background:${TYRES[p.c] || p.team};box-shadow:0 0 0 2px ${p.team}"></i>${esc(p.code)} · lap ${p.n}<span class="tipTime">${O.fmt(p.x)}</span></div>`
+    + `<div class="tipSub">${p.c ? p.c.toLowerCase() + (p.age != null ? ', ' + p.age + ' laps old' : '') : 'tyre unknown'}${p.outlier ? ' · outlier' : ''}</div>`;
+  tip.hidden = false; const box = $('dotWrap').getBoundingClientRect(), w = tip.offsetWidth, hh = tip.offsetHeight;
+  tip.style.left = Math.max(4, Math.min(box.width - w - 4, ev.offsetX + 14 + w > box.width ? ev.offsetX - w - 14 : ev.offsetX + 14)) + 'px'; tip.style.top = Math.max(4, Math.min(box.height - hh - 4, ev.offsetY - hh - 8)) + 'px';
+}
+// Mouse, pen and touch on a chart: hover (move/leave), click (follow a driver), right-click or long-press (mark an outlier).
+function attachPointer(cv, chart, { move, leave, segments }){
+  let press = null, quiet = false;
+  const find = ev => { const c = chart(); return c ? hit(c, ev, 9, segments) : null; };
+  const follow = ev => { const h = find(ev); if(h) setPinned(h.ds._code || h.raw.code); else if(pinned){ pinned = null; applyFocus(); } };
+  const mark = ev => { const h = find(ev); if(h && h.raw.n != null) toggleOutlier(h.raw.d, h.raw.n); };
+  cv.addEventListener('pointermove', ev => { if(ev.pointerType !== 'touch') move(ev); if(press && Math.hypot(ev.offsetX - press.x, ev.offsetY - press.y) > 8){ clearTimeout(press.t); press = null; } });
+  cv.addEventListener('pointerleave', ev => { if(ev.pointerType !== 'touch') leave(); });
+  cv.addEventListener('pointerdown', ev => { quiet = false; if(ev.pointerType !== 'touch') return; move(ev);
+    press = { x: ev.offsetX, y: ev.offsetY, t: setTimeout(() => { quiet = true; mark({ offsetX: press.x, offsetY: press.y }); press = null; }, 550) }; });
+  cv.addEventListener('pointerup', () => { if(press){ clearTimeout(press.t); press = null; } });
+  cv.addEventListener('click', ev => { if(quiet){ quiet = false; return; } follow(ev); });
+  cv.addEventListener('contextmenu', ev => { ev.preventDefault(); mark(ev); });
+}
+
+// ---- lap lines ----
+const timeMode = () => session && !/^(Race|Sprint)$/.test(session.name); // everything but the Sprint and the Grand Prix: minutes into the session (qualifying's parts then line up for every driver)
+const xOf = l => timeMode() ? (l.at - Date.parse(session.start)) / 60000 : l.n;
+let hoverX = null;
+function lapRowsAt(xv){ // each driver's lap nearest xv (within a lap, or 45 s in qualifying), fastest first
+  const tol = timeMode() ? 0.75 : 0.5, rows = [];
+  lapChart.data.datasets.forEach(d => {
+    if(d._outlier && !showOut) return;
+    let b = null; d.data.forEach(p => { if(p.y != null && Math.abs(p.x - xv) <= tol && (!b || Math.abs(p.x - xv) < Math.abs(b.x - xv))) b = p; });
+    if(b) rows.push({ code: d._code, color: d._color, p: b });
+  });
+  return rows.sort((a, b) => a.p.y - b.p.y);
+}
+function drawLaps(chosen, pl){
+  const drivers = drivingOf(chosen), nums = new Set(drivers.map(d => d.num)), laps = pl.filter(l => nums.has(l.d));
+  show('lap', laps.length);
+  if(!laps.length){ $('lapLegend').innerHTML = ''; $('lapNote').textContent = ''; return; }
+  const P = F1Theme.chart(), seen = {}, tm = timeMode(), datasets = [];
+  drivers.forEach(d => {
+    const mine = laps.filter(l => l.d === d.num).sort((a, b) => a.n - b.n); if(!mine.length) return;
+    const k = seen[d.teamId] = (seen[d.teamId] || 0) + 1, col = color(d.color), good = mine.filter(l => !isOut(l)), data = [];
+    good.forEach((l, i) => { // the line breaks at each pit stop (a new stint, even on the same compound), or when the compound changes
+      if(i && (good[i - 1].sn !== l.sn || good[i - 1].c !== l.c)) data.push({ x: (xOf(good[i - 1]) + xOf(l)) / 2, y: null });
+      data.push({ x: xOf(l), y: l.t, n: l.n, d: l.d, c: l.c, age: l.age });
+    });
+    datasets.push({ label: d.code, data, borderColor: col, borderWidth: 1.8, borderDash: k > 1 ? DASH : [], tension: 0, spanGaps: false,
+      pointRadius: 3.5, pointHoverRadius: 5, pointBackgroundColor: [], pointBorderColor: col, _code: d.code, _color: col, _dash: k > 1, _fills: data.map(p => TYRES[p.c] || 'transparent') });
+    const bad = mine.filter(isOut);
+    if(bad.length && showOut) datasets.push({ label: d.code + ' (outlier)', data: bad.map(l => ({ x: xOf(l), y: l.t, n: l.n, d: l.d, c: l.c, age: l.age, outlier: true })), showLine: false,
+      pointStyle: 'crossRot', pointRadius: 5, borderWidth: 2, borderColor: col, pointBorderColor: col, pointBackgroundColor: col, _code: d.code, _color: col, _outlier: true, _fills: [] });
+  });
+  const segs = (model.segments || []).map(g => ({ label: g.label, from: (g.from - Date.parse(session.start)) / 60000, to: (g.to - Date.parse(session.start)) / 60000 }));
+  const parts = { id: 'qualiParts', afterDatasetsDraw(ch){ // dashed lines between the qualifying parts, each part named
+    if(!tm || !segs.length) return;
+    const { ctx, chartArea: a, scales: { x } } = ch; ctx.save(); ctx.font = '600 11px ' + ff; ctx.fillStyle = P.text; ctx.strokeStyle = P.label; ctx.setLineDash([5, 4]); ctx.lineWidth = 1; ctx.textBaseline = 'top';
+    segs.forEach((g, i) => { if(i){ const px = Math.round(x.getPixelForValue((segs[i - 1].to + g.from) / 2)) + 0.5; ctx.globalAlpha = 0.7; ctx.beginPath(); ctx.moveTo(px, a.top); ctx.lineTo(px, a.bottom); ctx.stroke(); }
+      ctx.globalAlpha = 1; ctx.fillText(g.label, Math.max(a.left + 4, x.getPixelForValue(g.from) + 4), a.top + 3); });
+    ctx.restore(); } };
+  const guide = { id: 'lapGuide', beforeDatasetsDraw(ch){ if(hoverX == null) return; const a = ch.chartArea, px = Math.round(ch.scales.x.getPixelForValue(hoverX)) + 0.5;
+    if(px < a.left || px > a.right) return; const c = ch.ctx; c.save(); c.strokeStyle = P.label; c.globalAlpha = 0.5; c.lineWidth = 1; c.beginPath(); c.moveTo(px, a.top); c.lineTo(px, a.bottom); c.stroke(); c.restore(); } };
+  lapChart = new Chart($('lapCanvas'), { type: 'line', data: { datasets }, plugins: [parts, guide], options: {
+    responsive: true, maintainAspectRatio: false, animation: false, events: [],
+    plugins: { legend: { display: false }, tooltip: { enabled: false } },
+    scales: { x: { type: 'linear', title: { display: true, text: tm ? 'Minutes into the session' : 'Lap of the race', color: P.text }, grid: { color: P.grid }, ticks: { color: P.text, precision: 0 } },
+      y: { title: { display: true, text: 'Lap time (faster is lower)', color: P.text }, grid: { color: P.grid }, ticks: { color: P.text, callback: v => O.fmt(v, 1) } } } } });
+  $('lapLegend').innerHTML = tyreKeyHTML(laps.map(l => l.c).filter(Boolean))
+    + [...new Set(datasets.filter(d => !d._outlier).map(d => d._code))].map(c => { const d = datasets.find(x => x._code === c && !x._outlier);
+    return `<button type="button" class="lgItem" data-code="${esc(c)}" aria-pressed="false"><i class="${d._dash ? 'dash' : ''}" style="--c:${d._color}"></i>${esc(c)}</button>`; }).join('');
+  $('lapNote').textContent = 'Dots show the tyre compound; a driver’s line breaks at each pit stop (a new stint, also on the same tyre) and joins the laps in order past the hidden in and out laps. A team’s second driver is dashed. '
+    + 'Click a line, a dot or a name to follow one driver; click it again to release. Right-click (long-press on a phone) a dot to mark it as an outlier.'
+    + (tm && segs.length ? ' Dashed lines mark the qualifying parts.' : '');
+}
+
+// ---- dot plot with an optional box plot ----
+function quantile(sorted, q){ const i = (sorted.length - 1) * q, lo = Math.floor(i), hi = Math.ceil(i); return sorted[lo] + (sorted[hi] - sorted[lo]) * (i - lo); }
+function drawDots(chosen, pl){
+  const rows = chosen.map(e => ({ e, laps: pl.filter(l => e.nums.includes(l.d)) })).filter(r => r.laps.length)
+    .map(r => { const good = r.laps.filter(l => !isOut(l)), ts = good.map(l => l.t).sort((a, b) => a - b); return { ...r, good, ts, med: ts.length ? quantile(ts, 0.5) : Infinity }; })
+    .filter(r => r.good.length || showOut); // a driver whose laps are all hidden outliers has no row; the rows follow the shared sort
+  show('dot', rows.length);
+  if(!rows.length){ $('dotLegend').innerHTML = ''; $('dotNote').textContent = ''; return; }
+  const P = F1Theme.chart(), n = rows.length, nar = F1Common.isNarrow();
+  const pts = [], bad = [];
+  rows.forEach((r, i) => { const col = color(r.e.color), code = r.e.label, groups = {};
+    r.laps.filter(l => showOut || !isOut(l)).forEach(l => { const g = Math.round(l.t * 20); (groups[g] = groups[g] || []).push(l); }); // laps within 0.05 s are fanned out above and below the row
+    Object.values(groups).forEach(g => g.forEach((l, k) => { const step = Math.min(0.15, 0.78 / g.length), p = { x: l.t, y: i + (k - (g.length - 1) / 2) * step, n: l.n, d: l.d, c: l.c, age: l.age, code, team: col, outlier: isOut(l) };
+      (p.outlier ? bad : pts).push(p); })); });
+  const rowPx = nar ? 40 : 46;
+  $('dotWrap').style.height = (n * rowPx + 70) + 'px';
+  const all = [...pts, ...(showOut ? bad : [])].map(p => p.x), lo = Math.floor(Math.min(...all) * 10) / 10 - 0.1, hi = Math.ceil(Math.max(...all) * 10) / 10 + 0.1;
+  const boxes = { id: 'dotBoxes', afterDatasetsDraw(ch){ // drawn over the dots
+    if(!boxplot) return; const { ctx, scales: { x, y } } = ch; ctx.save();
+    rows.forEach((r, i) => { if(r.ts.length < 2) return; const a = r.ts[0], b = r.ts[r.ts.length - 1], q1 = quantile(r.ts, 0.25), m = quantile(r.ts, 0.5), q3 = quantile(r.ts, 0.75);
+      const col = color(r.e.color), yc = y.getPixelForValue(i), h = Math.min(rowPx * 0.5, 22) / 2, lit = !pinned || r.e.label === pinned;
+      ctx.globalAlpha = lit ? 1 : DIM; ctx.strokeStyle = col; ctx.fillStyle = F1Common.withAlpha(col, 0.16); ctx.lineWidth = 1.5;
+      const X = v => x.getPixelForValue(v);
+      ctx.beginPath(); ctx.moveTo(X(a), yc); ctx.lineTo(X(q1), yc); ctx.moveTo(X(q3), yc); ctx.lineTo(X(b), yc); ctx.moveTo(X(a), yc - h / 2); ctx.lineTo(X(a), yc + h / 2); ctx.moveTo(X(b), yc - h / 2); ctx.lineTo(X(b), yc + h / 2); ctx.stroke();
+      ctx.fillRect(X(q1), yc - h, X(q3) - X(q1), 2 * h); ctx.strokeRect(X(q1), yc - h, X(q3) - X(q1), 2 * h);
+      ctx.lineWidth = 2.6; ctx.beginPath(); ctx.moveTo(X(m), yc - h); ctx.lineTo(X(m), yc + h); ctx.stroke(); });
+    ctx.restore(); } };
+  const mk = (data, outlier) => ({ data, showLine: false, pointRadius: outlier ? 5 : 4.5, pointHoverRadius: 6, pointStyle: outlier ? 'crossRot' : 'circle', borderWidth: outlier ? 2 : 1.4, _pts: data, _outlier: outlier,
+    pointBackgroundColor: data.map(p => outlier ? p.team : (TYRES[p.c] || p.team)), pointBorderColor: data.map(p => p.team) });
+  const datasets = [mk(pts, false)]; if(showOut && bad.length) datasets.push(mk(bad, true));
+  dotRows = rows;
+  dotChart = new Chart($('dotCanvas'), { type: 'scatter', plugins: [boxes], data: { datasets }, options: {
+    responsive: true, maintainAspectRatio: false, animation: false, events: [],
+    plugins: { legend: { display: false }, tooltip: { enabled: false } },
+    scales: { x: { min: lo, max: hi, title: { display: true, text: 'Lap time', color: P.text }, grid: { color: P.grid }, ticks: { color: P.text, callback: v => O.fmt(v, 1), maxTicksLimit: nar ? 5 : 10 } },
+      y: { reverse: true, min: -0.6, max: n - 0.4, grid: { color: P.grid }, afterBuildTicks: ax => { ax.ticks = Array.from({ length: n }, (_, i) => ({ value: i })); },
+        ticks: { color: ctx => color(rows[Math.round(ctx.tick.value)]?.e.color) || P.text, callback: v => rows[Math.round(v)] ? rows[Math.round(v)].e.label : '', font: { weight: '600' }, autoSkip: false } } } } });
+  $('dotLegend').innerHTML = tyreKeyHTML([...pts, ...(showOut ? bad : [])].map(p => p.c).filter(Boolean))
+    + rows.map(r => `<button type="button" class="lgItem" data-code="${esc(r.e.label)}" aria-pressed="false"><i style="--c:${color(r.e.color)}"></i>${esc(r.e.label)}</button>`).join('');
+  $('dotNote').textContent = 'Each dot is a lap, filled with its tyre compound and ringed in the team colour. Rows and names follow the Sort by above. '
+    + (boxplot ? 'The box is the middle half of the laps, the thick line the median, the whiskers the quickest and slowest. ' : '')
+    + 'Click a dot or a name to follow one driver. Right-click (long-press on a phone) a dot to mark it as an outlier; outliers are left out of the box.';
+}
+
+// ---- best sectors table, then the best lap vs ideal lap plot ----
+const statsOf = e => O.stats(O.lapsOf(model, e).filter(l => !isOut(l))); // laps marked as outliers are left out of the table and the plot
+function tableData(chosen, ents){
+  const rows = chosen.map(e => ({ e, s: statsOf(e) }));
+  const all = ents.map(statsOf);
+  const col = i => Math.min(...all.map(s => i === 'best' ? s.best : i === 'ideal' ? s.ideal : s.sec[i]).filter(v => v != null));
+  const top = { best: col('best'), ideal: col('ideal'), 0: col(0), 1: col(1), 2: col(2) };
+  const key = r => tableSort === 'ideal' ? r.s.ideal : tableSort === 'gap' ? r.s.gap : r.s.best;
+  rows.sort((a, b) => (key(a) ?? Infinity) - (key(b) ?? Infinity));
+  return { rows, top };
+}
+function drawTable(chosen, ents){
+  const { rows, top } = tableData(chosen, ents);
+  show('sector', rows.length);
+  if(!rows.length){ $('sectorTable').innerHTML = ''; return; }
+  const cell = (v, t, d = 3) => `<td${v != null && v === t ? ' class="best"' : ''}>${O.fmt(v, d)}</td>`;
+  $('sectorTable').innerHTML = `<thead><tr><th>Driver</th><th>Best lap</th><th>S1</th><th>S2</th><th>S3</th><th>Ideal lap</th><th>Gap</th></tr></thead><tbody>`
+    + rows.map(({ e, s }) => `<tr><td class="who"><span class="dot" style="background:${color(e.color)}"></span>${esc(e.label)}</td>${cell(s.best, top.best)}${cell(s.sec[0], top[0])}${cell(s.sec[1], top[1])}${cell(s.sec[2], top[2])}${cell(s.ideal, top.ideal)}<td>${O.gapText(s.gap)}</td></tr>`).join('') + '</tbody>';
+  $('sectorNote').textContent = 'The ideal lap adds each sector’s best time, from any lap. Purple = the best in the session. The gap is the best lap minus the ideal lap. Laps marked as outliers on the lap plots are left out here and in the plot below.';
+}
+function drawDumbbell(chosen){
+  const key = r => tableSort === 'ideal' ? r.s.ideal : tableSort === 'gap' ? r.s.gap : r.s.best, gapMode = tableSort === 'gap';
+  const rows = chosen.map(e => ({ e, s: statsOf(e) })).filter(r => r.s.best != null).sort((a, b) => (key(a) ?? Infinity) - (key(b) ?? Infinity) || a.s.best - b.s.best); // sorted like the table
+  show('dumb', rows.length);
+  $('dumbKey').innerHTML = gapMode
+    ? '<span class="ridgeKeyItem"><i class="dumbDot"></i>best lap, with its gap to the ideal lap to its right</span><span class="ridgeKeyItem"><i class="dumbDot hollow"></i>ideal lap, the three best sectors added</span>'
+    : '<span class="ridgeKeyItem"><i class="dumbDot"></i>best lap (time to its right)</span><span class="ridgeKeyItem"><i class="dumbDot hollow"></i>ideal lap, the three best sectors added (time to its left)</span>';
+  $('dumbNote').textContent = 'The shorter the line, the closer the driver came to putting every best sector in one lap. Sorted like the table above, the first at the top.';
+  if(!rows.length) return;
+  const P = F1Theme.chart(), n = rows.length, panel = getComputedStyle(document.documentElement).getPropertyValue('--panel').trim() || '#fff', ink = getComputedStyle(document.documentElement).getPropertyValue('--ink2').trim() || P.text;
+  const lo = Math.min(...rows.map(r => r.s.ideal ?? r.s.best)), hi = Math.max(...rows.map(r => r.s.best));
+  $('dumbWrap').style.height = (n * 28 + 70) + 'px';
+  const cols = rows.map(r => color(r.e.color));
+  const link = { id: 'dumbbellLinks', beforeDatasetsDraw(ch){
+    const { ctx, scales: { x, y } } = ch; ctx.save(); ctx.lineWidth = 3; ctx.lineCap = 'round';
+    rows.forEach((r, i) => { if(r.s.ideal == null) return; ctx.strokeStyle = cols[i]; ctx.globalAlpha = 0.75; ctx.beginPath();
+      ctx.moveTo(x.getPixelForValue(r.s.ideal), y.getPixelForValue(i)); ctx.lineTo(x.getPixelForValue(r.s.best), y.getPixelForValue(i)); ctx.stroke(); });
+    ctx.restore(); },
+    afterDatasetsDraw(ch){ // the best lap's time (or, sorted by the gap, the gap) to the right of its dot, the ideal lap's time to the left of its dot
+      const { ctx, scales: { x, y } } = ch; ctx.save(); ctx.font = '600 11px ' + ff; ctx.fillStyle = ink; ctx.textBaseline = 'middle'; ch._labels = [];
+      const put = (text, dotX, py, side) => { ctx.textAlign = side === 'right' ? 'left' : 'right'; ctx.fillText(text, dotX + (side === 'right' ? 11 : -11), py); ch._labels.push({ text, side, dotX, y: py }); }; // for the tests
+      rows.forEach((r, i) => { const py = y.getPixelForValue(i);
+        put(gapMode ? O.gapText(r.s.gap) : O.fmt(r.s.best), x.getPixelForValue(r.s.best), py, 'right');
+        if(!gapMode && r.s.ideal != null) put(O.fmt(r.s.ideal), x.getPixelForValue(r.s.ideal), py, 'left'); });
+      ctx.restore(); } };
+  const withIdeal = rows.map((r, i) => ({ r, i })).filter(x => x.r.s.ideal != null);
+  dumbChart = new Chart($('dumbCanvas'), { type: 'scatter', plugins: [link], data: { datasets: [
+    { label: 'Best lap', data: rows.map((r, i) => ({ x: r.s.best, y: i })), backgroundColor: cols, borderColor: cols, pointRadius: 6, borderWidth: 2 },
+    { label: 'Ideal lap', data: withIdeal.map(x => ({ x: x.r.s.ideal, y: x.i })), backgroundColor: panel, borderColor: withIdeal.map(x => cols[x.i]), pointRadius: 6, borderWidth: 2.5 },
+  ] }, options: { responsive: true, maintainAspectRatio: false, animation: false, events: [],
+    plugins: { legend: { display: false }, tooltip: { enabled: false } },
+    scales: { x: { min: lo, max: hi, title: { display: true, text: 'Lap time', color: P.text }, grid: { color: P.grid }, ticks: { color: P.text, callback: v => O.fmt(v, 1), maxTicksLimit: F1Common.isNarrow() ? 4 : 8 } },
+      y: { reverse: true, min: -0.6, max: n - 0.4, grid: { display: false }, afterBuildTicks: ax => { ax.ticks = Array.from({ length: n }, (_, i) => ({ value: i })); },
+        ticks: { color: ctx => cols[Math.round(ctx.tick.value)] || P.text, callback: v => rows[Math.round(v)] ? rows[Math.round(v)].e.label : '', font: { weight: '600' }, autoSkip: false } } } } });
+  // room for the labels either side: widen the axis by what they need, in seconds (the best lap's label only, to its right, when sorted by the gap)
+  for(let k = 0; k < 2; k++){
+    const px = (dumbChart.chartArea.right - dumbChart.chartArea.left) / (dumbChart.scales.x.max - dumbChart.scales.x.min), pad = 78 / px;
+    dumbChart.options.scales.x.min = lo - (gapMode ? 8 / px : pad); dumbChart.options.scales.x.max = hi + pad; dumbChart.update('none');
+  }
+  dumbChart._rows = rows;
+}
+
+function drawSpeed(chosen){
+  const rows = chosen.map(e => ({ e, v: O.speedIn(O.stats(O.lapsOf(model, e))[speedKind], unit) })).filter(r => r.v != null).sort((a, b) => b.v - a.v);
+  show('speed', rows.length);
+  if(!rows.length) return;
+  const P = F1Theme.chart(), mph = unit === 'mph', step = mph ? 5 : 10, lo = Math.floor(Math.min(...rows.map(r => r.v)) / step) * step - step, name = mph ? 'mph' : 'kph', text = v => mph ? v.toFixed(1) : String(v);
+  $('speedWrap').style.height = (rows.length * 26 + 50) + 'px';
+  const labels = { id: 'speedLabels', afterDatasetsDraw(ch){
+    const { ctx } = ch; ctx.save(); ctx.fillStyle = P.text; ctx.font = '600 11px ' + ff; ctx.textBaseline = 'middle';
+    ch.getDatasetMeta(0).data.forEach((b, i) => { ctx.fillText(text(rows[i].v), b.x + 5, b.y); }); ctx.restore(); } };
+  speedChart = new Chart($('speedCanvas'), { type: 'bar', plugins: [labels], data: { labels: rows.map(r => r.e.label),
+    datasets: [{ data: rows.map(r => r.v), backgroundColor: rows.map(r => color(r.e.color)), borderWidth: 0 }] },
+    options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, animation: false, layout: { padding: { right: 40 } },
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => ` ${text(c.parsed.x)} ${name}` } } },
+      scales: { x: { min: lo, title: { display: true, text: name, color: P.text }, grid: { color: P.grid }, ticks: { color: P.text, stepSize: step } },
+        y: { grid: { display: false }, ticks: { color: P.text, font: { weight: '600' }, autoSkip: false } } } } });
+}
+
+// ---- export ----
+const chosenNow = () => { const ents = roster(), picked = pickedIds(ents); return ents.filter(e => picked.includes(e.id)); };
+const rowsOf = () => { // the laps behind the charts: every lap of the picked drivers, with what was filtered out marked
+  if(!model) return null;
+  const nums = new Set(drivingOf(chosenNow()).map(d => d.num)), byNum = new Map(model.drivers.map(d => [d.num, d])), kept = new Set(O.pace(model.laps, { slow }));
+  const laps = model.laps.filter(l => nums.has(l.d)); if(!laps.length) return null;
+  return [['Driver', 'Team', 'Lap', 'Time (s)', 'Sector 1', 'Sector 2', 'Sector 3', 'Tyre', 'Tyre age (laps)', 'Intermediate 1 (kph)', 'Intermediate 2 (kph)', 'Speed trap (kph)', 'Pit-out lap', 'In lap', 'Shown', 'Outlier'],
+    ...laps.map(l => [byNum.get(l.d).code, byNum.get(l.d).teamLabel || byNum.get(l.d).team, l.n, l.t, ...l.s, l.c, l.age, l.i1, l.i2, l.st, l.out ? 'yes' : '', l.inn ? 'yes' : '', kept.has(l) ? 'yes' : '', isOut(l) ? 'yes' : ''])];
+};
+const subtitle = () => `${year} ${raceTitle()} · ${session.name}`;
+F1Export.attach($('lapCard'), { name: 'pace-laps', title: () => 'Lap times', subtitle, canvas: () => $('lapCanvas'),
+  legend: () => lapChart ? lapChart.data.datasets.filter(d => !d._outlier).map(d => ({ label: d.label, color: d._color, dash: d._dash ? DASH : null })) : [], csv: rowsOf });
+F1Export.attach($('dotCard'), { name: 'pace-distribution', title: () => 'Lap time distribution', subtitle, canvas: () => $('dotCanvas'), csv: rowsOf });
+F1Export.attach($('sectorCard'), { name: 'pace-sectors', title: () => 'Best sectors and ideal lap', subtitle,
+  draw: (ctx, x, y, w, measure) => { // the table drawn as text
+    const rows = F1Export.tableRows($('sectorTable')); if(!rows.length) return 0;
+    const rh = 24, cols = rows[0].length, first = Math.min(120, w * 0.25), cw = (w - first) / (cols - 1);
+    if(measure) return rows.length * rh;
+    const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+    ctx.textBaseline = 'middle';
+    rows.forEach((r, i) => { r.forEach((v, j) => {
+      const best = i && document.querySelectorAll('#sectorTable tbody tr')[i - 1].children[j].classList.contains('best');
+      ctx.font = `${i === 0 || best || j === 0 ? 700 : 400} 12.5px ${ff}`;
+      ctx.fillStyle = i === 0 ? css('--sub') : best ? css('--pb') : css('--ink'); ctx.textAlign = j ? 'right' : 'left';
+      ctx.fillText(v, j ? x + first + cw * j : x, y + i * rh + rh / 2); });
+      ctx.strokeStyle = css('--line'); ctx.beginPath(); ctx.moveTo(x, y + (i + 1) * rh); ctx.lineTo(x + w, y + (i + 1) * rh); ctx.stroke(); });
+    ctx.textAlign = 'left'; return rows.length * rh; },
+  csv: () => { const r = F1Export.tableRows($('sectorTable')); return r.length > 1 ? r : null; } });
+F1Export.attach($('dumbCard'), { name: 'pace-best-vs-ideal', title: () => 'Best lap vs ideal lap', subtitle, canvas: () => $('dumbCanvas'),
+  csv: () => { if(!dumbChart) return null; return [['Driver', 'Best lap (s)', 'Ideal lap (s)', 'Gap (s)'], ...dumbChart._rows.map(r => [r.e.label, r.s.best, r.s.ideal, r.s.gap])]; } });
+F1Export.attach($('speedCard'), { name: 'pace-speed', title: () => 'Top speed', subtitle, canvas: () => $('speedCanvas'),
+  csv: () => speedChart ? [['Driver', unit === 'mph' ? 'mph' : 'kph'], ...speedChart.data.labels.map((l, i) => [l, speedChart.data.datasets[0].data[i]])] : null });
+
+// ---- events ----
+window.addEventListener('f1selection', e => onSelection(e.detail));
+window.addEventListener('f1roundchange', e => { if(weekends.length) status(`Round ${e.detail.round}: let go of the slider to load this weekend.`); });
+window.addEventListener('f1roundcommit', e => { if(year >= FIRST_YEAR && weekends.length){ fresh = false; ++token; notice = ''; showRound(e.detail.round); } }); // a weekend is fetched when the slider is released, not on every step
+window.addEventListener('themechange', () => render());
+$('sessChips').addEventListener('click', e => { const b = e.target.closest('.sessBtn'); if(!b || b.disabled || !weekend) return; fresh = false; loadSession(weekend.sessions.find(s => s.key === +b.dataset.key), false); });
+$('refreshSession').addEventListener('click', () => { if(session) loadSession(session, true); });
+document.addEventListener('change', e => { // the options shared by the two lap plots stay in step
+  if(e.target.classList.contains('slowChk')){ slow = e.target.checked; render(); }
+  else if(e.target.classList.contains('outChk')){ showOut = e.target.checked; render(); }
+  else if(e.target.classList.contains('tsortSel')){ tableSort = e.target.value; render(); } // the table and the plot share their sort
+  else if(e.target.classList.contains('sortSeg')){ sortKey = e.target.value; render(); } // so do the driver list and the two lap plots
+});
+document.addEventListener('click', e => { const lock = e.target.closest('.sortLock'); if(lock){ sortLocked = !sortLocked; render(); return; }
+  if(e.target.classList.contains('resetOut')){ outliers = new Set(); saveOutliers(); render(); } });
+$('boxChk').addEventListener('change', e => { boxplot = e.target.checked; render(); });
+$('speedSel').addEventListener('change', e => { speedKind = e.target.value; render(); });
+$('unitRow').addEventListener('click', e => { const b = e.target.closest('.pill'); if(!b) return; unit = b.dataset.unit; try{ localStorage.setItem(UNIT_KEY, unit); }catch(_){} render(); });
+document.querySelectorAll('.paceLegend').forEach(l => l.addEventListener('click', e => { const b = e.target.closest('.lgItem[data-code]'); if(b) setPinned(b.dataset.code); }));
+$('pacePicker').addEventListener('change', e => {
+  if(!model) return;
+  const ents = roster(), id = e.target.dataset.id, cur = pickedIds(ents);
+  setPicked(e.target.checked ? [...cur, id] : cur.filter(x => x !== id), ents);
+});
+$('presetRow').addEventListener('click', e => {
+  const b = e.target.closest('.pill'); if(!b || !model) return;
+  const ents = roster(); setPicked(sets(ents)[b.dataset.preset] || [], ents);
+});
+attachPointer($('lapCanvas'), () => lapChart, { move: lapMove, leave: lapLeave, segments: true });
+attachPointer($('dotCanvas'), () => dotChart, { move: dotMove, leave: dotLeave, segments: false });
+F1Common.initPickerToggle();
+syncControls();
+F1Controls.mount('f1controls', { upcoming: true });
+</script>
+</body>
+</html>
