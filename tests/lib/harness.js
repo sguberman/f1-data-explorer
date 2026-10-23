@@ -3,6 +3,7 @@
 const { chromium } = require('playwright');
 const fs = require('fs'), path = require('path');
 const { api } = require('./fixture');
+const { answer: openf1Answer } = require('./openf1-fixture');
 
 const SITE = path.join(__dirname, '..', '..', 'site');
 const ARTIFACTS = path.join(__dirname, '..', 'artifacts');
@@ -25,12 +26,13 @@ async function close(){ if(browser) await browser.close(); }
 //   grids: {year: object|null} served as site/data/grid/{year}.json (#167); null = a 404 (no qualifying data); a year not
 //     listed gets the real file in site/data/grid/. page.gridHits lists the requests for it.
 //   tracks: an object served as site/data/tracks.json (#169), null = a 404; left out = the real file. page.trackHits lists the requests.
+//   openf1: {fail(url), empty:[session keys]} answers api.openf1.org from lib/openf1-fixture.js (#186); left out = the request is blocked. page.openf1Hits lists the requests.
 // The returned page has .errors (uncaught page errors), .apiHits (f1api.dev requests made) and .done().
-async function openPage(name, {theme='light', width=1000, fail=()=>false, delay=0, snapshots={}, grids={}, tracks=undefined, eras=null, now=null, timezone, locale}={}){
+async function openPage(name, {theme='light', width=1000, fail=()=>false, delay=0, snapshots={}, grids={}, tracks=undefined, openf1=null, eras=null, now=null, timezone, locale}={}){
   const ctx = await browser.newContext({ viewport:{width, height:1400}, ...(timezone ? {timezoneId:timezone} : {}), ...(locale ? {locale} : {}) });
   if(now !== null) await ctx.clock.setFixedTime(now);
   await ctx.addInitScript(t => { try{ localStorage.setItem('f1-theme', t); }catch(e){} }, theme);
-  const apiHits = [], snapshotHits = [], gridHits = [], trackHits = [];
+  const apiHits = [], snapshotHits = [], gridHits = [], trackHits = [], openf1Hits = [];
   await ctx.route('**/*', async route => {
     const url = route.request().url();
     if(url.startsWith('https://f1api.dev/')){
@@ -40,6 +42,14 @@ async function openPage(name, {theme='light', width=1000, fail=()=>false, delay=
       if(fail(url)) return route.fulfill({status:500, headers, body:'error'});
       const {status, body} = api(url);
       return route.fulfill({status, headers, contentType:'application/json', body:JSON.stringify(body)});
+    }
+    if(url.startsWith('https://api.openf1.org/') && openf1){
+      openf1Hits.push(url);
+      if(delay) await new Promise(r => setTimeout(r, delay));
+      const headers = {'access-control-allow-origin':'*'};
+      if(openf1.fail && openf1.fail(url)) return route.fulfill({status:500, headers, body:'error'});
+      const body = openf1Answer(url, openf1);
+      return body ? route.fulfill({status:200, headers, contentType:'application/json', body:JSON.stringify(body)}) : route.fulfill({status:404, headers, body:'[]'});
     }
     if(url.startsWith('https://cdnjs.cloudflare.com/') && url.includes('Chart.js'))
       return route.fulfill({status:200, contentType:'application/javascript', body:CHART_JS});
@@ -68,7 +78,7 @@ async function openPage(name, {theme='light', width=1000, fail=()=>false, delay=
     return route.abort();
   });
   const page = await ctx.newPage();
-  page.errors = []; page.apiHits = apiHits; page.snapshotHits = snapshotHits; page.gridHits = gridHits; page.trackHits = trackHits;
+  page.errors = []; page.apiHits = apiHits; page.snapshotHits = snapshotHits; page.gridHits = gridHits; page.trackHits = trackHits; page.openf1Hits = openf1Hits;
   page.on('pageerror', e => page.errors.push(e.message));
   page.done = () => ctx.close();
   await page.goto(`http://site.test/${name}.html`);

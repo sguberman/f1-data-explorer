@@ -15,8 +15,8 @@ module.exports = async (t, h) => {
         c4: getComputedStyle(document.querySelector('.pv')).getPropertyValue('--c4').trim(),
       };
     });
-    t.check(`${theme} ${width}px: cards in order eras (#142), drivers, constructors, what-if (#107), positions, simulator`,
-      JSON.stringify(r.hrefs) === JSON.stringify(['eras.html','drivers.html','constructors.html','whatif.html','position.html','simulator.html']), r.hrefs.join(','));
+    t.check(`${theme} ${width}px: cards in order eras (#142), drivers, constructors, what-if (#107), positions, simulator, weekend pace (#186)`,
+      JSON.stringify(r.hrefs) === JSON.stringify(['eras.html','drivers.html','constructors.html','whatif.html','position.html','simulator.html','pace.html']), r.hrefs.join(','));
     t.check(`${theme} ${width}px: every card has a chart picture`, r.pictures.every(Boolean));
     // #142: the Eras picture shows era bands with labels, team lines and ★ marks for drivers' titles; its text covers the page's current features
     const eras = await p.evaluate(() => {

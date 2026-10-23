@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Weekend Pace · F1 Data Explorer</title>
+<link rel="icon" href="favicon.ico" sizes="48x48">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="stylesheet" href="theme.css">
+<script src="theme.js"></script>
+<script src="nav.js"></script>
+<script src="common.js"></script>
+<script src="openf1.js"></script>
+<script src="share.js"></script>
+<script src="export.js"></script>
+<style>
+:root,:root[data-theme="light"]{--pb:#8e24aa;}
+:root[data-theme="dark"]{--pb:#ce93d8;}
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;padding:24px 16px 40px;}
+.wrap{max-width:820px;margin:0 auto;}
+h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
+.sub{font-size:12.5px;color:var(--sub);margin:0 0 16px;}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:16px;}
+.note{font-size:11.5px;color:var(--sub);line-height:1.5;margin-top:10px;}
+.paceStatus{font-size:12px;color:var(--sub);margin:0 0 14px;}
+.paceStatus.err{color:var(--elim);}
+.paceHead{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:10px;}
+.cardTitle{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px;margin:0 0 10px;}
+.cardTitle b{font-size:13px;font-weight:600;color:var(--ink);}
+.cardTitle span{font-size:12px;color:var(--sub);}
+.sessChips{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:0 0 4px;}
+.sessBtn{background:var(--inset);color:var(--ink2);border:1px solid var(--line);border-radius:6px;padding:5px 11px;font:inherit;font-size:12px;cursor:pointer;}
+.sessBtn:hover:not(:disabled){border-color:var(--ink2);}
+.sessBtn:focus-visible{outline:2px solid var(--line-strong);outline-offset:2px;}
+.sessBtn.on{background:var(--ink);color:var(--on-ink);border-color:var(--ink);}
+.sessBtn:disabled{opacity:.45;cursor:default;}
+#pacePicker{max-height:280px;overflow-y:auto;}
+.paceChartBox{position:relative;width:100%;}
+.paceLegend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--ink2);margin:0 0 10px;}
+.paceLegend .lgItem{display:inline-flex;align-items:center;gap:6px;}
+.paceLegend i{display:inline-block;width:20px;height:0;border-top:3px solid var(--c);}
+.paceLegend i.dash{border-top-style:dashed;}
+.paceLegend .tyre{display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--c);border:1px solid var(--line-strong);}
+.paceEmpty{font-size:12.5px;color:var(--sub);display:none;margin-top:8px;}
+.paceTable{width:100%;border-collapse:collapse;font-size:12.5px;font-variant-numeric:tabular-nums;}
+.paceTable th{font-size:11.5px;font-weight:600;color:var(--sub);text-align:right;padding:4px 8px;border-bottom:1px solid var(--line);white-space:nowrap;}
+.paceTable td{text-align:right;padding:5px 8px;border-bottom:1px solid var(--line);white-space:nowrap;}
+.paceTable th:first-child,.paceTable td:first-child{text-align:left;padding-left:2px;}
+.paceTable td.who{font-weight:600;}
+.paceTable td.best{color:var(--pb);font-weight:700;}
+.paceTable .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;vertical-align:baseline;}
+.tableScroll{overflow-x:auto;}
+@media (max-width:600px){ .paceTable{font-size:10.5px;} .paceTable th{font-size:10.5px;} .paceTable th,.paceTable td{padding:5px 3px;} .paceTable .dot{margin-right:4px;} }
+</style>
+</head>
+<body>
+<div class="wrap">
+<div class="theme-bar"><nav id="siteNav" class="site-nav" aria-label="Site"></nav><div id="themeToggle"></div></div>
+<h1>Weekend Pace</h1>
+<p class="sub">Practice, sprint and qualifying lap times, sectors, top speeds and tyres for any Grand Prix weekend, from OpenF1. Pick a session and the drivers or teams to compare; the numbers are there soon after each session ends.</p>
+<div class="paceStatus" id="paceStatus">Loading the sessions…</div>
+
+<div class="card" id="sessionCard">
+<div class="paceHead">
+ <select id="yearSel" class="ddSelect" aria-label="Season"></select>
+ <select id="weekendSel" class="ddSelect" aria-label="Grand Prix weekend"></select>
+ <span style="flex:1;"></span>
+ <button type="button" class="f1c-link" id="refresh" title="Fetch the session again">Refresh data</button>
+</div>
+<div class="sessChips" id="sessChips" role="group" aria-label="Session"></div>
+</div>
+
+<div class="card" id="pickCard">
+<div class="paceHead">
+ <span style="font-size:12px;color:var(--sub);">Compare</span>
+ <select id="bySel" class="ddSelect" aria-label="Drivers or teams">
+  <option value="drivers">Drivers</option>
+  <option value="teams">Teams</option>
+ </select>
+ <span style="flex:1;"></span>
+ <label class="optCheck" title="Laps more than 107% of the session's best, such as cool-down laps and laps lost to traffic or a spin"><input type="checkbox" id="slowChk"> Include slow laps</label>
+</div>
+<div class="btnrow" id="presetRow" style="margin-bottom:10px;">
+ <button type="button" class="pill" data-preset="all">All</button>
+ <button type="button" class="pill" data-preset="none">None</button>
+ <button type="button" class="pill" data-preset="5">Fastest 5</button>
+ <button type="button" class="pill" data-preset="10">Fastest 10</button>
+</div>
+<div class="paceHead" style="margin-bottom:6px;">
+ <button type="button" class="pickerToggle" id="pickerToggle" aria-expanded="true" aria-controls="pacePicker" title="Show or hide the list"><span class="chev" aria-hidden="true">▾</span><span id="pickerLabel">Drivers shown</span></button><span id="pickerSummary" class="pickerSummary"></span>
+</div>
+<div id="pacePicker"></div>
+</div>
+
+<div class="card" id="lapCard">
+<div class="cardTitle"><b>Lap times</b><span id="lapSub"></span></div>
+<div class="paceLegend" id="lapLegend"></div>
+<div class="paceChartBox" style="height:380px;"><canvas id="lapCanvas" role="img" aria-label="Lap time of every lap for the picked drivers, with the tyre compound marked"></canvas></div>
+<div class="paceEmpty" id="lapEmpty">Nothing to show.</div>
+<div class="note" id="lapNote"></div>
+</div>
+
+<div class="card" id="ridgeCard">
+<div class="cardTitle"><b>Lap time distribution</b><span id="ridgeSub"></span></div>
+<div class="paceChartBox" id="ridgeWrap"><canvas id="ridgeCanvas" role="img" aria-label="Distribution of lap times for each picked driver or team"></canvas></div>
+<div class="paceEmpty" id="ridgeEmpty">Nothing to show.</div>
+<div class="ridgeKey" id="ridgeKey"></div>
+<div class="note" id="ridgeNote"></div>
+</div>
+
+<div class="card" id="sectorCard">
+<div class="cardTitle"><b>Best sectors and ideal lap</b><span id="sectorSub"></span></div>
+<div class="paceHead">
+ <span style="font-size:12px;color:var(--sub);">Sort by</span>
+ <select id="sortSel" class="ddSelect" aria-label="Sort the table">
+  <option value="best">Best lap</option>
+  <option value="ideal">Ideal lap</option>
+  <option value="gap">Gap to ideal</option>
+ </select>
+</div>
+<div class="tableScroll"><table class="paceTable" id="sectorTable"></table></div>
+<div class="paceEmpty" id="sectorEmpty">Nothing to show.</div>
+<div class="note" id="sectorNote">The ideal lap adds each sector's best time, from any lap. Purple = the best in the session. The gap is the best lap minus the ideal lap.</div>
+</div>
+
+<div class="card" id="speedCard">
+<div class="cardTitle"><b>Top speed</b><span id="speedSub"></span></div>
+<div class="paceHead">
+ <span style="font-size:12px;color:var(--sub);">Measured at</span>
+ <select id="speedSel" class="ddSelect" aria-label="Where the speed is measured">
+  <option value="st">Speed trap</option>
+  <option value="i1">Intermediate 1</option>
+  <option value="i2">Intermediate 2</option>
+ </select>
+</div>
+<div class="paceChartBox" id="speedWrap"><canvas id="speedCanvas" role="img" aria-label="Top speed of each picked driver or team"></canvas></div>
+<div class="paceEmpty" id="speedEmpty">Nothing to show.</div>
+<div class="note" id="speedNote">Each speed is read at one point on the lap, so it depends on the fuel load and engine mode of that run, not only on the car.</div>
+</div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+const ff = getComputedStyle(document.body).fontFamily;
+const $ = id => document.getElementById(id);
+const esc = t => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+const O = F1OpenF1;
+const FIRST_YEAR = 2023; // OpenF1's first season
+const TYRES = { SOFT: '#e53935', MEDIUM: '#fbc02d', HARD: '#eceff1', INTERMEDIATE: '#43a047', WET: '#1e88e5' };
+const DASH = [6, 4]; // a team's second driver
+
+let year = new Date(Date.now()).getFullYear(), weekends = [], weekend = null, session = null, model = null, loadedAt = 0, token = 0;
+let by = 'drivers', slow = false, speedKind = 'st', sortBy = 'best';
+const picked = { drivers: null, teams: null }; // arrays of ids; null = the default
+let lapChart = null, ridgeChart = null, speedChart = null;
+
+const status = (text, err) => { const s = $('paceStatus'); s.className = 'paceStatus' + (err ? ' err' : ''); s.innerHTML = text; };
+// OpenF1's team colours are tuned for a light screen; in the dark theme a dark one (a navy) is lifted toward white so it stays readable.
+const color = c => {
+  const t = F1Theme.team(c), m = /^#([0-9a-f]{6})$/i.exec(t);
+  if(!m || document.documentElement.dataset.theme !== 'dark') return t;
+  const v = [0, 2, 4].map(i => parseInt(m[1].substr(i, 2), 16)), lum = (0.2126 * v[0] + 0.7152 * v[1] + 0.0722 * v[2]) / 255;
+  if(lum >= 0.3) return t;
+  const k = Math.min(0.6, (0.3 - lum) * 2.2);
+  return '#' + v.map(x => Math.round(x + (255 - x) * k).toString(16).padStart(2, '0')).join('');
+};
+
+// ---- state in the URL (kept current; the Share button copies the address) ----
+function syncURL(){
+  if(!session) return;
+  const p = new URLSearchParams();
+  p.set('year', year); p.set('session', session.key);
+  if(by !== 'drivers') p.set('by', by);
+  ['drivers', 'teams'].forEach(k => { if(picked[k]) p.set(k === 'drivers' ? 'd' : 't', picked[k].join('|')); });
+  if(slow) p.set('slow', '1');
+  if(speedKind !== 'st') p.set('speed', speedKind);
+  if(sortBy !== 'best') p.set('sort', sortBy);
+  const q = p.toString().replace(/%7C/g, '|');
+  try{ history.replaceState(history.state, '', location.pathname + '?' + q); }catch(e){}
+}
+const link = new URLSearchParams(location.search);
+if(/^\d{4}$/.test(link.get('year') || '') && +link.get('year') >= FIRST_YEAR) year = +link.get('year');
+if(['drivers', 'teams'].includes(link.get('by'))) by = link.get('by');
+slow = link.get('slow') === '1';
+if(['st', 'i1', 'i2'].includes(link.get('speed'))) speedKind = link.get('speed');
+if(['best', 'ideal', 'gap'].includes(link.get('sort'))) sortBy = link.get('sort');
+['d', 't'].forEach(k => { if(link.get(k) != null) picked[k === 'd' ? 'drivers' : 'teams'] = link.get(k).split('|').filter(Boolean); });
+
+// ---- loading ----
+function setupSelects(){
+  const now = new Date(Date.now()).getFullYear();
+  $('yearSel').innerHTML = Array.from({ length: now - FIRST_YEAR + 1 }, (_, i) => now - i).map(y => `<option value="${y}">${y}</option>`).join('');
+  $('yearSel').value = year;
+  $('bySel').value = by; $('slowChk').checked = slow; $('speedSel').value = speedKind; $('sortSel').value = sortBy;
+}
+async function loadYear(fresh){
+  const my = ++token;
+  status('Loading the sessions…'); $('weekendSel').innerHTML = ''; $('sessChips').innerHTML = '';
+  try{
+    const r = await O.sessions(year, { fresh });
+    if(my !== token) return;
+    weekends = r.list;
+  }catch(e){
+    if(my !== token) return;
+    status('Couldn’t load the sessions from OpenF1. <button type="button" class="f1c-link" id="retry">Retry</button>', true);
+    $('retry').addEventListener('click', () => loadYear(true));
+    return;
+  }
+  const now = Date.now(), started = weekends.filter(w => Date.parse(w.start) <= now), shown = started.length ? started : weekends.slice(0, 1);
+  if(!shown.length){ status('OpenF1 has no practice or qualifying sessions for ' + year + '.', true); return; }
+  $('weekendSel').innerHTML = shown.map(w => `<option value="${w.key}">${esc(w.label)} · ${new Date(w.start).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</option>`).join('');
+  const want = +link.get('session');
+  const w0 = shown.find(w => w.sessions.some(s => s.key === want)) || O.defaultWeekend(shown, now);
+  const s0 = w0.sessions.find(s => s.key === want) || O.defaultSession(w0, now);
+  link.delete('session');
+  pickWeekend(w0, s0, fresh);
+}
+function pickWeekend(w, s, fresh){
+  weekend = w; $('weekendSel').value = w.key;
+  const now = Date.now();
+  $('sessChips').innerHTML = w.sessions.map(x =>
+    `<button type="button" class="sessBtn" data-key="${x.key}" title="${esc(x.name)}"${Date.parse(x.start) > now ? ' disabled' : ''}>${esc(x.short)}</button>`).join('');
+  loadSession(s, fresh);
+}
+async function loadSession(s, fresh){
+  const my = ++token; session = s; model = null;
+  [...$('sessChips').children].forEach(b => { const on = +b.dataset.key === s.key; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); });
+  status(`Loading ${esc(weekend.label)} ${esc(s.name)}…`);
+  try{
+    const m = await O.load(s, { fresh });
+    if(my !== token) return;
+    model = m; loadedAt = m.at;
+  }catch(e){
+    if(my !== token) return;
+    status('Couldn’t load this session from OpenF1. <button type="button" class="f1c-link" id="retry">Retry</button>', true);
+    $('retry').addEventListener('click', () => loadSession(s, true));
+    render(); return;
+  }
+  render();
+}
+
+// ---- what's picked ----
+function defaultIds(ents){ return by === 'teams' ? ents.map(e => e.id) : ents.filter(e => e.best != null).slice(0, 10).map(e => e.id); }
+function selectedIds(ents){
+  const valid = new Set(ents.map(e => e.id));
+  return picked[by] ? picked[by].filter(id => valid.has(id)) : defaultIds(ents);
+}
+function setPicked(ids, ents){ picked[by] = F1Share.sameSet(ids, defaultIds(ents)) ? null : ids; render(); }
+
+function renderPicker(ents, sel){
+  $('pickerLabel').textContent = by === 'teams' ? 'Teams shown' : 'Drivers shown';
+  $('pacePicker').innerHTML = ents.map(e => {
+    const on = sel.includes(e.id);
+    return `<label class="pickerRow"><input type="checkbox" data-id="${esc(e.id)}"${on ? ' checked' : ''}>
+      <span class="pickerDot" style="background:${color(e.color)}"></span>
+      <span class="pickerCode${on ? '' : ' off'}">${esc(by === 'teams' ? e.label : e.name || e.label)}${by === 'teams' ? '' : `<span class="pickerCodeTag">${esc(e.label)}</span>`}</span>
+      <span class="pickerPts" title="Best lap">${O.fmt(e.best)}</span></label>`;
+  }).join('');
+  F1Common.updatePickerSummary(sel, ents.length, by === 'teams' ? 'teams' : 'drivers');
+  F1Common.markActivePreset && markPresets(ents, sel);
+}
+function presetIds(name, ents){
+  const timed = ents.filter(e => e.best != null).map(e => e.id);
+  return name === 'all' ? ents.map(e => e.id) : name === 'none' ? [] : timed.slice(0, +name);
+}
+function markPresets(ents, sel){
+  document.querySelectorAll('#presetRow .pill').forEach(b => b.classList.toggle('active', F1Share.sameSet(presetIds(b.dataset.preset, ents), sel)));
+}
+
+// ---- render ----
+function show(card, any){ // a card's chart or table, or its "nothing to show" line
+  $(card + 'Empty').style.display = any ? 'none' : 'block';
+  const body = { lap: '#lapCard .paceChartBox', ridge: '#ridgeWrap', sector: '#sectorCard .tableScroll', speed: '#speedWrap' }[card];
+  document.querySelector(body).style.display = any ? '' : 'none';
+}
+function render(){
+  [lapChart, ridgeChart, speedChart].forEach(c => c && c.destroy()); lapChart = ridgeChart = speedChart = null;
+  if(!model){ ['lap', 'ridge', 'sector', 'speed'].forEach(c => show(c, false)); $('pacePicker').innerHTML = ''; return; }
+  const ents = O.entities(model, by), sel = selectedIds(ents), chosen = ents.filter(e => sel.includes(e.id));
+  renderPicker(ents, sel);
+  const when = loadedAt ? new Date(loadedAt).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) : '';
+  const nLaps = model.laps.filter(l => l.t != null).length;
+  status(nLaps ? `${esc(weekend.label)} · ${esc(session.name)} · ${model.drivers.length} drivers · ${nLaps} timed laps · fetched ${when}`
+               : `${esc(weekend.label)} · ${esc(session.name)}: no lap data yet. It appears soon after the session starts.`);
+  const P = F1Theme.chart(); Chart.defaults.font.family = ff; Chart.defaults.color = P.text;
+  const best = O.sessionBest(model.laps), pl = O.pace(model.laps, { slow, best });
+  const sub = `${weekend.label} ${session.short} · ${slow ? 'all laps' : 'laps within 107% of the best, no in or out laps'}`;
+  ['lapSub', 'ridgeSub', 'sectorSub', 'speedSub'].forEach(id => { $(id).textContent = id === 'sectorSub' || id === 'speedSub' ? `${weekend.label} ${session.short}` : sub; });
+  drawLaps(chosen, pl); drawRidge(chosen, pl); drawTable(chosen, ents); drawSpeed(chosen);
+  syncURL();
+}
+
+function drivingOf(chosen){ return chosen.flatMap(e => e.drivers); }
+function drawLaps(chosen, pl){
+  const drivers = drivingOf(chosen), nums = new Set(drivers.map(d => d.num)), laps = pl.filter(l => nums.has(l.d));
+  show('lap', laps.length);
+  if(!laps.length){ $('lapLegend').innerHTML = ''; $('lapNote').textContent = ''; return; }
+  const P = F1Theme.chart(), seen = {}; // second driver of a team: dashed
+  const datasets = drivers.map(d => {
+    const mine = laps.filter(l => l.d === d.num); if(!mine.length) return null;
+    const k = seen[d.team] = (seen[d.team] || 0) + 1, data = [];
+    mine.forEach((l, i) => { if(i && l.n - mine[i - 1].n > 1) data.push({ x: l.n - 0.5, y: null }); data.push({ x: l.n, y: l.t, c: l.c, age: l.age }); });
+    return { label: d.code, data, borderColor: color(d.color), borderWidth: 1.8, borderDash: k > 1 ? DASH : [], tension: 0, spanGaps: false,
+      pointRadius: 3.5, pointHoverRadius: 5, pointBackgroundColor: data.map(p => TYRES[p.c] || 'transparent'), pointBorderColor: color(d.color), _dash: k > 1 };
+  }).filter(Boolean);
+  lapChart = new Chart($('lapCanvas'), { type: 'line', data: { datasets }, options: {
+    responsive: true, maintainAspectRatio: false, animation: false, interaction: { mode: 'nearest', intersect: true },
+    plugins: { legend: { display: false }, tooltip: { callbacks: {
+      title: items => 'Lap ' + items[0].raw.x,
+      label: c => ` ${c.dataset.label}: ${O.fmt(c.raw.y)}${c.raw.c ? ' · ' + c.raw.c.toLowerCase() + (c.raw.age != null ? ', ' + c.raw.age + ' laps old' : '') : ''}` } } },
+    scales: { x: { type: 'linear', title: { display: true, text: 'Lap of the session', color: P.text }, grid: { color: P.grid }, ticks: { color: P.text, precision: 0 } },
+      y: { reverse: true, title: { display: true, text: 'Lap time (faster is higher)', color: P.text }, grid: { color: P.grid }, ticks: { color: P.text, callback: v => O.fmt(v, 1) } } } } });
+  const tyres = [...new Set(laps.map(l => l.c).filter(Boolean))];
+  $('lapLegend').innerHTML = datasets.map(d => `<span class="lgItem"><i class="${d._dash ? 'dash' : ''}" style="--c:${d.borderColor}"></i>${esc(d.label)}</span>`).join('')
+    + tyres.map(c => `<span class="lgItem"><span class="tyre" style="--c:${TYRES[c] || 'transparent'}"></span>${c.charAt(0) + c.slice(1).toLowerCase()}</span>`).join('');
+  $('lapNote').textContent = by === 'teams' ? 'Teams: the lines are the picked teams’ drivers (a second driver is dashed). Dots show the tyre compound.' : 'Dots show the tyre compound; a gap in a line is a pit stop. A second driver in a team is dashed.';
+}
+
+function drawRidge(chosen, pl){
+  const rows = chosen.map(e => ({ e, times: pl.filter(l => e.nums.includes(l.d)).map(l => l.t) })).filter(r => r.times.length);
+  show('ridge', rows.length);
+  if(!rows.length){ $('ridgeKey').innerHTML = ''; $('ridgeNote').textContent = ''; return; }
+  const all = rows.flatMap(r => r.times), lo0 = Math.floor(Math.min(...all) * 10) / 10, hi = Math.max(...all), w = O.binWidth(lo0, hi), lo = lo0 - w, n = Math.ceil((hi - lo) / w + 1e-9) + 1; // one empty bin each side so no ridge is cut at the edge
+  const cats = Array.from({ length: n }, (_, i) => O.fmt(lo + i * w, 1));
+  const order = rows.map(r => { const counts = O.bin(r.times, lo, w, n);
+    return { id: r.e.id, code: r.e.label, color: color(r.e.color), counts, modes: F1Common.modesOf(counts), median: F1Common.medianOf(counts), extra: { _counts: counts, _n: r.times.length }, e: r.e, med: F1Common.medianOf(counts) }; })
+    .sort((a, b) => (a.med - b.med) || (a.e.best - b.e.best));
+  const nar = F1Common.isNarrow();
+  ridgeChart = F1Common.ridgeChart({ canvas: $('ridgeCanvas'), wrap: $('ridgeWrap'), order, categories: cats, tension: 0.35,
+    x: { title: { display: true, text: 'Lap time (bins ' + w.toFixed(1) + ' s wide, from the left edge)', color: F1Theme.chart().text },
+      ticks: { color: F1Theme.chart().text, maxRotation: nar ? 60 : 0, minRotation: nar ? 60 : 0, autoSkip: true, maxTicksLimit: nar ? 7 : 12, font: { size: nar ? 9 : 11 } } },
+    title: t => 'Lap time from ' + t[0].label,
+    label: ctx => { const c = ctx.dataset._counts[ctx.dataIndex]; return ` ${ctx.dataset._code}: ${c} lap${c === 1 ? '' : 's'} (${(100 * c / ctx.dataset._n).toFixed(0)}%)`; } });
+  $('ridgeKey').innerHTML = F1Common.ridgeKeyHTML('most common lap time', true);
+  $('ridgeNote').textContent = 'Each ridge is scaled to its own peak, so compare where it sits and how wide it is, not how tall. Laps counted: ' + order.map(o => `${o.code} ${o.extra._n}`).join(' · ');
+}
+
+function tableData(chosen, ents){
+  const rows = chosen.map(e => ({ e, s: O.stats(O.lapsOf(model, e)) }));
+  const all = ents.map(x => O.stats(O.lapsOf(model, x)));
+  const col = i => Math.min(...all.map(s => i === 'best' ? s.best : i === 'ideal' ? s.ideal : s.sec[i]).filter(v => v != null));
+  const top = { best: col('best'), ideal: col('ideal'), 0: col(0), 1: col(1), 2: col(2) };
+  const key = r => sortBy === 'ideal' ? r.s.ideal : sortBy === 'gap' ? r.s.gap : r.s.best;
+  rows.sort((a, b) => (key(a) ?? Infinity) - (key(b) ?? Infinity));
+  return { rows, top };
+}
+function drawTable(chosen, ents){
+  const { rows, top } = tableData(chosen, ents);
+  show('sector', rows.length);
+  if(!rows.length){ $('sectorTable').innerHTML = ''; return; }
+  const cell = (v, t, d = 3) => `<td${v != null && v === t ? ' class="best"' : ''}>${O.fmt(v, d)}</td>`;
+  $('sectorTable').innerHTML = `<thead><tr><th>${by === 'teams' ? 'Team' : 'Driver'}</th><th>Best lap</th><th>S1</th><th>S2</th><th>S3</th><th>Ideal lap</th><th>Gap</th></tr></thead><tbody>`
+    + rows.map(({ e, s }) => `<tr><td class="who"><span class="dot" style="background:${color(e.color)}"></span>${esc(e.label)}</td>${cell(s.best, top.best)}${cell(s.sec[0], top[0])}${cell(s.sec[1], top[1])}${cell(s.sec[2], top[2])}${cell(s.ideal, top.ideal)}<td>${O.gapText(s.gap)}</td></tr>`).join('') + '</tbody>';
+  $('sectorNote').textContent = (by === 'teams' ? 'A team’s sectors are its drivers’ best, so its ideal lap can mix both cars. ' : '')
+    + 'The ideal lap adds each sector’s best time, from any lap. Purple = the best in the session. The gap is the best lap minus the ideal lap.';
+}
+
+function drawSpeed(chosen){
+  const rows = chosen.map(e => ({ e, v: O.stats(O.lapsOf(model, e))[speedKind] })).filter(r => r.v != null).sort((a, b) => b.v - a.v);
+  show('speed', rows.length);
+  if(!rows.length) return;
+  const P = F1Theme.chart(), lo = Math.floor(Math.min(...rows.map(r => r.v)) / 10) * 10 - 10;
+  $('speedWrap').style.height = (rows.length * 26 + 50) + 'px';
+  const labels = { id: 'speedLabels', afterDatasetsDraw(ch){
+    const { ctx } = ch; ctx.save(); ctx.fillStyle = P.text; ctx.font = '600 11px ' + ff; ctx.textBaseline = 'middle';
+    ch.getDatasetMeta(0).data.forEach((b, i) => { ctx.fillText(rows[i].v, b.x + 5, b.y); }); ctx.restore(); } };
+  speedChart = new Chart($('speedCanvas'), { type: 'bar', plugins: [labels], data: { labels: rows.map(r => r.e.label),
+    datasets: [{ data: rows.map(r => r.v), backgroundColor: rows.map(r => color(r.e.color)), borderWidth: 0 }] },
+    options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, animation: false, layout: { padding: { right: 34 } },
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => ` ${c.parsed.x} km/h` } } },
+      scales: { x: { min: lo, title: { display: true, text: 'km/h', color: P.text }, grid: { color: P.grid }, ticks: { color: P.text } },
+        y: { grid: { display: false }, ticks: { color: P.text, font: { weight: '600' }, autoSkip: false } } } } });
+}
+
+// ---- export ----
+const rowsOf = () => { // the laps behind the charts: every lap of the picked drivers, with what was filtered out marked
+  if(!model) return null;
+  const ents = O.entities(model, by), chosen = ents.filter(e => selectedIds(ents).includes(e.id)), nums = new Set(drivingOf(chosen).map(d => d.num));
+  const byNum = new Map(model.drivers.map(d => [d.num, d])), kept = new Set(O.pace(model.laps, { slow }));
+  const laps = model.laps.filter(l => nums.has(l.d)); if(!laps.length) return null;
+  return [['Driver', 'Team', 'Lap', 'Time (s)', 'Sector 1', 'Sector 2', 'Sector 3', 'Tyre', 'Tyre age (laps)', 'Intermediate 1 (km/h)', 'Intermediate 2 (km/h)', 'Speed trap (km/h)', 'Pit-out lap', 'In lap', 'Shown'],
+    ...laps.map(l => [byNum.get(l.d).code, byNum.get(l.d).team, l.n, l.t, ...l.s, l.c, l.age, l.i1, l.i2, l.st, l.out ? 'yes' : '', l.inn ? 'yes' : '', kept.has(l) ? 'yes' : ''])];
+};
+const subtitle = what => () => `${weekend.label} ${session.name} · ${new Date(session.start).getFullYear()}${what ? ' · ' + what : ''}`;
+const chosenNow = () => { const ents = O.entities(model, by); return ents.filter(e => selectedIds(ents).includes(e.id)); };
+F1Export.attach($('lapCard'), { name: 'pace-laps', title: () => 'Lap times', subtitle: subtitle(), canvas: () => $('lapCanvas'),
+  legend: () => lapChart ? lapChart.data.datasets.map(d => ({ label: d.label, color: d.borderColor, dash: d._dash ? DASH : null })) : [], csv: rowsOf });
+F1Export.attach($('ridgeCard'), { name: 'pace-distribution', title: () => 'Lap time distribution', subtitle: subtitle(), canvas: () => $('ridgeCanvas'),
+  csv: () => { if(!ridgeChart) return null; const ds = ridgeChart.data.datasets.filter(d => !d._baseline), cats = ridgeChart.data.labels;
+    return [['Lap time from', ...ds.map(d => d._code)], ...cats.map((c, i) => [c, ...ds.map(d => d._counts[i])])]; } });
+F1Export.attach($('sectorCard'), { name: 'pace-sectors', title: () => 'Best sectors and ideal lap', subtitle: subtitle(),
+  draw: (ctx, x, y, w, measure) => { // the table drawn as text
+    const rows = F1Export.tableRows($('sectorTable')); if(!rows.length) return 0;
+    const rh = 24, cols = rows[0].length, first = Math.min(120, w * 0.25), cw = (w - first) / (cols - 1);
+    if(measure) return rows.length * rh;
+    const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+    ctx.textBaseline = 'middle';
+    rows.forEach((r, i) => { r.forEach((v, j) => {
+      const best = i && document.querySelectorAll('#sectorTable tbody tr')[i - 1].children[j].classList.contains('best');
+      ctx.font = `${i === 0 || best || j === 0 ? 700 : 400} 12.5px ${ff}`;
+      ctx.fillStyle = i === 0 ? css('--sub') : best ? css('--pb') : css('--ink'); ctx.textAlign = j ? 'right' : 'left';
+      ctx.fillText(v, j ? x + first + cw * j : x, y + i * rh + rh / 2); });
+      ctx.strokeStyle = css('--line'); ctx.beginPath(); ctx.moveTo(x, y + (i + 1) * rh); ctx.lineTo(x + w, y + (i + 1) * rh); ctx.stroke(); });
+    ctx.textAlign = 'left'; return rows.length * rh; },
+  csv: () => { const r = F1Export.tableRows($('sectorTable')); return r.length > 1 ? r : null; } });
+F1Export.attach($('speedCard'), { name: 'pace-speed', title: () => 'Top speed', subtitle: subtitle(), canvas: () => $('speedCanvas'),
+  csv: () => speedChart ? [['Name', 'km/h'], ...speedChart.data.labels.map((l, i) => [l, speedChart.data.datasets[0].data[i]])] : null });
+
+// ---- events ----
+$('sessionCard').querySelector('.paceHead').insertAdjacentHTML('beforeend', F1Share.BUTTON);
+$('sessionCard').querySelector('.f1c-share').addEventListener('click', e => F1Share.share(e.currentTarget, true));
+$('yearSel').addEventListener('change', e => { year = +e.target.value; link.delete('session'); loadYear(false); });
+$('weekendSel').addEventListener('change', e => { const w = weekends.find(x => x.key === +e.target.value); pickWeekend(w, O.defaultSession(w, Date.now()), false); });
+$('sessChips').addEventListener('click', e => { const b = e.target.closest('.sessBtn'); if(!b || b.disabled) return; loadSession(weekend.sessions.find(s => s.key === +b.dataset.key), false); });
+$('refresh').addEventListener('click', () => { if(session) loadSession(session, true); else loadYear(true); });
+$('bySel').addEventListener('change', e => { by = e.target.value; render(); });
+$('slowChk').addEventListener('change', e => { slow = e.target.checked; render(); });
+$('speedSel').addEventListener('change', e => { speedKind = e.target.value; render(); });
+$('sortSel').addEventListener('change', e => { sortBy = e.target.value; render(); });
+$('pacePicker').addEventListener('change', e => {
+  if(!model) return;
+  const ents = O.entities(model, by), ids = [...document.querySelectorAll('#pacePicker input:checked')].map(i => i.dataset.id);
+  setPicked(ents.map(x => x.id).filter(id => ids.includes(id)), ents);
+});
+$('presetRow').addEventListener('click', e => {
+  const b = e.target.closest('.pill'); if(!b || !model) return;
+  const ents = O.entities(model, by); setPicked(presetIds(b.dataset.preset, ents), ents);
+});
+F1Common.initPickerToggle();
+window.addEventListener('themechange', () => render());
+setupSelects();
+loadYear(false);
+</script>
+</body>
+</html>

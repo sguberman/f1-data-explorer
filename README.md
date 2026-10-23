@@ -18,7 +18,10 @@ Interactive charts and a title simulator for the 2026 Formula 1 season (every se
 - **Eras**: championship position of any drivers and teams, season by season since 1950, against the rule
   eras (V10, V8, turbo hybrid, ground effect…). Teams keep one line through renames and new owners.
 
-Every page except Eras has a season picker and an "as of round" slider, and light, dark and system themes.
+- **Weekend Pace**: practice, sprint and qualifying lap times for any Grand Prix weekend (from OpenF1): lap times
+  by stint and tyre, lap time distributions, best sectors against the ideal lap, and top speeds.
+
+Every page except Eras and Weekend Pace has a season picker and an "as of round" slider, and light, dark and system themes.
 
 ## How it works
 
