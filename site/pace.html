@@ -591,8 +591,8 @@ function drawLaps(chosen, pl){
   drivers.forEach(d => {
     const mine = laps.filter(l => l.d === d.num).sort((a, b) => a.n - b.n); if(!mine.length) return;
     const k = seen[d.teamId] = (seen[d.teamId] || 0) + 1, col = color(d.color), good = mine.filter(l => !isOut(l)), data = [];
-    good.forEach((l, i) => { // the line breaks when the tyre compound changes
-      if(i && good[i - 1].c !== l.c) data.push({ x: (xOf(good[i - 1]) + xOf(l)) / 2, y: null });
+    good.forEach((l, i) => { // the line breaks at each pit stop (a new stint, even on the same compound), or when the compound changes
+      if(i && (good[i - 1].sn !== l.sn || good[i - 1].c !== l.c)) data.push({ x: (xOf(good[i - 1]) + xOf(l)) / 2, y: null });
       data.push({ x: xOf(l), y: l.t, n: l.n, d: l.d, c: l.c, age: l.age });
     });
     datasets.push({ label: d.code, data, borderColor: col, borderWidth: 1.8, borderDash: k > 1 ? DASH : [], tension: 0, spanGaps: false,
@@ -618,7 +618,7 @@ function drawLaps(chosen, pl){
   $('lapLegend').innerHTML = tyreKeyHTML(laps.map(l => l.c).filter(Boolean))
     + [...new Set(datasets.filter(d => !d._outlier).map(d => d._code))].map(c => { const d = datasets.find(x => x._code === c && !x._outlier);
     return `<button type="button" class="lgItem" data-code="${esc(c)}" aria-pressed="false"><i class="${d._dash ? 'dash' : ''}" style="--c:${d._color}"></i>${esc(c)}</button>`; }).join('');
-  $('lapNote').textContent = 'Dots show the tyre compound; a driver’s line breaks when the compound changes and joins the laps in order past the hidden in and out laps. A team’s second driver is dashed. '
+  $('lapNote').textContent = 'Dots show the tyre compound; a driver’s line breaks at each pit stop (a new stint, also on the same tyre) and joins the laps in order past the hidden in and out laps. A team’s second driver is dashed. '
     + 'Click a line, a dot or a name to follow one driver; click it again to release. Right-click (long-press on a phone) a dot to mark it as an outlier.'
     + (tm && segs.length ? ' Dashed lines mark the qualifying parts.' : '');
 }

@@ -196,7 +196,10 @@ const F1OpenF1 = (() => {
   async function sessions(year, {fresh=false}={}){
     const path = '/sessions?year=' + year;
     let r;
-    try{ r = await get(path, 30 * 60e3, fresh, false); }
+    // a finished year's list is final: the saved one, without asking OpenF1
+    const past = !fresh && year < new Date().getUTCFullYear() ? await savedFile(`data/pace/${year}.json`) : null;
+    if(past) r = { data: past.sessions, at: past.generatedAt, source: 'saved', blocked: false };
+    else try{ r = await get(path, 30 * 60e3, fresh, false); }
     catch(e){
       const file = await savedFile(`data/pace/${year}.json`), old = cacheAny(path);
       if(file) r = { data: file.sessions, at: file.generatedAt, source: 'saved', blocked: !!e.live };
@@ -217,7 +220,7 @@ const F1OpenF1 = (() => {
   // ---- one session ----
   // Joins the three lists into {drivers, laps}. Drivers: {num, code, name, team, color}. Laps: {d (driver number), n (lap number),
   // t (lap time, s), s [s1, s2, s3], i1, i2, st (speeds, km/h), out (pit-out lap), inn (in-lap: last lap of a stint
-  // that another stint follows), sc (under the safety car or a virtual one: `neutral` is neutralLaps()'s ranges), c (compound), age (tyre age on the lap), at (when the lap started, ms)}; a missing value is null.
+  // that another stint follows), sn (stint number: a new one after each pit stop), sc (under the safety car or a virtual one: `neutral` is neutralLaps()'s ranges), c (compound), age (tyre age on the lap), at (when the lap started, ms)}; a missing value is null.
   function build(laps, stints, drivers, neutral){
     const ds = (drivers || []).map(d => ({ num: d.driver_number, code: d.name_acronym, name: d.full_name || d.broadcast_name || d.name_acronym,
       team: d.team_name || '', color: '#' + (d.team_colour || '888888').replace('#', '') }));
@@ -230,7 +233,7 @@ const F1OpenF1 = (() => {
       return { d: l.driver_number, n: l.lap_number, t: num(l.lap_duration),
         s: [num(l.duration_sector_1), num(l.duration_sector_2), num(l.duration_sector_3)],
         i1: num(l.i1_speed), i2: num(l.i2_speed), st: num(l.st_speed), out: !!l.is_pit_out_lap,
-        inn: !!(st && later && l.lap_number === st.lap_end), sc: (neutral || []).some(g => l.lap_number >= g[0] && l.lap_number <= g[1]),
+        inn: !!(st && later && l.lap_number === st.lap_end), sn: st ? st.stint_number : null, sc: (neutral || []).some(g => l.lap_number >= g[0] && l.lap_number <= g[1]),
         c: st ? st.compound : null, age: st ? (st.tyre_age_at_start || 0) + (l.lap_number - st.lap_start) : null,
         at: l.date_start ? Date.parse(l.date_start) : null };
     }).sort((a, b) => (a.d - b.d) || (a.n - b.n));

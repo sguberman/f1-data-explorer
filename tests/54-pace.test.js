@@ -322,6 +322,13 @@ module.exports = async (t, h) => {
   t.check('the Sprint defaults to the Sprint result; a driver who did not start is last, with no number', sp.sels === 'sprint,sprint,sprint' && sp.picker === 'DA1,DA0,DB0,DC0,DB1,DC1' && sp.ranks === '1,2,3,4,5', JSON.stringify([sp.picker, sp.ranks]));
   t.check('the Sprint plots by lap number, the other sessions by minutes', await p.evaluate(() => lapChart.options.scales.x.title.text) === 'Lap of the race');
   await p.done();
+  // pit stops (#186): the line breaks at each new stint, also when both are on the same compound
+  const sameTyre = (url, o) => { const body = fx.answer(url, o); return /\/stints/.test(url) ? body.map(x => ({ ...x, compound: 'SOFT' })) : body; };
+  p = await h.openPage('pace', { openf1: { answer: sameTyre }, now: fx.NOW }); await p.goto('http://site.test/pace.html?season=2026&round=12&session=FP2'); await ready(p);
+  const same = await p.evaluate(() => lapChart.data.datasets.map(d => d.data.map(q => q.y === null ? '|' : q.n).join()));
+  t.check('both stints on the same compound: the line still breaks at the pit stop (laps 2–5, then 8–10)', same[0] === '2,3,4,5,|,8,9,10' && same.every(x => x.includes('|')) && (await p.evaluate(() => new Set(lapChart.data.datasets[0]._fills.filter(f => f !== 'transparent')).size === 1)), same.join(' / '));
+  t.check('the note says the line breaks at each pit stop', /breaks at each pit stop/.test(await p.evaluate(() => document.getElementById('lapNote').textContent)));
+  await p.done();
   // safety car laps (#186): left out like slow laps, and the plots' subtitle says so
   p = await h.openPage('pace', { openf1: {}, now: fx.NOW }); await p.goto('http://site.test/pace.html?season=2026&round=12&session=Race'); await ready(p);
   const subs = async () => p.evaluate(() => ({ sub: document.getElementById('lapSub').textContent, dots: document.getElementById('dotSub').textContent, hits: 0 }));
