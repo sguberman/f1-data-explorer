@@ -61,12 +61,14 @@ export async function runYear(year, { fetchImpl = fetch, dir = OUT, now = Date.n
   }
   for(const s of sessions){
     const file = path.join(dir, String(year), `${s.session_key}.json`);
-    if(!O.KINDS.has(s.session_name) || s.is_cancelled || fs.existsSync(file)) continue;
+    if(!O.KINDS.has(s.session_name) || s.is_cancelled) continue;
+    // a saved sprint or race without the safety car messages (saved before they were kept) is saved again
+    if(fs.existsSync(file)){ let had = null; try{ had = JSON.parse(fs.readFileSync(file, 'utf8')); }catch(e){} if(!(had && /^(Sprint|Race)$/.test(s.session_name) && !(had.rc >= 2))) continue; }
     if(Date.parse(s.date_end) + SETTLE_MS > now) continue; // not over yet, or not settled
     try{
-      const q = '?session_key=' + s.session_key, quali = O.isQualifying(s.session_name), raw = {};
+      const q = '?session_key=' + s.session_key, raw = {};
       raw.laps = await get('/laps' + q); raw.stints = await get('/stints' + q); raw.drivers = await get('/drivers' + q);
-      raw.raceControl = quali ? await get('/race_control' + q) : [];
+      raw.raceControl = O.hasRaceControl(s.session_name) ? await get('/race_control' + q) : [];
       raw.result = O.resultKind(s.session_name) ? await get('/session_result' + q) : [];
       // no laps at all, soon after the end, is OpenF1 not having them yet: try again next time
       if(!raw.laps.length && now - Date.parse(s.date_end) < 24 * 3600e3) continue;

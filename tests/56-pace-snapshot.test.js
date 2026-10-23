@@ -37,6 +37,14 @@ module.exports = async (t, h) => {
   t.check('read back, a saved session builds the same model as the API’s answer', JSON.stringify(O.build(f.laps, f.stints, f.drivers)) === JSON.stringify(O.build(raw.laps, raw.stints, raw.drivers)));
   t.check('a saved session is much smaller than the API’s answer', fs.statSync(path.join(dir, '2026', '202.json')).size < JSON.stringify(raw.laps).length / 3);
 
+  // a race saved with its safety car messages (#186); one saved before they were kept is saved again
+  const race = read(path.join(dir, '2026', '105.json'));
+  t.check('a race keeps its safety car messages with their laps', race.rc === 2 && JSON.stringify(O.neutralLaps(O.inflate(race).raceControl)) === '[[3,4],[9,10]]', JSON.stringify(race.raceControl));
+  const raceFile = path.join(dir, '2026', '105.json'), oldRace = { ...race }; delete oldRace.rc; oldRace.raceControl = [];
+  fs.writeFileSync(raceFile, JSON.stringify(oldRace)); calls = [];
+  r = await runYear(2026, { fetchImpl: fake(calls), dir, now, wait: noWait, gap: 0 });
+  t.check('a saved race without them (no rc mark) is saved again, and only that one', r.written.join() === '105' && read(raceFile).rc === 2 && read(raceFile).raceControl.length === 5, JSON.stringify(r));
+
   // ---- later runs fetch nothing twice ----
   calls = [];
   r = await runYear(2026, { fetchImpl: fake(calls), dir, now, wait: noWait, gap: 0 });

@@ -113,7 +113,7 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
 <div class="cardTitle"><b>Lap times</b><span id="lapSub"></span></div>
 <div class="plotOpts">
  <span class="sortCtl"><span class="sortLbl">Sort by</span><select class="ddSelect sortSeg" aria-label="Sort the drivers on this plot, the list and the other lap plot"></select><button type="button" class="sortLock" aria-pressed="false"></button></span>
- <label class="optCheck" title="Laps more than 107% of the session's best, such as cool-down laps and laps lost to traffic or a spin"><input type="checkbox" class="slowChk"> Include slow laps</label>
+ <label class="optCheck" title="Laps more than 107% of the session's best, such as cool-down laps and laps lost to traffic or a spin, and laps under the safety car or a virtual safety car"><input type="checkbox" class="slowChk"> Include slow laps</label>
  <label class="optCheck" title="Laps you marked as outliers (right-click a dot) are drawn faded; untick to hide them"><input type="checkbox" class="outChk"> Show outliers</label>
  <button type="button" class="f1c-link resetOut" hidden>Reset outliers</button>
 </div>
@@ -474,7 +474,7 @@ function render(){
                : `${esc(session.name)}: no lap data yet. It appears soon after the session starts.`) + (notice ? ' · ' + esc(notice) : ''));
   const P = F1Theme.chart(); Chart.defaults.font.family = ff; Chart.defaults.color = P.text;
   const where = `${raceTitle()} · ${session.short}`;
-  $('lapSub').textContent = $('dotSub').textContent = `${where} · ${slow ? 'all laps' : 'laps within 107% of the best, no in or out laps'}`;
+  $('lapSub').textContent = $('dotSub').textContent = `${where} · ${slow ? 'all laps' : `laps within 107% of the best, no in or out ${model.laps.some(l => l.sc) ? 'or safety car ' : ''}laps`}`;
   $('dumbSub').textContent = $('sectorSub').textContent = $('speedSub').textContent = where;
   drawLaps(chosen, pl); drawDots(chosen, pl); drawTable(chosen, ents); drawDumbbell(chosen); drawSpeed(chosen);
   applyFocus();

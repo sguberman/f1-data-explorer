@@ -46,6 +46,16 @@ module.exports = async (t, h) => {
   t.check('pace laps: no pit-out, in or untimed laps, and no slow cool-down lap', pl.every(l => !l.out && !l.inn && l.t != null && l.t <= best * O.SLOW) && !pl.some(l => l.n === 11), String(pl.length));
   t.check('6 drivers × 7 push laps, less the untimed one', pl.length === 41, String(pl.length));
   t.check('"include slow laps" brings back the cool-down laps (not the out, in or untimed ones)', O.pace(m.laps, { slow: true }).length === 41 + 6 && O.pace(m.laps, { slow: true }).every(l => !l.out && !l.inn && l.t != null));
+  // safety car laps (#186): the scRace control messages mark them; they are slow laps, whatever their times
+  const scRc = fx.raceControlFor(105), scNeutral = O.neutralLaps(scRc), scRace = O.build(fx.lapsFor(105), fx.stintsFor(105), fx.driversFor(105), scNeutral);
+  t.check('safety car laps from the scRace control messages: a virtual one over laps 3–4, the safety car over 9–10', JSON.stringify(scNeutral) === '[[3,4],[9,10]]', JSON.stringify(scNeutral));
+  t.check('a deployment with no end counts for its own lap; one end message alone counts for nothing; a restart before an end closes the range', JSON.stringify(O.neutralLaps([{ date: '2026-01-01T00:00:00Z', category: 'SafetyCar', message: 'SAFETY CAR DEPLOYED', lap_number: 5 }])) === '[[5,5]]' &&
+    O.neutralLaps([{ date: '2026-01-01T00:00:00Z', category: 'SafetyCar', message: 'VSC ENDING', lap_number: 5 }]).length === 0 && O.neutralLaps([]).length === 0 && O.neutralLaps(null).length === 0);
+  t.check('laps under them are marked, the others are not', scRace.laps.every(l => l.sc === ([3, 4, 9, 10].includes(l.n))) && O.build(fx.lapsFor(105), fx.stintsFor(105), fx.driversFor(105)).laps.every(l => !l.sc));
+  const scPace = O.pace(scRace.laps), scPlain = O.pace(O.build(fx.lapsFor(105), fx.stintsFor(105), fx.driversFor(105)).laps);
+  t.check('pace laps leave them out even when their times are quick; "include slow laps" brings them scBack', scPace.every(l => !l.sc) && scPlain.length - scPace.length === scPlain.filter(l => [3, 4, 9, 10].includes(l.n)).length && scPlain.some(l => [9, 10].includes(l.n)) && O.pace(scRace.laps, { slow: true }).some(l => l.sc));
+  const scBack = O.inflate(O.compact({ laps: fx.lapsFor(105), stints: fx.stintsFor(105), drivers: fx.driversFor(105), raceControl: scRc.concat([{ date: scRc[0].date, category: 'Flag', message: 'GREEN FLAG', lap_number: 2 }]), result: [] }, { key: 105, year: 2026, name: 'Race' }, 1));
+  t.check('a saved copy keeps the safety car messages with their laps (and not the flags)', JSON.stringify(O.neutralLaps(scBack.raceControl)) === '[[3,4],[9,10]]' && scBack.raceControl.length === 5 && O.compact({ raceControl: scRc }, { key: 1 }).rc === 2);
   t.check('a session with no laps has no best', O.sessionBest([]) === null && O.pace([]).length === 0);
 
   // ---- entities, stats ----

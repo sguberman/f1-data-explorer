@@ -250,7 +250,7 @@ module.exports = async (t, h) => {
   t.check('moving the slider changes the label but fetches nothing until it is let go', /Round 12 of 13/.test((await state(p)).label) && p.openf1Hits.length === n1 && /let go of the slider/.test((await state(p)).status), `${(await state(p)).label} ${(await state(p)).status}`);
   await commit(p); await ready(p);
   s = await state(p);
-  t.check('letting go loads that weekend, all its sessions enabled, on the Race (the latest that has run), and the classifications of the sessions that have finished', hits(p) === 'sessions,laps,stints,drivers,laps,stints,drivers,session_result,session_result' && s.chips.map(c => c[0]).join() === 'FP1,FP2,FP3,Quali,Race' && s.chips.every(c => !c[2]) && s.chips.find(c => c[1])[0] === 'Race' && /Race/.test(s.status), hits(p) + JSON.stringify(s.chips));
+  t.check('letting go loads that weekend, all its sessions enabled, on the Race (the latest that has run), and the classifications of the sessions that have finished', hits(p) === 'sessions,laps,stints,drivers,laps,stints,drivers,race_control,session_result,session_result' && s.chips.map(c => c[0]).join() === 'FP1,FP2,FP3,Quali,Race' && s.chips.every(c => !c[2]) && s.chips.find(c => c[1])[0] === 'Race' && /Race/.test(s.status), hits(p) + JSON.stringify(s.chips));
 
   t.check('the Race plots lap by lap', await p.evaluate(() => lapChart.options.scales.x.title.text) === 'Lap of the race' && (await state(p)).lines.length > 0);
 
@@ -322,6 +322,18 @@ module.exports = async (t, h) => {
   t.check('the Sprint defaults to the Sprint result; a driver who did not start is last, with no number', sp.sels === 'sprint,sprint,sprint' && sp.picker === 'DA1,DA0,DB0,DC0,DB1,DC1' && sp.ranks === '1,2,3,4,5', JSON.stringify([sp.picker, sp.ranks]));
   t.check('the Sprint plots by lap number, the other sessions by minutes', await p.evaluate(() => lapChart.options.scales.x.title.text) === 'Lap of the race');
   await p.done();
+  // safety car laps (#186): left out like slow laps, and the plots' subtitle says so
+  p = await h.openPage('pace', { openf1: {}, now: fx.NOW }); await p.goto('http://site.test/pace.html?season=2026&round=12&session=Race'); await ready(p);
+  const subs = async () => p.evaluate(() => ({ sub: document.getElementById('lapSub').textContent, dots: document.getElementById('dotSub').textContent, hits: 0 }));
+  let sc = await subs();
+  t.check('a race with a safety car: the plots say safety car laps are left out', /no in or out or safety car laps/.test(sc.sub) && /no in or out or safety car laps/.test(sc.dots), sc.sub);
+  t.check('…and its race control was asked for', p.openf1Hits.some(u => /race_control\?session_key=105/.test(u)), p.openf1Hits.join());
+  await p.check('.slowChk >> nth=0'); await p.waitForTimeout(200); sc = await subs();
+  t.check('include slow laps brings them back (all laps)', /all laps/.test(sc.sub), sc.sub);
+  await p.close();
+  p = await h.openPage('pace', { openf1: {}, now: fx.NOW }); await p.goto('http://site.test/pace.html?season=2026&round=12&session=FP1'); await ready(p);
+  t.check('a session without a safety car does not mention one', !/safety car/.test((await subs()).sub), (await subs()).sub);
+  await p.close();
   p = await h.openPage('pace', { openf1: {}, now: fx.NOW }); await p.goto('http://site.test/pace.html?season=2026&round=12&sort=median&lock=1&session=Quali'); await ready(p);
   sp = await orders(p);
   t.check('a link restores the sort and the lock', sp.sels === 'median,median,median' && sp.locks === 'true,true,true' && /Qualifying/.test((await state(p)).status), JSON.stringify([sp.sels, sp.locks]));

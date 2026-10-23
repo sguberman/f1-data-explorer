@@ -72,6 +72,21 @@ const F1OpenF1 = (() => {
     }
   }
 
+  // Race control's safety car messages: the laps from a deployment to its end are not racing laps.
+  const SC_START = [/^SAFETY CAR DEPLOYED/, /^VSC DEPLOYED/], SC_END = [/^SAFETY CAR IN THIS LAP/, /^VSC ENDING/];
+  // The lap ranges under the safety car or a virtual one, [[from, to]] (lap numbers, both included), from race control rows. A deployment
+  // with no end message counts for its own lap only.
+  function neutralLaps(rows){
+    const ev = (rows || []).filter(r => r.category === 'SafetyCar' && r.lap_number != null).sort((a, b) => a.date < b.date ? -1 : 1);
+    const out = []; let from = null;
+    ev.forEach(r => {
+      if(SC_START.some(re => re.test(r.message || ''))){ if(from == null) from = r.lap_number; else if(r.lap_number > from) { out.push([from, r.lap_number]); from = r.lap_number; } }
+      else if(SC_END.some(re => re.test(r.message || '')) && from != null){ out.push([from, Math.max(from, r.lap_number)]); from = null; }
+    });
+    if(from != null) out.push([from, from]);
+    return out;
+  }
+
   // ---- saved copies of finished sessions (data/pace/…, written by tools/pace-snapshot.mjs) ----
   const LAP_FIELDS = ['driver_number', 'lap_number', 'date_start', 'lap_duration', 'duration_sector_1', 'duration_sector_2', 'duration_sector_3', 'i1_speed', 'i2_speed', 'st_speed', 'is_pit_out_lap'];
   const STINT_FIELDS = ['driver_number', 'stint_number', 'lap_start', 'lap_end', 'compound', 'tyre_age_at_start'];
@@ -82,11 +97,12 @@ const F1OpenF1 = (() => {
   // raw: {laps, stints, drivers, raceControl, result} as OpenF1 answers them.
   function compact(raw, meta, now = Date.now()){
     const rows = (list, fields) => (list || []).map(r => fields.map(f => val(r[f])));
-    return { v: 1, key: meta.key, year: meta.year, name: meta.name, generatedAt: now,
+    return { v: 1, rc: 2, key: meta.key, year: meta.year, name: meta.name, generatedAt: now,
       fields: { laps: LAP_FIELDS, stints: STINT_FIELDS, drivers: DRIVER_FIELDS },
       laps: (raw.laps || []).map(l => LAP_FIELDS.map(f => f === 'date_start' ? (l.date_start ? Date.parse(l.date_start) : null) : f === 'is_pit_out_lap' ? (l.is_pit_out_lap ? 1 : 0) : val(l[f]))),
       stints: rows(raw.stints, STINT_FIELDS), drivers: rows(raw.drivers, DRIVER_FIELDS),
-      raceControl: (raw.raceControl || []).filter(r => r.category === 'SessionStatus' && /^SESSION (STARTED|FINISHED)$/.test(r.message || '')).map(r => [Date.parse(r.date), r.message]),
+      raceControl: (raw.raceControl || []).filter(r => (r.category === 'SessionStatus' && /^SESSION (STARTED|FINISHED)$/.test(r.message || '')) || (r.category === 'SafetyCar' && SC_START.concat(SC_END).some(re => re.test(r.message || ''))))
+        .map(r => r.category === 'SafetyCar' ? [Date.parse(r.date), r.message, r.lap_number] : [Date.parse(r.date), r.message]),
       result: (raw.result || []).map(r => [r.driver_number, val(r.position), r.dns ? 1 : 0, r.dsq ? 1 : 0, r.dnf ? 1 : 0]) };
   }
   // The other way: OpenF1-shaped rows again, so the same code reads a saved copy and an answer from the API.
@@ -96,7 +112,7 @@ const F1OpenF1 = (() => {
     return {
       laps: (snap.laps || []).map(r => { const o = obj(f.laps || LAP_FIELDS, r); o.date_start = o.date_start != null ? new Date(o.date_start).toISOString() : null; o.is_pit_out_lap = !!o.is_pit_out_lap; return o; }),
       stints: (snap.stints || []).map(r => obj(f.stints || STINT_FIELDS, r)), drivers: (snap.drivers || []).map(r => obj(f.drivers || DRIVER_FIELDS, r)),
-      raceControl: (snap.raceControl || []).map(r => ({ date: new Date(r[0]).toISOString(), category: 'SessionStatus', message: r[1] })),
+      raceControl: (snap.raceControl || []).map(r => r.length > 2 ? { date: new Date(r[0]).toISOString(), category: 'SafetyCar', message: r[1], lap_number: r[2] } : { date: new Date(r[0]).toISOString(), category: 'SessionStatus', message: r[1] }),
       result: (snap.result || []).map(r => ({ driver_number: r[0], position: r[1], dns: !!r[2], dsq: !!r[3], dnf: !!r[4] })) };
   }
   // The saved files are fetched from the site itself (same origin: no OpenF1 request, no limit). A missing file is not remembered:
@@ -119,6 +135,8 @@ const F1OpenF1 = (() => {
   // The lap-based sessions this page can show: practice, qualifying, sprint and the Grand Prix itself (pre-season testing has none of these names).
   const KINDS = new Set(['Practice 1', 'Practice 2', 'Practice 3', 'Qualifying', 'Sprint Qualifying', 'Sprint Shootout', 'Sprint', 'Race']);
   const isQualifying = name => /Qualifying|Shootout/.test(name || '');
+  // The sessions whose race control messages are used: the qualifying parts, and the safety car in the sprint and the Grand Prix.
+  const hasRaceControl = name => isQualifying(name) || name === 'Sprint' || name === 'Race';
 
   // The classified sessions the page can sort by: kind -> OpenF1 session names.
   const RESULT_KINDS = { gp: ['Race'], sprint: ['Sprint'], quali: ['Qualifying'], sprintquali: ['Sprint Qualifying', 'Sprint Shootout'] };
@@ -199,8 +217,8 @@ const F1OpenF1 = (() => {
   // ---- one session ----
   // Joins the three lists into {drivers, laps}. Drivers: {num, code, name, team, color}. Laps: {d (driver number), n (lap number),
   // t (lap time, s), s [s1, s2, s3], i1, i2, st (speeds, km/h), out (pit-out lap), inn (in-lap: last lap of a stint
-  // that another stint follows), c (compound), age (tyre age on the lap), at (when the lap started, ms)}; a missing value is null.
-  function build(laps, stints, drivers){
+  // that another stint follows), sc (under the safety car or a virtual one: `neutral` is neutralLaps()'s ranges), c (compound), age (tyre age on the lap), at (when the lap started, ms)}; a missing value is null.
+  function build(laps, stints, drivers, neutral){
     const ds = (drivers || []).map(d => ({ num: d.driver_number, code: d.name_acronym, name: d.full_name || d.broadcast_name || d.name_acronym,
       team: d.team_name || '', color: '#' + (d.team_colour || '888888').replace('#', '') }));
     const byNum = new Map(); (stints || []).forEach(s => { if(!byNum.has(s.driver_number)) byNum.set(s.driver_number, []); byNum.get(s.driver_number).push(s); });
@@ -212,7 +230,7 @@ const F1OpenF1 = (() => {
       return { d: l.driver_number, n: l.lap_number, t: num(l.lap_duration),
         s: [num(l.duration_sector_1), num(l.duration_sector_2), num(l.duration_sector_3)],
         i1: num(l.i1_speed), i2: num(l.i2_speed), st: num(l.st_speed), out: !!l.is_pit_out_lap,
-        inn: !!(st && later && l.lap_number === st.lap_end),
+        inn: !!(st && later && l.lap_number === st.lap_end), sc: (neutral || []).some(g => l.lap_number >= g[0] && l.lap_number <= g[1]),
         c: st ? st.compound : null, age: st ? (st.tyre_age_at_start || 0) + (l.lap_number - st.lap_start) : null,
         at: l.date_start ? Date.parse(l.date_start) : null };
     }).sort((a, b) => (a.d - b.d) || (a.n - b.n));
@@ -241,16 +259,16 @@ const F1OpenF1 = (() => {
     const snap = fresh ? null : await savedSession(session);
     if(snap){
       const f = inflate(snap);
-      return Object.assign(build(f.laps, f.stints, f.drivers), { at: snap.generatedAt, source: 'saved', blocked: false, segments: quali ? qualiSegments(f.raceControl, sprint) : [] });
+      return Object.assign(build(f.laps, f.stints, f.drivers, neutralLaps(f.raceControl)), { at: snap.generatedAt, source: 'saved', blocked: false, segments: quali ? qualiSegments(f.raceControl, sprint) : [] });
     }
     const over = now - Date.parse(session.end) > 2 * HOUR;
     const ttl = over ? DAY : 5 * 60e3, q = '?session_key=' + session.key;
     const none = { data: [], at: Infinity, source: 'api' };
     const [l, s, d, rc] = await Promise.all([get('/laps' + q, ttl, fresh), get('/stints' + q, ttl, fresh), get('/drivers' + q, ttl, fresh),
-      quali ? get('/race_control' + q, ttl, fresh).catch(() => none) : Promise.resolve(none)]);
+      hasRaceControl(session.name) ? get('/race_control' + q, ttl, fresh).catch(() => none) : Promise.resolve(none)]);
     const parts = [l, s, d];
     const source = parts.some(x => x.source === 'stale') ? 'stale' : parts.every(x => x.source === 'cache') ? 'cache' : 'api';
-    return Object.assign(build(l.data, s.data, d.data), { at: Math.min(l.at, s.at, d.at), source, blocked: parts.some(x => x.blocked), segments: quali ? qualiSegments(rc.data, sprint) : [] });
+    return Object.assign(build(l.data, s.data, d.data, neutralLaps(rc.data)), { at: Math.min(l.at, s.at, d.at), source, blocked: parts.some(x => x.blocked), segments: quali ? qualiSegments(rc.data, sprint) : [] });
   }
 
   // ---- numbers ----
@@ -258,9 +276,9 @@ const F1OpenF1 = (() => {
   const max = a => { const v = a.filter(x => x != null); return v.length ? Math.max(...v) : null; };
   // The session's best lap time, the line "slow" is measured from.
   const sessionBest = laps => min(laps.map(l => l.t));
-  // The laps that show pace: a time, not a pit-out or in lap, and (unless `slow`) within 107% of the session's best.
+  // The laps that show pace: a time, not a pit-out or in lap, and (unless `slow`) within 107% of the session's best and not under a safety car.
   function pace(laps, {slow=false, best=sessionBest(laps)}={}){
-    return laps.filter(l => l.t != null && !l.out && !l.inn && (slow || best == null || l.t <= best * SLOW));
+    return laps.filter(l => l.t != null && !l.out && !l.inn && (slow || (!l.sc && (best == null || l.t <= best * SLOW))));
   }
 
   // The things compared: each driver, or each team (its drivers' laps together). Sorted fastest best lap first.
@@ -309,7 +327,7 @@ const F1OpenF1 = (() => {
   const speedIn = (kmh, unit) => kmh == null ? null : unit === 'mph' ? Math.round(kmh * 0.621371 * 10) / 10 : kmh;
   const gapText = g => g == null ? '–' : (g >= 0 ? '+' : '−') + Math.abs(g).toFixed(3);
 
-  const api = { BASE, SLOW, weekends, weekendForRound, defaultWeekend, defaultSession, sessions, build, load, hasSaved, liveUntil, live, compact, inflate, makeLimiter, SESSION_FIELDS, KINDS, qualiSegments, isQualifying, results, resultOrder, resultKind, RESULT_KINDS, sessionBest, pace, entities, lapsOf, stats, bin, binWidth, fmt, gapText, speedIn, shortName };
+  const api = { BASE, SLOW, weekends, weekendForRound, defaultWeekend, defaultSession, sessions, build, load, hasSaved, liveUntil, live, compact, inflate, makeLimiter, SESSION_FIELDS, KINDS, qualiSegments, neutralLaps, isQualifying, hasRaceControl, results, resultOrder, resultKind, RESULT_KINDS, sessionBest, pace, entities, lapsOf, stats, bin, binWidth, fmt, gapText, speedIn, shortName };
   return api;
 })();
 if(typeof module !== 'undefined' && module.exports) module.exports = F1OpenF1; // Node (the tests)

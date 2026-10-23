@@ -702,7 +702,7 @@ slider reaches the race weekend that is on, before its Grand Prix. Only this pag
   the next weekend doesn't have yet). The table and the best-vs-ideal plot have their own shared sort (below).
 - **Link keys** (besides `season`/`round`): `session` (FP1/FP2/FP3/Quali/Sprint…/Race), `d`, `sort` (only when it isn't the session's default), `lock=1`, `slow=1`, `out=0`, `box=0`, `speed=i1|i2`,
   `unit=kph`, `tsort=ideal|gap`; defaults are left out.
-- **Pace laps** (`F1OpenF1.pace`): a time, not a pit-out or in lap, and within 107% of the session's best unless **Include slow laps** is on. The two lap
+- **Pace laps** (`F1OpenF1.pace`): a time, not a pit-out or in lap, and within 107% of the session's best and not under the safety car or a virtual one, unless **Include slow laps** is on. Safety car laps come from race control (`category SafetyCar`: `SAFETY CAR DEPLOYED` … `SAFETY CAR IN THIS LAP`, `VSC DEPLOYED` … `VSC ENDING`, by the leader's lap number, both ends included; `F1OpenF1.neutralLaps`), fetched for qualifying, the Sprint and the Race and kept in the saved copies (`rc: 2`; `tools/pace-snapshot.mjs` saves a sprint or race again if its copy lacks it). The two lap
   plots (lines, dots) use them; the table, best-vs-ideal plot and top speeds use every lap. **Include slow laps, Show outliers and Reset outliers are
   on both lap plots and kept in step; the tyre key (soft, medium, hard…) comes first on both.**
 - **Lap times (lines):** site team colours, a team's second driver dashed, dots coloured by tyre compound, a driver's line **breaks where the compound

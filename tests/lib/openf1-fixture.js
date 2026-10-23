@@ -67,6 +67,9 @@ const stintsFor = key => roster(key).flatMap(([n]) => [
 
 // Race control: when each qualifying part starts and finishes (and a red flag in Q1 that stops it and restarts it).
 const raceControlFor = key => {
+  // the Budapest race (105): a virtual safety car over laps 3–4 and the safety car over laps 9–10 (normal lap times, so only the messages mark them)
+  if(key === 105){ const t0 = startOf(key), at = m => new Date(t0 + m * MIN).toISOString(), sc = (m, message, lap) => ({ date: at(m), category: 'SafetyCar', message, lap_number: lap, flag: null, session_key: key, meeting_key: 0 });
+    return [{ date: at(0), category: 'SessionStatus', message: 'SESSION STARTED', flag: null, session_key: key, meeting_key: 0 }, sc(5, 'VSC DEPLOYED', 3), sc(9, 'VSC ENDING', 4), sc(20, 'SAFETY CAR DEPLOYED', 9), sc(26, 'SAFETY CAR IN THIS LAP', 10)]; }
   if(!isQuali(key)) return [];
   const t0 = startOf(key), at = m => new Date(t0 + m * MIN).toISOString(), row = (m, category, message) => ({ date: at(m), category, message, flag: null, session_key: key, meeting_key: 0 });
   return [row(0, 'SessionStatus', 'SESSION STARTED'), row(0, 'Flag', 'GREEN LIGHT - PIT EXIT OPEN'), row(5, 'SessionStatus', 'SESSION ABORTED'), row(7, 'SessionStatus', 'SESSION STARTED'),
