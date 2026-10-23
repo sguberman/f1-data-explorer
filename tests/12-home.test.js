@@ -29,6 +29,16 @@ module.exports = async (t, h) => {
       eras.bands >= 2 && ['V10','V8','Hybrid'].every(l => eras.labels.includes(l)) && eras.lines === 3 && eras.stars >= 3 && eras.starFill !== 'rgb(0, 0, 0)', JSON.stringify(eras));
     t.check(`${theme} ${width}px: Eras text mentions tracking teams or drivers, lineages, the star and eras (#142)`,
       /track your favorite teams or drivers through history/i.test(eras.text) && /renames and new owners/.test(eras.text) && eras.text.includes('★') && /Zoom in on an era/.test(eras.text), eras.text);
+    // #186: the Weekend Pace picture: a box plot per driver with a dot per lap in its tyre's colour; its text says what the page does
+    const pace = await p.evaluate(() => {
+      const c = document.querySelector('a.card[href="pace.html"]'), svg = c.querySelector('svg.pv'), fills = [...svg.querySelectorAll('circle.td')].map(e => e.getAttribute('fill'));
+      return { boxes: svg.querySelectorAll('rect.bx').length, medians: svg.querySelectorAll('line.med').length, dots: fills.length, tyres: [...new Set(fills)].length, labels: [...svg.querySelectorAll('text.ecode')].map(e => e.textContent).join(),
+        boxFill: getComputedStyle(svg.querySelector('rect.bx')).fillOpacity, ring: getComputedStyle(svg.querySelector('circle.td')).strokeWidth, text: c.querySelector('p').textContent, title: c.querySelector('h3').textContent };
+    });
+    t.check(`${theme} ${width}px: Weekend Pace picture: five box plots with median lines, dots in three tyre colours, driver codes (#186)`,
+      pace.boxes === 5 && pace.medians === 5 && pace.dots >= 35 && pace.tyres === 3 && pace.labels === 'RUS,LEC,NOR,VER,ALO' && +pace.boxFill > 0 && +pace.boxFill < 0.5 && pace.ring !== '0px', JSON.stringify(pace));
+    t.check(`${theme} ${width}px: Weekend Pace text covers laps by tyre, box plots, sectors and the ideal lap, top speeds, the sorts and live sessions (#186)`,
+      pace.title === 'Weekend Pace' && /dot coloured by its tyre/.test(pace.text) && /box plots/.test(pace.text) && /ideal lap/.test(pace.text) && /top speeds/.test(pace.text) && /fastest lap, median or the session’s result/.test(pace.text) && /live/.test(pace.text), pace.text);
     t.check(`${theme} ${width}px: cards are laid out vertically, one per row`, r.stacked && r.sameLeft);
     t.check(`${theme} ${width}px: no horizontal scroll`, r.scroll <= width);
     t.check(`${theme} ${width}px: picture colours follow the theme`, r.c4.toLowerCase() === (theme === 'dark' ? '#6a86f0' : '#1b2a6b'), r.c4);
