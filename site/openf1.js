@@ -69,6 +69,15 @@ const F1OpenF1 = (() => {
     const started = w.sessions.filter(s => Date.parse(s.start) <= now);
     return started.length ? started[started.length - 1] : w.sessions[0];
   }
+  // The weekend of a championship round: the one whose first session starts within six days before the Grand Prix's date (the calendar's
+  // raceDates, 'YYYY-MM-DD') or the day after it, the closest if several. Without a date, the round's place in the list. null when none fits.
+  function weekendForRound(list, calendar, round){
+    const date = calendar && calendar.raceDates && calendar.raceDates[round];
+    if(!date) return list[round - 1] || null;
+    const race = Date.parse(date + 'T12:00:00Z'), DAY_MS = 864e5;
+    const near = list.map(w => ({ w, d: race - Date.parse(w.start) })).filter(x => x.d >= -DAY_MS && x.d <= 6 * DAY_MS).sort((a, b) => Math.abs(a.d - 3 * DAY_MS) - Math.abs(b.d - 3 * DAY_MS));
+    return near.length ? near[0].w : null;
+  }
   async function sessions(year, {fresh=false}={}){
     const r = await get('/sessions?year=' + year, 30 * 60e3, fresh);
     return { list: weekends(r.data), at: r.at };
@@ -115,14 +124,17 @@ const F1OpenF1 = (() => {
   }
 
   // The things compared: each driver, or each team (its drivers' laps together). Sorted fastest best lap first.
+  // The page may give each driver an `id` (the site's driver id), a `teamId` and `teamLabel` (the site's team) and a `color`;
+  // without them OpenF1's own driver number, team name and colour are used.
   function entities(model, by){
     const best = n => min(model.laps.filter(l => l.d === n).map(l => l.t));
+    const teamOf = d => d.teamId != null ? d.teamId : d.team;
     const rows = by === 'teams'
-      ? [...new Set(model.drivers.map(d => d.team))].map(team => {
-          const ds = model.drivers.filter(d => d.team === team);
-          return { id: team, label: team, color: ds[0].color, nums: ds.map(d => d.num), team, drivers: ds };
+      ? [...new Set(model.drivers.map(teamOf))].map(id => {
+          const ds = model.drivers.filter(d => teamOf(d) === id);
+          return { id, label: ds[0].teamLabel || ds[0].team, color: ds[0].color, nums: ds.map(d => d.num), team: ds[0].team, drivers: ds };
         })
-      : model.drivers.map(d => ({ id: String(d.num), label: d.code, name: d.name, color: d.color, nums: [d.num], team: d.team, drivers: [d] }));
+      : model.drivers.map(d => ({ id: d.id != null ? d.id : String(d.num), label: d.code, name: d.name, color: d.color, nums: [d.num], team: d.team, teamId: teamOf(d), drivers: [d] }));
     rows.forEach(r => { r.best = min(r.nums.map(best)); });
     return rows.sort((a, b) => (a.best ?? Infinity) - (b.best ?? Infinity) || (a.label < b.label ? -1 : 1));
   }
@@ -152,9 +164,11 @@ const F1OpenF1 = (() => {
     const m = Math.floor(t / 60), s = (t - m * 60).toFixed(digits).padStart(digits + 3, '0');
     return m ? m + ':' + s : (t - m * 60).toFixed(digits);
   }
+  // Speeds come in km/h; "mph" is the same speed in whole miles per hour.
+  const speedIn = (kmh, unit) => kmh == null ? null : unit === 'mph' ? Math.round(kmh * 0.621371) : kmh;
   const gapText = g => g == null ? '–' : (g >= 0 ? '+' : '−') + Math.abs(g).toFixed(3);
 
-  const api = { BASE, SLOW, weekends, defaultWeekend, defaultSession, sessions, build, load, sessionBest, pace, entities, lapsOf, stats, bin, binWidth, fmt, gapText, shortName };
+  const api = { BASE, SLOW, weekends, weekendForRound, defaultWeekend, defaultSession, sessions, build, load, sessionBest, pace, entities, lapsOf, stats, bin, binWidth, fmt, gapText, speedIn, shortName };
   return api;
 })();
 if(typeof module !== 'undefined' && module.exports) module.exports = F1OpenF1; // Node (the tests)

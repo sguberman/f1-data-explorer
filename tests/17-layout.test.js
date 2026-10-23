@@ -12,7 +12,7 @@ module.exports = async (t, h) => {
       controlsLeft: Math.round(document.getElementById('f1controls').getBoundingClientRect().left),
     };
   });
-  const pages = ['drivers', 'constructors', 'position', 'simulator', 'whatif'];
+  const pages = ['drivers', 'constructors', 'position', 'simulator', 'whatif', 'pace'];
   for(const width of [1000, 390]){
     const got = {};
     for(const name of pages){ const p = await h.openPage(name, { width }); await h.loaded(p); got[name] = await frame(p); await p.done(); }

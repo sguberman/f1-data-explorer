@@ -21,7 +21,7 @@ Interactive charts and a title simulator for the 2026 Formula 1 season (every se
 - **Weekend Pace**: practice, sprint and qualifying lap times for any Grand Prix weekend (from OpenF1): lap times
   by stint and tyre, lap time distributions, best sectors against the ideal lap, and top speeds.
 
-Every page except Eras and Weekend Pace has a season picker and an "as of round" slider, and light, dark and system themes.
+Every page except Eras has a season picker and an "as of round" slider, and light, dark and system themes.
 
 ## How it works
 

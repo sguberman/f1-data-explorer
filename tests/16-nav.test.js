@@ -7,8 +7,8 @@ module.exports = async (t, h) => {
   const full = await buildSnapshot(2026, fakeFetch, Date.now());
   const snapshots = { 2026: full, 2025: { ...full, year: 2025, complete: true } };
   const PAGES = { drivers:"Drivers' Championship", constructors:"Constructors' Championship", whatif:'What-If Results',
-    position:'Race Finishing Positions', simulator:'Title Simulator' }; // #107: the homepage's card order
-  const ALL = { eras:'Eras', ...PAGES, pace:'Weekend Pace' }; // #135: the Eras page reads its own file and has no season controls; #142: first, like the homepage's cards
+    position:'Race Finishing Positions', simulator:'Title Simulator', pace:'Weekend Pace' }; // #107: the homepage's card order
+  const ALL = { eras:'Eras', ...PAGES }; // #135: the Eras page reads its own file and has no season controls; #142: first, like the homepage's cards
 
   for(const [name, title] of Object.entries(PAGES)){
     const p = await h.openPage(name, { snapshots }); await h.loaded(p);

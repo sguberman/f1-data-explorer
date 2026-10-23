@@ -1,26 +1,36 @@
-// A fake OpenF1 (#186): two weekends in 2026 (Singapore, Austin), six drivers in three teams, deterministic laps.
-// The "now" the tests use is 2026-10-24 01:00 UTC: Singapore is over; Austin has run FP1 and FP2 only.
-const NOW = '2026-10-24T01:00:00Z';
+// A fake OpenF1 (#186): the weekends of rounds 11, 12 and 13 of the fake 2026 season in lib/fixture.js (Grand Prix on 2026-07-19, 2026-08-02 and 2026-08-30),
+// two drivers in each of three teams, deterministic laps. Their codes (DA0 … DC1) are the fake f1api.dev drivers' codes, so the page
+// can match them; OpenF1's team colours are not the site's on purpose. A reserve driver (ZZZ) drives FP1 only and is not in the season.
+// The "now" the tests use is 2026-08-28 17:00 UTC: round 12 is over; round 13 has run FP1 and FP2 only.
+const NOW = '2026-08-28T17:00:00Z';
 
 const SESSIONS = [];
-const add = (meeting, loc, country, key, name, start, end) => SESSIONS.push({ meeting_key: meeting, session_key: key, session_name: name, session_type: /Pract/.test(name) ? 'Practice' : name,
+const add = (meeting, loc, country, key, name, start, end) => SESSIONS.push({ meeting_key: meeting, session_key: key, session_name: name, session_type: /Pract|Day/.test(name) ? 'Practice' : name,
   date_start: start, date_end: end, location: loc, country_name: country, country_code: 'XXX', circuit_key: meeting, circuit_short_name: loc, gmt_offset: '00:00:00', year: 2026, is_cancelled: false });
-add(1, 'Marina Bay', 'Singapore', 101, 'Practice 1', '2026-10-09T08:30:00+00:00', '2026-10-09T09:30:00+00:00');
-add(1, 'Marina Bay', 'Singapore', 102, 'Practice 2', '2026-10-09T12:00:00+00:00', '2026-10-09T13:00:00+00:00');
-add(1, 'Marina Bay', 'Singapore', 103, 'Practice 3', '2026-10-10T08:30:00+00:00', '2026-10-10T09:30:00+00:00');
-add(1, 'Marina Bay', 'Singapore', 104, 'Qualifying', '2026-10-10T13:00:00+00:00', '2026-10-10T14:00:00+00:00');
-add(1, 'Marina Bay', 'Singapore', 105, 'Race', '2026-10-11T12:00:00+00:00', '2026-10-11T14:00:00+00:00');
-add(2, 'Austin', 'United States', 201, 'Practice 1', '2026-10-23T17:30:00+00:00', '2026-10-23T18:30:00+00:00');
-add(2, 'Austin', 'United States', 202, 'Practice 2', '2026-10-23T21:00:00+00:00', '2026-10-23T22:00:00+00:00');
-add(2, 'Austin', 'United States', 203, 'Practice 3', '2026-10-24T17:30:00+00:00', '2026-10-24T18:30:00+00:00');
-add(2, 'Austin', 'United States', 204, 'Qualifying', '2026-10-24T21:00:00+00:00', '2026-10-24T22:00:00+00:00');
-add(2, 'Austin', 'United States', 205, 'Race', '2026-10-25T20:00:00+00:00', '2026-10-25T22:00:00+00:00');
+add(9, 'Sakhir', 'Bahrain', 91, 'Day 1', '2026-02-11T07:00:00+00:00', '2026-02-11T16:00:00+00:00'); // pre-season testing: not a weekend
+add(3, 'Silverstone', 'United Kingdom', 301, 'Practice 1', '2026-07-17T11:30:00+00:00', '2026-07-17T12:30:00+00:00'); // round 11
+add(3, 'Silverstone', 'United Kingdom', 302, 'Practice 2', '2026-07-17T15:00:00+00:00', '2026-07-17T16:00:00+00:00');
+add(3, 'Silverstone', 'United Kingdom', 303, 'Practice 3', '2026-07-18T10:30:00+00:00', '2026-07-18T11:30:00+00:00');
+add(3, 'Silverstone', 'United Kingdom', 304, 'Qualifying', '2026-07-18T14:00:00+00:00', '2026-07-18T15:00:00+00:00');
+add(3, 'Silverstone', 'United Kingdom', 305, 'Race', '2026-07-19T13:00:00+00:00', '2026-07-19T15:00:00+00:00');
+add(1, 'Budapest', 'Hungary', 101, 'Practice 1', '2026-07-31T11:30:00+00:00', '2026-07-31T12:30:00+00:00');
+add(1, 'Budapest', 'Hungary', 102, 'Practice 2', '2026-07-31T15:00:00+00:00', '2026-07-31T16:00:00+00:00');
+add(1, 'Budapest', 'Hungary', 103, 'Practice 3', '2026-08-01T10:30:00+00:00', '2026-08-01T11:30:00+00:00');
+add(1, 'Budapest', 'Hungary', 104, 'Qualifying', '2026-08-01T14:00:00+00:00', '2026-08-01T15:00:00+00:00');
+add(1, 'Budapest', 'Hungary', 105, 'Race', '2026-08-02T13:00:00+00:00', '2026-08-02T15:00:00+00:00');
+add(2, 'Zandvoort', 'Netherlands', 201, 'Practice 1', '2026-08-28T11:30:00+00:00', '2026-08-28T12:30:00+00:00');
+add(2, 'Zandvoort', 'Netherlands', 202, 'Practice 2', '2026-08-28T15:00:00+00:00', '2026-08-28T16:00:00+00:00');
+add(2, 'Zandvoort', 'Netherlands', 203, 'Practice 3', '2026-08-29T10:30:00+00:00', '2026-08-29T11:30:00+00:00');
+add(2, 'Zandvoort', 'Netherlands', 204, 'Qualifying', '2026-08-29T14:00:00+00:00', '2026-08-29T15:00:00+00:00');
+add(2, 'Zandvoort', 'Netherlands', 205, 'Race', '2026-08-30T13:00:00+00:00', '2026-08-30T15:00:00+00:00');
 
-// number, acronym, name, team, colour
-const DRIVERS = [[1, 'AAA', 'Alice Alpha', 'Alpha', 'FF0000'], [2, 'BBB', 'Bob Alpha', 'Alpha', 'FF0000'], [3, 'CCC', 'Cara Beta', 'Beta', '0000FF'],
-  [4, 'DDD', 'Dan Beta', 'Beta', '0000FF'], [5, 'EEE', 'Eve Gamma', 'Gamma', '00AA00'], [6, 'FFF', 'Finn Gamma', 'Gamma', '00AA00']];
+// number, acronym, name, OpenF1's team name, OpenF1's team colour
+const DRIVERS = [[63, 'DA0', 'Alice Alpha', 'Mercedes', '111111'], [12, 'DA1', 'Bob Alpha', 'Mercedes', '111111'], [16, 'DB0', 'Cara Beta', 'Ferrari', '222222'],
+  [44, 'DB1', 'Dan Beta', 'Ferrari', '222222'], [1, 'DC0', 'Eve Gamma', 'McLaren', '333333'], [81, 'DC1', 'Finn Gamma', 'McLaren', '333333']];
+const RESERVE = [99, 'ZZZ', 'Zed Reserve', 'Mercedes', '111111'];
+const roster = key => key % 100 === 1 ? [...DRIVERS, RESERVE] : DRIVERS;
 
-const driversFor = key => DRIVERS.map(([n, a, name, team, c]) => ({ meeting_key: 0, session_key: key, driver_number: n, name_acronym: a, full_name: name, broadcast_name: name.toUpperCase(),
+const driversFor = key => roster(key).map(([n, a, name, team, c]) => ({ meeting_key: 0, session_key: key, driver_number: n, name_acronym: a, full_name: name, broadcast_name: name.toUpperCase(),
   team_name: team, team_colour: c, headshot_url: null }));
 
 // Each driver: lap 1 pit-out, laps 2–5 push on softs, lap 6 in-lap; lap 7 pit-out, laps 8–10 push on mediums, lap 11 a slow cool-down lap
@@ -28,7 +38,7 @@ const driversFor = key => DRIVERS.map(([n, a, name, team, c]) => ({ meeting_key:
 // come from different laps, so the ideal lap is quicker than the best lap.
 const lapsFor = key => {
   const out = [];
-  DRIVERS.forEach(([n], i) => {
+  roster(key).forEach(([n], i) => {
     for(let k = 1; k <= 11; k++){
       const push = (k >= 2 && k <= 5) || (k >= 8 && k <= 10);
       let s1 = 28 + i * 0.05 + (k % 3) * 0.02, s2 = 35 + i * 0.02 + (k % 2) * 0.03, s3 = 27 + i * 0.3 + (k % 4) * 0.02, t = s1 + s2 + s3;
@@ -42,11 +52,11 @@ const lapsFor = key => {
         segments_sector_1: [], segments_sector_2: [], segments_sector_3: [] });
     }
   });
-  const f = out.find(l => l.driver_number === 6 && l.lap_number === 4); f.lap_duration = null; f.duration_sector_1 = null;
-  out.find(l => l.driver_number === 5 && l.lap_number === 3).duration_sector_1 = null;
+  const f = out.find(l => l.driver_number === 81 && l.lap_number === 4); f.lap_duration = null; f.duration_sector_1 = null;
+  out.find(l => l.driver_number === 1 && l.lap_number === 3).duration_sector_1 = null;
   return out;
 };
-const stintsFor = key => DRIVERS.flatMap(([n]) => [
+const stintsFor = key => roster(key).flatMap(([n]) => [
   { meeting_key: 0, session_key: key, stint_number: 1, driver_number: n, lap_start: 1, lap_end: 6, compound: 'SOFT', tyre_age_at_start: 0 },
   { meeting_key: 0, session_key: key, stint_number: 2, driver_number: n, lap_start: 7, lap_end: 11, compound: 'MEDIUM', tyre_age_at_start: 3 }]);
 
@@ -61,4 +71,4 @@ function answer(url, { empty = [] } = {}){
   if(path === '/drivers') return driversFor(key);
   return null;
 }
-module.exports = { NOW, SESSIONS, DRIVERS, answer, lapsFor, stintsFor, driversFor };
+module.exports = { NOW, SESSIONS, DRIVERS, RESERVE, answer, lapsFor, stintsFor, driversFor };

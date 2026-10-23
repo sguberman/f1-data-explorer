@@ -334,15 +334,17 @@ const F1Common = (() => {
 
   // One driver row in a picker: checkbox, (rank), team-color dot, flag + number + full name + code tag (#18),
   // (movement), points.
-  function driverPickerRowHTML(d, {rank=null, checked=false, points=0, move=0}={}){
+  // #186: `valueText` replaces the points column (the Weekend Pace page shows the best lap), and a driver with `color`
+  // (a team the site has no colour for) uses it for the dot.
+  function driverPickerRowHTML(d, {rank=null, checked=false, points=0, move=0, valueText=null}={}){
    const num=numberOf(d.driverId);
    return `<label class="pickerRow">
      <input type="checkbox" data-id="${d.driverId}" ${checked?'checked':''}>
      ${rank!=null?`<span class="pickerRank">${rank}</span>`:''}
-     <span class="pickerDot" style="background:${F1Theme.team(teamColor(d.teamId))}"></span>
+     <span class="pickerDot" style="background:${F1Theme.team(d.color||teamColor(d.teamId))}"></span>
      <span class="pickerCode${checked?'':' off'}">${flagHTML(nationalityOf('drivers', d.driverId))}<span class="pickerNum">${num!=null?num:''}</span>${d.name}<span class="pickerCodeTag">${d.code}</span></span>
      ${moveHTML(move)}
-     <span class="pickerPts">${Math.round(points)}</span>
+     <span class="pickerPts">${valueText!=null?valueText:Math.round(points)}</span>
    </label>`;
   }
 
