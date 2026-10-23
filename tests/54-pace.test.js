@@ -66,19 +66,19 @@ module.exports = async (t, h) => {
   await p.selectOption('#sortSeg', 'team');
 
   // ---- the lap lines ----
-  const lines = await p.evaluate(() => lapChart.data.datasets.map(d => [d.data.filter(q => q.y !== null).length, d.data.map(q => q.y === null ? '|' : q.x).join()]));
+  const lines = await p.evaluate(() => lapChart.data.datasets.map(d => [d.data.filter(q => q.y !== null).length, d.data.map(q => q.y === null ? '|' : q.n).join()]));
   t.check('the line breaks where the tyre compound changes (softs on laps 2–5, mediums from 8) and not at the hidden in and out laps', lines[0][1] === '2,3,4,5,|,8,9,10' && lines.map(l => l[0]).join() === '7,7,7,7,7,6' && lines[5][1] === '2,3,5,|,8,9,10', JSON.stringify(lines));
   t.check('faster is lower: the lap time axis is not reversed', await p.evaluate(() => !lapChart.options.scales.y.reverse && /faster is lower/.test(lapChart.options.scales.y.title.text)));
   t.check('tyre compounds colour the dots', await p.evaluate(() => { const d = lapChart.data.datasets[0]; return d._fills.includes('#e53935') && d._fills.includes('#fbc02d'); }));
   t.check('the second driver of a team is dashed', await p.evaluate(() => { const d = lapChart.data.datasets; return d[0].borderDash.length === 0 && d[1].borderDash.length === 2; }));
-  t.check('practice has no qualifying parts', await p.evaluate(() => !(model.segments || []).length && lapChart.options.scales.x.title.text === 'Lap of the session'));
+  t.check('practice has no qualifying parts, and its x axis is minutes into the session like qualifying’s (only the Sprint and the Race use lap numbers)', await p.evaluate(() => !(model.segments || []).length && lapChart.options.scales.x.title.text === 'Minutes into the session' && lapChart.data.datasets[0].data[0].x === 2.5));
 
   // hover: every driver's time at that lap, fastest first
   let [x3, y3] = await p.evaluate(() => { const a = lapChart.chartArea, r = document.getElementById('lapCanvas').getBoundingClientRect(); document.getElementById('lapCanvas').scrollIntoView({ block: 'center' });
-    const r2 = document.getElementById('lapCanvas').getBoundingClientRect(); return [r2.left + lapChart.scales.x.getPixelForValue(3), r2.top + a.top + 30]; });
+    const r2 = document.getElementById('lapCanvas').getBoundingClientRect(); return [r2.left + lapChart.scales.x.getPixelForValue(5.2), r2.top + a.top + 30]; });
   await p.mouse.move(x3, y3); await p.waitForTimeout(100);
   const tip = await p.$eval('#lapTip', e => ({ hidden: e.hidden, head: e.querySelector('.tipHead')?.textContent, rows: [...e.querySelectorAll('.tipRow')].map(r => r.textContent.replace(/\s+/g, ' ').trim()) }));
-  t.check('hovering a lap lists each driver’s time at that lap, fastest first, with the tyre', !tip.hidden && tip.head === 'Lap 3' && tip.rows.length === 6 && /^DA01:30\.0\d\dsoft$/.test(tip.rows[0]) && /^DC11:31\.\d{3}soft$/.test(tip.rows[5]), JSON.stringify(tip));
+  t.check('hovering lists each driver’s lap then (minutes into the session), fastest first, with the tyre and lap number', !tip.hidden && /^5:\d\d into the session$/.test(tip.head) && tip.rows.length === 6 && /^DA01:30\.0\d\dsoft, lap 3$/.test(tip.rows[0]) && /^DC11:31\.\d{3}soft, lap 3$/.test(tip.rows[5]), JSON.stringify(tip));
   await p.mouse.move(5, 5); await p.waitForTimeout(100);
   t.check('…and goes away when the pointer leaves', await p.$eval('#lapTip', e => e.hidden));
 
@@ -92,7 +92,7 @@ module.exports = async (t, h) => {
   t.check('clicking it again lets go', JSON.stringify(await lapStyle(p)) === '[false,false,false,false,false,false]');
   await p.click('#lapLegend .lgItem[data-code="DB0"]'); await p.waitForTimeout(100);
   t.check('clicking a name in the legend follows that driver', JSON.stringify(await lapStyle(p)) === '[true,true,false,true,true,true]');
-  const [lx, ly] = await p.evaluate(() => { const a = lapChart.chartArea, r = document.getElementById('lapCanvas').getBoundingClientRect(); return [r.left + lapChart.scales.x.getPixelForValue(6.5), r.top + a.top + 8]; });
+  const [lx, ly] = await p.evaluate(() => { const a = lapChart.chartArea, r = document.getElementById('lapCanvas').getBoundingClientRect(); return [r.left + lapChart.scales.x.getPixelForValue(13), r.top + a.top + 8]; });
   await p.mouse.click(lx, ly); await p.waitForTimeout(100);
   t.check('clicking an empty part of the chart lets go', JSON.stringify(await lapStyle(p)) === '[false,false,false,false,false,false]');
   const [segx, segy] = await p.evaluate(() => { const m = lapChart.getDatasetMeta(0).data, a = m[0], b = m[1], r = document.getElementById('lapCanvas').getBoundingClientRect(); return [r.left + (a.x + b.x) / 2, r.top + (a.y + b.y) / 2]; });
@@ -101,13 +101,13 @@ module.exports = async (t, h) => {
   await p.mouse.click(lx, ly);
 
   // ---- outliers: right-click a dot on either plot; both plots stay in step ----
-  [a0x, a0y] = await lapSpot(p, 0, 1); // DA0's lap 3
+  [a0x, a0y] = await lapSpot(p, 0, 2); // DA0's lap 4, its best
   await p.mouse.click(a0x, a0y, { button: 'right' }); await p.waitForTimeout(150);
   let o = await p.evaluate(() => ({ n: outliers.size, key: [...outliers].join(), main: lapChart.data.datasets[0].data.filter(q => q.y !== null).length, ds: lapChart.data.datasets.map(d => d._outlier ? 'o' : 'm').join(''),
     dotMain: dotChart.data.datasets[0].data.length, dotOut: dotChart.data.datasets[1] ? dotChart.data.datasets[1].data.length : 0, reset: [...document.querySelectorAll('.resetOut')].map(b => b.hidden + ':' + b.textContent).join() }));
-  t.check('right-click marks the lap as an outlier: off the line, drawn as a faded cross', o.n === 1 && o.key === '63:3' && o.main === 6 && /^mo/.test(o.ds), JSON.stringify(o));
+  t.check('right-click marks the lap as an outlier: off the line, drawn as a faded cross', o.n === 1 && o.key === '63:4' && o.main === 6 && /^mo/.test(o.ds), JSON.stringify(o));
   t.check('…and on the dot plot too (out of the box, shown as a cross)', o.dotMain === 40 && o.dotOut === 1, JSON.stringify(o));
-  t.check('both plots offer Reset outliers, with the count', o.reset === 'false:Reset outliers (1),false:Reset outliers (1)', o.reset);
+  t.check('both plots, the table and the best lap plot offer Reset outliers, with the count', o.reset === Array(4).fill('false:Reset outliers (1)').join(), o.reset);
   t.check('no browser menu was left open and the page is fine', p.errors.length === 0, p.errors.join('; '));
   await p.uncheck('#dotCard .outChk'); await p.waitForTimeout(100);
   o = await p.evaluate(() => ({ lap: document.querySelector('#lapCard .outChk').checked, dot: document.querySelector('#dotCard .outChk').checked, ds: lapChart.data.datasets.some(d => d._outlier), dd: dotChart.data.datasets.length }));
@@ -124,6 +124,51 @@ module.exports = async (t, h) => {
   t.check('outliers are remembered for the session when the page is reloaded', await p.evaluate(() => outliers.size === 1 && lapChart.data.datasets.some(d => d._outlier)));
   await p.click('#dotCard .resetOut'); await p.waitForTimeout(100);
   t.check('Reset outliers clears them (and the button goes)', await p.evaluate(() => outliers.size === 0 && [...document.querySelectorAll('.resetOut')].every(b => b.hidden) && !lapChart.data.datasets.some(d => d._outlier)));
+
+  // ---- the best lap table and plot follow the outliers and share one sort ----
+  [a0x, a0y] = await lapSpot(p, 0, 2); // DA0's best lap, lap 4
+  await p.mouse.click(a0x, a0y, { button: 'right' }); await p.waitForTimeout(150);
+  const afterOut = await p.evaluate(() => ({ row: [...document.querySelector('#sectorTable tbody tr').children].map(td => td.textContent), label: dumbChart._labels[0].text,
+    reset: [...document.querySelectorAll('#sectorCard .resetOut, #dumbCard .resetOut')].map(b => b.hidden + ':' + b.textContent).join() }));
+  t.check('marking a lap as an outlier takes it out of the table (DA0’s best lap is now its next best, 1:30.040) and of the plot', afterOut.row[0] === 'DA0' && afterOut.row[1] === '1:30.040' && afterOut.row[6] === '+0.040' && afterOut.label === '1:30.040', JSON.stringify(afterOut));
+  t.check('…and the table and the plot each offer Reset outliers, with the count', afterOut.reset === 'false:Reset outliers (1),false:Reset outliers (1)', afterOut.reset);
+  await p.click('#dumbCard .resetOut'); await p.waitForTimeout(100);
+  t.check('Reset outliers on the plot gives the lap back everywhere', await p.evaluate(() => document.querySelector('#sectorTable tbody tr').children[1].textContent === '1:30.020' && outliers.size === 0 && dumbChart._labels[0].text === '1:30.020'));
+  await p.selectOption('#dumbCard .tsortSel', 'gap'); await p.waitForTimeout(100);
+  let sorted = await p.evaluate(() => ({ table: [...document.querySelectorAll('#sectorTable tbody tr')].map(tr => tr.children[0].textContent).join(), plot: dumbChart._rows.map(r => r.e.label).join(), sel: document.querySelector('#sectorCard .tsortSel').value,
+    labels: dumbChart._labels.map(l => l.side + l.text).join(''), key: document.getElementById('dumbKey').textContent }));
+  t.check('the plot has the table’s sort picker, kept in step: gap to ideal on either sets both, in the same order', sorted.sel === 'gap' && sorted.table === sorted.plot && sorted.table.split(',').length === 6, JSON.stringify(sorted));
+  t.check('sorted by the gap the plot labels each row with its gap (to the right of the best lap dot) instead of lap times', sorted.labels.split('right').filter(Boolean).length === 6 && !/left/.test(sorted.labels) && /^(right[+−]0\.\d{3})+$/.test(sorted.labels) && /gap/.test(sorted.key), sorted.labels);
+  await p.selectOption('#sectorCard .tsortSel', 'ideal'); await p.waitForTimeout(100);
+  sorted = await p.evaluate(() => ({ table: [...document.querySelectorAll('#sectorTable tbody tr')].map(tr => tr.children[0].textContent).join(), plot: dumbChart._rows.map(r => r.e.label).join(), dsel: document.querySelector('#dumbCard .tsortSel').value, labels: dumbChart._labels.length }));
+  t.check('sorted by ideal lap (picked on the table) the plot follows and goes back to lap time labels', sorted.dsel === 'ideal' && sorted.table === sorted.plot && sorted.labels === 12, JSON.stringify(sorted));
+  await p.selectOption('#sectorCard .tsortSel', 'best');
+
+  // ---- the driver picker can sort by the fastest lap ----
+  await p.selectOption('#sortSeg', 'fast'); await p.waitForTimeout(100);
+  const fastRows = await p.evaluate(() => ({ codes: [...document.querySelectorAll('#pacePicker .pickerCodeTag')].map(e => e.textContent).join(), ranks: [...document.querySelectorAll('#pacePicker .pickerRank')].map(e => e.textContent).join(),
+    pts: [...document.querySelectorAll('#pacePicker .pickerPts')].map(e => e.textContent), teams: document.querySelectorAll('#pacePicker .pickerTeamLabel').length, url: location.search }));
+  t.check('Sort by Fastest Lap: one list, quickest first, numbered, with the lap time', fastRows.codes === 'DA0,DA1,DB0,DB1,DC0,DC1' && fastRows.ranks === '1,2,3,4,5,6' && fastRows.teams === 0 && fastRows.pts[0] === '1:30.020' && /sort=fast/.test(fastRows.url), JSON.stringify(fastRows));
+  await p.selectOption('#sortSeg', 'team');
+
+  // ---- the keys, the box plot checkbox and layering, short race names ----
+  const keys = await p.evaluate(() => ({ lap: [...document.querySelectorAll('#lapLegend .lgItem')].map(e => e.querySelector('.tyre') ? 'T:' + e.textContent : 'D:' + e.textContent).slice(0, 4).join(),
+    dot: [...document.querySelectorAll('#dotLegend .lgItem')].map(e => e.querySelector('.tyre') ? 'T:' + e.textContent : 'D:' + e.textContent).slice(0, 4).join() }));
+  t.check('the tyre keys come first on both plots, in the same order (soft, medium, hard)', keys.lap === 'T:Soft,T:Medium,D:DA0,D:DA1' && keys.dot === 'T:Soft,T:Medium,D:DA0,D:DA1', JSON.stringify(keys));
+  t.check('the box plot checkbox flows to the right end of the options line', await p.evaluate(() => { const row = document.querySelector('#dotCard .plotOpts').getBoundingClientRect(), box = document.getElementById('boxChk').closest('label').getBoundingClientRect(), first = document.querySelector('#dotCard .plotOpts .optCheck').getBoundingClientRect();
+    return box.right > row.right - 6 && box.left > first.right + 40; }));
+  t.check('the box plot is drawn over the dots, not under them', await p.evaluate(() => { const pl = dotChart.config.plugins.find(x => x.id === 'dotBoxes'); return !!pl.afterDatasetsDraw && !pl.beforeDatasetsDraw; }));
+  await p.evaluate(() => { calendar.raceNames[13] = 'Formula 1 Qatar Airways Dutch Grand Prix 2026'; render(); });
+  t.check('race names are the site’s short names ("Dutch GP"), with "Round 13" where the calendar has no proper name', await p.$eval('#sectorSub', e => e.textContent) === 'Dutch GP · FP2' && await p.evaluate(() => { const was = calendar.raceNames[13]; calendar.raceNames[13] = 'Round 13 Grand Prix'; const t = raceTitle(); calendar.raceNames[13] = was; return t; }) === 'Round 13');
+
+  // ---- hiding the outliers rescales the axes to what is shown ----
+  await p.check('#lapCard .slowChk'); await p.waitForTimeout(100);
+  await p.evaluate(() => { const best = O.sessionBest(model.laps); model.laps.filter(l => l.t > best * 1.07 && !l.out && !l.inn).forEach(l => outliers.add(l.d + ':' + l.n)); render(); }); // mark every slow lap
+  const axesOn = await p.evaluate(() => ({ dotMax: dotChart.scales.x.max, lapMax: lapChart.scales.y.max }));
+  await p.uncheck('#dotCard .outChk'); await p.waitForTimeout(100);
+  const axesOff = await p.evaluate(() => ({ dotMax: dotChart.scales.x.max, lapMax: lapChart.scales.y.max }));
+  t.check('with outliers shown the axes include the slow outliers; hidden, both plots rescale to the laps that are left', axesOff.dotMax < axesOn.dotMax - 10 && axesOff.lapMax < axesOn.lapMax - 10, JSON.stringify([axesOn, axesOff]));
+  await p.check('#dotCard .outChk'); await p.click('#dotCard .resetOut'); await p.uncheck('#lapCard .slowChk'); await p.waitForTimeout(100);
 
   // ---- slow laps: one setting for both plots ----
   const nd = () => p.evaluate(() => [lapChart.data.datasets.flatMap(d => d.data).filter(q => q.y !== null).length, dotChart.data.datasets[0].data.length]);
@@ -168,21 +213,21 @@ module.exports = async (t, h) => {
   await p.click('#presetRow [data-preset="fast5"]'); await p.waitForTimeout(100);
   s = await state(p);
   t.check('Fastest 5 picks the five quickest in the session', s.rows.filter(r => r[1]).map(r => r[0]).join() === 'd0_0,d0_1,d1_0,d1_1,d2_0', JSON.stringify(s.rows));
-  await p.selectOption('#speedSel', 'i1'); await p.selectOption('#sortSel', 'gap'); await p.waitForTimeout(100);
+  await p.selectOption('#speedSel', 'i1'); await p.selectOption('#sectorCard .tsortSel', 'gap'); await p.waitForTimeout(100);
   t.check('the speed point changes the bars (intermediate 1: 284 km/h tops the five)', await p.evaluate(() => speedChart.data.datasets[0].data[0]) === 176.5);
   t.check('sorting by gap to ideal reorders the table', (await state(p)).table.map(r => r[6]).every((g, i, x) => !i || num(g.slice(1)) >= num(x[i - 1].slice(1))));
   await p.selectOption('#speedSel', 'st');
   t.check('none of that fetched anything', p.openf1Hits.length === n0 && p.apiHits.length === api0, hits(p));
 
-  // ---- mph (the default) and km/h ----
+  // ---- mph (the default) and kph ----
   t.check('mph is the default: bars to 0.1, axis and the pill', await p.evaluate(() => speedChart.data.datasets[0].data[0]) === 199.5 && await p.evaluate(() => speedChart.options.scales.x.title.text) === 'mph' && await p.$eval('#unitRow [data-unit="mph"]', e => e.classList.contains('active')));
   t.check('…and the tooltip says mph with one decimal', await p.evaluate(() => speedChart.options.plugins.tooltip.callbacks.label({ parsed: { x: 199.46 } })) === ' 199.5 mph');
   t.check('the address leaves the default unit out', !/unit=/.test((await state(p)).url), (await state(p)).url);
   t.check('the CSV names the unit', await (async () => { const dl = p.waitForEvent('download'); await p.click('#speedCard .exp-csv'); const f = await dl; return /^﻿Driver,mph\r\nDA0,199\.5/.test(require('fs').readFileSync(await f.path(), 'utf8')); })());
-  await p.click('#unitRow [data-unit="kmh"]'); await p.waitForTimeout(100);
-  t.check('km/h: whole numbers, as OpenF1 gives them', await p.evaluate(() => [speedChart.data.datasets[0].data[0], speedChart.options.scales.x.title.text].join()) === '321,km/h' && /unit=kmh/.test((await state(p)).url));
+  await p.click('#unitRow [data-unit="kph"]'); await p.waitForTimeout(100);
+  t.check('kph: whole numbers, as OpenF1 gives them', await p.evaluate(() => [speedChart.data.datasets[0].data[0], speedChart.options.scales.x.title.text].join()) === '321,kph' && /unit=kph/.test((await state(p)).url));
   await p.reload(); await ready(p);
-  t.check('the unit is remembered for the next visit', await p.$eval('#unitRow [data-unit="kmh"]', e => e.classList.contains('active')) && await p.evaluate(() => speedChart.data.datasets[0].data[0]) === 321);
+  t.check('the unit is remembered for the next visit', await p.$eval('#unitRow [data-unit="kph"]', e => e.classList.contains('active')) && await p.evaluate(() => speedChart.data.datasets[0].data[0]) === 321);
   await p.click('#unitRow [data-unit="mph"]');
 
   // ---- the address, and the picks carry between pages (the shared selection) ----
@@ -216,7 +261,7 @@ module.exports = async (t, h) => {
   const qtip = await p.$eval('#lapTip', e => ({ hidden: e.hidden, head: e.querySelector('.tipHead')?.textContent, rows: e.querySelectorAll('.tipRow').length }));
   t.check('hovering in qualifying shows the drivers’ laps near that moment', !qtip.hidden && /into the session/.test(qtip.head) && qtip.rows === 6, JSON.stringify(qtip));
   await p.click('.sessBtn:has-text("FP2")'); await ready(p);
-  t.check('practice has no parts again', await p.evaluate(() => !model.segments.length && lapChart.options.scales.x.title.text === 'Lap of the session'));
+  t.check('practice has no parts again', await p.evaluate(() => !model.segments.length && lapChart.options.scales.x.title.text === 'Minutes into the session'));
   await p.goto('http://site.test/drivers.html'); await h.loaded(p);
   t.check('the round is carried to the Drivers page', await p.evaluate(() => F1Controls.state.round) === 12);
   await h.setRound(p, 10);
@@ -243,11 +288,11 @@ module.exports = async (t, h) => {
   await p.done();
 
   // ---- a link restores the setup ----
-  p = await h.openPage('pace', { openf1: {}, now: fx.NOW }); await p.goto('http://site.test/pace.html?season=2026&session=FP1&slow=1&unit=kmh&speed=i1&tsort=gap&sort=rank&out=0&box=0&d=d1_0,d2_0'); await ready(p);
+  p = await h.openPage('pace', { openf1: {}, now: fx.NOW }); await p.goto('http://site.test/pace.html?season=2026&session=FP1&slow=1&unit=kph&speed=i1&tsort=gap&sort=fast&out=0&box=0&d=d1_0,d2_0'); await ready(p);
   s = await state(p);
   t.check('a shared link restores session, drivers, options and unit', s.chips.find(c => c[1])[0] === 'FP1' && s.rows.filter(r => r[1]).map(r => r[0]).sort().join() === 'd1_0,d2_0' &&
     await p.$$eval('.slowChk', c => c.every(x => x.checked)) && await p.$$eval('.outChk', c => c.every(x => !x.checked)) && !(await p.$eval('#boxChk', e => e.checked)) && await p.$eval('#speedSel', e => e.value) === 'i1' &&
-    await p.$eval('#sortSel', e => e.value) === 'gap' && await p.$eval('#sortSeg', e => e.value) === 'rank' && await p.$eval('#unitRow [data-unit="kmh"]', e => e.classList.contains('active')), JSON.stringify(s.rows));
+    await p.$eval('#sectorCard .tsortSel', e => e.value) === 'gap' && await p.$eval('#dumbCard .tsortSel', e => e.value) === 'gap' && await p.$eval('#sortSeg', e => e.value) === 'fast' && await p.$eval('#unitRow [data-unit="kph"]', e => e.classList.contains('active')), JSON.stringify(s.rows));
   await p.done();
   p = await h.openPage('pace', { openf1: {}, now: fx.NOW }); await p.goto('http://site.test/pace.html?season=2026&round=11'); await ready(p);
   t.check('a link with a round opens that weekend', (await state(p)).slider[0] === 11 && /Race/.test((await state(p)).status));

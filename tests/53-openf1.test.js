@@ -62,6 +62,7 @@ module.exports = async (t, h) => {
   t.check('the ideal lap is quicker than the best lap (the bests come from different laps)', s.gap > 0 && near(s.gap, s.best - s.ideal), JSON.stringify(s));
   t.check('best sectors are minimums over every lap', s.sec[0] === Math.min(...m.laps.filter(l => l.d === 63).map(l => l.s[0])));
   t.check('top speeds are maximums', s.st === Math.max(...m.laps.filter(l => l.d === 63).map(l => l.st)) && s.i1 === 280 && s.i2 === 201, JSON.stringify([s.st, s.i1, s.i2]));
+  t.check('the gap is never negative, even when a lap’s time and its sectors differ by a thousandth', O.stats([{ t: 89.998, s: [28, 35, 26.999], st: null, i1: null, i2: null }]).gap === 0 && O.stats([{ t: 90.02, s: [28, 35, 27], st: null, i1: null, i2: null }]).gap === 0.02);
   const noS1 = O.stats(O.lapsOf(m, ds[4]));
   t.check('a missing sector time on one lap does not stop the ideal lap', noS1.ideal != null && noS1.n === 11);
   t.check('with a sector never timed there is no ideal lap', O.stats([{ t: 90, s: [28, null, 27], st: null, i1: null, i2: null }]).ideal === null && O.stats([]).best === null);

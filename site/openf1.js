@@ -163,7 +163,8 @@ const F1OpenF1 = (() => {
     const sec = [0, 1, 2].map(i => min(laps.map(l => l.s[i])));
     const best = min(laps.map(l => l.t));
     const ideal = sec.every(v => v != null) ? sec[0] + sec[1] + sec[2] : null;
-    return { best, sec, ideal, gap: best != null && ideal != null ? best - ideal : null,
+    // the gap is never negative: a best lap that is its own ideal lap can differ by a thousandth from the sectors added up
+    return { best, sec, ideal, gap: best != null && ideal != null ? Math.max(0, Math.round((best - ideal) * 1000) / 1000) : null,
       st: max(laps.map(l => l.st)), i1: max(laps.map(l => l.i1)), i2: max(laps.map(l => l.i2)), n: laps.filter(l => l.t != null).length };
   }
 

@@ -88,6 +88,7 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
  <select id="sortSeg" class="ddSelect pickerSort" aria-label="Sort the list">
   <option value="team">Team</option>
   <option value="rank">Ranking</option>
+  <option value="fast">Fastest Lap</option>
  </select>
 </div>
 <div class="btnrow" id="presetRow" style="margin-bottom:10px;"></div>
@@ -119,10 +120,10 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
 <div class="card" id="dotCard">
 <div class="cardTitle"><b>Lap time distribution</b><span id="dotSub"></span></div>
 <div class="plotOpts">
- <label class="optCheck" title="Draw each driver's quartiles, median and range over the dots"><input type="checkbox" id="boxChk"> Box plot</label>
  <label class="optCheck"><input type="checkbox" class="slowChk"> Include slow laps</label>
  <label class="optCheck"><input type="checkbox" class="outChk"> Show outliers</label>
  <button type="button" class="f1c-link resetOut" hidden>Reset outliers</button>
+ <label class="optCheck" style="margin-left:auto;" title="Draw each driver's quartiles, median and range over the dots"><input type="checkbox" id="boxChk"> Box plot</label>
 </div>
 <div class="paceLegend" id="dotLegend"></div>
 <div class="paceChartBox" id="dotWrap"><canvas id="dotCanvas" role="img" aria-label="Every lap time of each picked driver as a dot coloured by tyre compound, with an optional box plot"></canvas><div class="paceTip" id="dotTip" hidden></div></div>
@@ -134,11 +135,12 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
 <div class="cardTitle"><b>Best sectors and ideal lap</b><span id="sectorSub"></span></div>
 <div class="paceHead">
  <span style="font-size:12px;color:var(--sub);">Sort by</span>
- <select id="sortSel" class="ddSelect" aria-label="Sort the table">
+ <select class="ddSelect tsortSel" aria-label="Sort the table and the plot below it">
   <option value="best">Best lap</option>
   <option value="ideal">Ideal lap</option>
   <option value="gap">Gap to ideal</option>
  </select>
+ <button type="button" class="f1c-link resetOut" hidden>Reset outliers</button>
 </div>
 <div class="tableScroll"><table class="paceTable" id="sectorTable"></table></div>
 <div class="paceEmpty" id="sectorEmpty">Nothing to show.</div>
@@ -147,10 +149,19 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
 
 <div class="card" id="dumbCard">
 <div class="cardTitle"><b>Best lap vs ideal lap</b><span id="dumbSub"></span></div>
+<div class="paceHead">
+ <span style="font-size:12px;color:var(--sub);">Sort by</span>
+ <select class="ddSelect tsortSel" aria-label="Sort the plot and the table above it">
+  <option value="best">Best lap</option>
+  <option value="ideal">Ideal lap</option>
+  <option value="gap">Gap to ideal</option>
+ </select>
+ <button type="button" class="f1c-link resetOut" hidden>Reset outliers</button>
+</div>
 <div class="paceChartBox" id="dumbWrap"><canvas id="dumbCanvas" role="img" aria-label="Best lap and ideal lap of each picked driver, joined by a line and labelled with the times"></canvas></div>
 <div class="paceEmpty" id="dumbEmpty">Nothing to show.</div>
-<div class="ridgeKey dumbKey" id="dumbKey"><span class="ridgeKeyItem"><i class="dumbDot"></i>best lap (time to its right)</span><span class="ridgeKeyItem"><i class="dumbDot hollow"></i>ideal lap, the three best sectors added (time to its left)</span></div>
-<div class="note" id="dumbNote">The shorter the line, the closer the driver came to putting every best sector in one lap. Sorted by best lap, fastest at the top.</div>
+<div class="ridgeKey dumbKey" id="dumbKey"></div>
+<div class="note" id="dumbNote"></div>
 </div>
 
 <div class="card" id="speedCard">
@@ -165,12 +176,12 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
  <span style="flex:1;"></span>
  <div class="btnrow" id="unitRow" role="group" aria-label="Speed unit">
   <button type="button" class="pill" data-unit="mph">mph</button>
-  <button type="button" class="pill" data-unit="kmh">km/h</button>
+  <button type="button" class="pill" data-unit="kph">kph</button>
  </div>
 </div>
 <div class="paceChartBox" id="speedWrap"><canvas id="speedCanvas" role="img" aria-label="Top speed of each picked driver"></canvas></div>
 <div class="paceEmpty" id="speedEmpty">Nothing to show.</div>
-<div class="note" id="speedNote">OpenF1 gives each speed in whole km/h; mph is converted to the nearest 0.1. Each speed is read at one point on the lap, so it depends on the fuel load and engine mode of that run, not only on the car.</div>
+<div class="note" id="speedNote">OpenF1 gives each speed in whole kph (km/h); mph is converted to the nearest 0.1. Each speed is read at one point on the lap, so it depends on the fuel load and engine mode of that run, not only on the car.</div>
 </div>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
@@ -181,6 +192,8 @@ const esc = t => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(
 const O = F1OpenF1;
 const FIRST_YEAR = 2023; // OpenF1's first season
 const TYRES = { SOFT: '#e53935', MEDIUM: '#fbc02d', HARD: '#eceff1', INTERMEDIATE: '#43a047', WET: '#1e88e5' };
+const TYRE_ORDER = ['SOFT', 'MEDIUM', 'HARD', 'INTERMEDIATE', 'WET']; // the order of the tyre keys on both plots
+const tyreKeyHTML = compounds => TYRE_ORDER.filter(c => compounds.includes(c)).map(c => `<span class="lgItem"><span class="tyre" style="--c:${TYRES[c]}"></span>${c.charAt(0) + c.slice(1).toLowerCase()}</span>`).join('');
 const DASH = [6, 4]; // a team's second driver
 const UNIT_KEY = 'f1cache:speedUnit', OUT_KEY = 'f1cache:paceOutliers';
 const DIM = 0.16; // how faint the drivers that are not followed become
@@ -189,7 +202,7 @@ const DIM = 0.16; // how faint the drivers that are not followed become
 let year = null, calendar = null, seasonRounds = [], resultRounds = [], round = 0, fresh = false;
 let weekends = [], weekend = null, session = null, model = null, loadedAt = 0, token = 0, linkSession = null;
 let slow = false, showOut = true, boxplot = true, speedKind = 'st', unit = 'mph', tableSort = 'best', pickerSort = 'team';
-try{ if(localStorage.getItem(UNIT_KEY) === 'kmh') unit = 'kmh'; }catch(e){}
+try{ if(['kph', 'kmh'].includes(localStorage.getItem(UNIT_KEY))) unit = 'kph'; }catch(e){}
 let selected = null; // site driver ids; null = the default (follows the standings)
 let pinned = null; // the driver code being followed on the lap plots (the others are dimmed)
 let outliers = new Set(); // laps marked as outliers in this session: 'driverNumber:lapNumber'
@@ -244,10 +257,10 @@ async function onSelection(detail){
   selected = saved && saved.length ? saved : null;
   if(link){
     const ids = F1Share.ids(link.get('d'), valid); if(ids) selected = ids;
-    if(['team', 'rank'].includes(link.get('sort'))) pickerSort = link.get('sort');
+    if(['team', 'rank', 'fast'].includes(link.get('sort'))) pickerSort = link.get('sort');
     slow = link.get('slow') === '1'; showOut = link.get('out') !== '0'; boxplot = link.get('box') !== '0';
     if(['st', 'i1', 'i2'].includes(link.get('speed'))) speedKind = link.get('speed');
-    if(link.get('unit') === 'mph' || link.get('unit') === 'kmh') unit = link.get('unit');
+    if(link.get('unit') === 'mph' || link.get('unit') === 'kph' || link.get('unit') === 'kmh') unit = link.get('unit') === 'mph' ? 'mph' : 'kph';
     if(['best', 'ideal', 'gap'].includes(link.get('tsort'))) tableSort = link.get('tsort');
     linkSession = link.get('session');
     syncControls();
@@ -347,6 +360,7 @@ function renderPicker(ents, picked){
   const order = (a, b) => ((rank[a.id] ?? 999) - (rank[b.id] ?? 999)) || ((a.best ?? Infinity) - (b.best ?? Infinity));
   let html;
   if(pickerSort === 'rank') html = [...ents].sort(order).map(e => row(e, rank[e.id] != null ? rank[e.id] + 1 : null)).join('');
+  else if(pickerSort === 'fast') html = ents.map((e, i) => row(e, i + 1)).join(''); // entities come fastest best lap first
   else{
     const teams = [...new Set(ents.map(e => e.teamId))].sort((a, b) => ((teamRank[a] ?? 999) - (teamRank[b] ?? 999)));
     html = teams.map(t => { const ds = ents.filter(e => e.teamId === t).sort(order);
@@ -366,7 +380,7 @@ function syncControls(){
   document.querySelectorAll('.slowChk').forEach(c => { c.checked = slow; });
   document.querySelectorAll('.outChk').forEach(c => { c.checked = showOut; });
   document.querySelectorAll('.resetOut').forEach(b => { b.hidden = !outliers.size; b.textContent = `Reset outliers (${outliers.size})`; });
-  $('boxChk').checked = boxplot; $('speedSel').value = speedKind; $('sortSel').value = tableSort; $('sortSeg').value = pickerSort;
+  $('boxChk').checked = boxplot; $('speedSel').value = speedKind; document.querySelectorAll('.tsortSel').forEach(x => { x.value = tableSort; }); $('sortSeg').value = pickerSort;
   document.querySelectorAll('#unitRow .pill').forEach(b => b.classList.toggle('active', b.dataset.unit === unit));
 }
 function render(){
@@ -388,7 +402,7 @@ function render(){
   drawLaps(chosen, pl); drawDots(chosen, pl); drawTable(chosen, ents); drawDumbbell(chosen); drawSpeed(chosen);
   applyFocus();
 }
-const raceTitle = () => `Round ${round} · ${weekend.label}`;
+const raceTitle = () => F1Common.shortGP((calendar && calendar.raceNames && calendar.raceNames[round]) || (seasonRounds[round - 1] || {}).raceName) || `Round ${round}`; // "Singapore GP", as elsewhere on the site
 const drivingOf = chosen => chosen.flatMap(e => e.drivers);
 
 // ---- following one driver (click a line, a dot or a legend name; click again, or the empty chart, to release) ----
@@ -479,7 +493,7 @@ function attachPointer(cv, chart, { move, leave, segments }){
 }
 
 // ---- lap lines ----
-const timeMode = () => session && O.isQualifying(session.name); // qualifying: minutes into the session, so the parts line up for every driver
+const timeMode = () => session && !/^(Race|Sprint)$/.test(session.name); // everything but the Sprint and the Grand Prix: minutes into the session (qualifying's parts then line up for every driver)
 const xOf = l => timeMode() ? (l.at - Date.parse(session.start)) / 60000 : l.n;
 let hoverX = null;
 function lapRowsAt(xv){ // each driver's lap nearest xv (within a lap, or 45 s in qualifying), fastest first
@@ -521,11 +535,11 @@ function drawLaps(chosen, pl){
   lapChart = new Chart($('lapCanvas'), { type: 'line', data: { datasets }, plugins: [parts, guide], options: {
     responsive: true, maintainAspectRatio: false, animation: false, events: [],
     plugins: { legend: { display: false }, tooltip: { enabled: false } },
-    scales: { x: { type: 'linear', title: { display: true, text: tm ? 'Minutes into the session' : session.name === 'Race' || /Sprint$/.test(session.name) ? 'Lap of the race' : 'Lap of the session', color: P.text }, grid: { color: P.grid }, ticks: { color: P.text, precision: 0 } },
+    scales: { x: { type: 'linear', title: { display: true, text: tm ? 'Minutes into the session' : 'Lap of the race', color: P.text }, grid: { color: P.grid }, ticks: { color: P.text, precision: 0 } },
       y: { title: { display: true, text: 'Lap time (faster is lower)', color: P.text }, grid: { color: P.grid }, ticks: { color: P.text, callback: v => O.fmt(v, 1) } } } } });
-  $('lapLegend').innerHTML = [...new Set(datasets.filter(d => !d._outlier).map(d => d._code))].map(c => { const d = datasets.find(x => x._code === c && !x._outlier);
-    return `<button type="button" class="lgItem" data-code="${esc(c)}" aria-pressed="false"><i class="${d._dash ? 'dash' : ''}" style="--c:${d._color}"></i>${esc(c)}</button>`; }).join('')
-    + [...new Set(laps.map(l => l.c).filter(Boolean))].map(c => `<span class="lgItem"><span class="tyre" style="--c:${TYRES[c] || 'transparent'}"></span>${c.charAt(0) + c.slice(1).toLowerCase()}</span>`).join('');
+  $('lapLegend').innerHTML = tyreKeyHTML(laps.map(l => l.c).filter(Boolean))
+    + [...new Set(datasets.filter(d => !d._outlier).map(d => d._code))].map(c => { const d = datasets.find(x => x._code === c && !x._outlier);
+    return `<button type="button" class="lgItem" data-code="${esc(c)}" aria-pressed="false"><i class="${d._dash ? 'dash' : ''}" style="--c:${d._color}"></i>${esc(c)}</button>`; }).join('');
   $('lapNote').textContent = 'Dots show the tyre compound; a driver’s line breaks when the compound changes and joins the laps in order past the hidden in and out laps. A team’s second driver is dashed. '
     + 'Click a line, a dot or a name to follow one driver; click it again to release. Right-click (long-press on a phone) a dot to mark it as an outlier.'
     + (tm && segs.length ? ' Dashed lines mark the qualifying parts.' : '');
@@ -536,19 +550,20 @@ function quantile(sorted, q){ const i = (sorted.length - 1) * q, lo = Math.floor
 function drawDots(chosen, pl){
   const rows = chosen.map(e => ({ e, laps: pl.filter(l => e.nums.includes(l.d)) })).filter(r => r.laps.length)
     .map(r => { const good = r.laps.filter(l => !isOut(l)), ts = good.map(l => l.t).sort((a, b) => a - b); return { ...r, good, ts, med: ts.length ? quantile(ts, 0.5) : Infinity }; })
+    .filter(r => r.good.length || showOut) // a driver whose laps are all hidden outliers has no row
     .sort((a, b) => (a.med - b.med) || (a.e.best - b.e.best));
   show('dot', rows.length);
   if(!rows.length){ $('dotLegend').innerHTML = ''; $('dotNote').textContent = ''; return; }
   const P = F1Theme.chart(), n = rows.length, nar = F1Common.isNarrow();
   const pts = [], bad = [];
   rows.forEach((r, i) => { const col = color(r.e.color), code = r.e.label, groups = {};
-    r.laps.forEach(l => { const g = Math.round(l.t * 20); (groups[g] = groups[g] || []).push(l); }); // laps within 0.05 s are fanned out above and below the row
+    r.laps.filter(l => showOut || !isOut(l)).forEach(l => { const g = Math.round(l.t * 20); (groups[g] = groups[g] || []).push(l); }); // laps within 0.05 s are fanned out above and below the row
     Object.values(groups).forEach(g => g.forEach((l, k) => { const step = Math.min(0.15, 0.78 / g.length), p = { x: l.t, y: i + (k - (g.length - 1) / 2) * step, n: l.n, d: l.d, c: l.c, age: l.age, code, team: col, outlier: isOut(l) };
       (p.outlier ? bad : pts).push(p); })); });
   const rowPx = nar ? 40 : 46;
   $('dotWrap').style.height = (n * rowPx + 70) + 'px';
-  const all = [...pts, ...bad].map(p => p.x), lo = Math.floor(Math.min(...all) * 10) / 10 - 0.1, hi = Math.ceil(Math.max(...all) * 10) / 10 + 0.1;
-  const boxes = { id: 'dotBoxes', beforeDatasetsDraw(ch){
+  const all = [...pts, ...(showOut ? bad : [])].map(p => p.x), lo = Math.floor(Math.min(...all) * 10) / 10 - 0.1, hi = Math.ceil(Math.max(...all) * 10) / 10 + 0.1;
+  const boxes = { id: 'dotBoxes', afterDatasetsDraw(ch){ // drawn over the dots
     if(!boxplot) return; const { ctx, scales: { x, y } } = ch; ctx.save();
     rows.forEach((r, i) => { if(r.ts.length < 2) return; const a = r.ts[0], b = r.ts[r.ts.length - 1], q1 = quantile(r.ts, 0.25), m = quantile(r.ts, 0.5), q3 = quantile(r.ts, 0.75);
       const col = color(r.e.color), yc = y.getPixelForValue(i), h = Math.min(rowPx * 0.5, 22) / 2, lit = !pinned || r.e.label === pinned;
@@ -568,7 +583,7 @@ function drawDots(chosen, pl){
     scales: { x: { min: lo, max: hi, title: { display: true, text: 'Lap time', color: P.text }, grid: { color: P.grid }, ticks: { color: P.text, callback: v => O.fmt(v, 1), maxTicksLimit: nar ? 5 : 10 } },
       y: { reverse: true, min: -0.6, max: n - 0.4, grid: { color: P.grid }, afterBuildTicks: ax => { ax.ticks = Array.from({ length: n }, (_, i) => ({ value: i })); },
         ticks: { color: ctx => color(rows[Math.round(ctx.tick.value)]?.e.color) || P.text, callback: v => rows[Math.round(v)] ? rows[Math.round(v)].e.label : '', font: { weight: '600' }, autoSkip: false } } } } });
-  $('dotLegend').innerHTML = [...new Set([...pts, ...bad].map(p => p.c).filter(Boolean))].map(c => `<span class="lgItem"><span class="tyre" style="--c:${TYRES[c] || 'transparent'}"></span>${c.charAt(0) + c.slice(1).toLowerCase()}</span>`).join('')
+  $('dotLegend').innerHTML = tyreKeyHTML([...pts, ...(showOut ? bad : [])].map(p => p.c).filter(Boolean))
     + rows.map(r => `<button type="button" class="lgItem" data-code="${esc(r.e.label)}" aria-pressed="false"><i style="--c:${color(r.e.color)}"></i>${esc(r.e.label)}</button>`).join('');
   $('dotNote').textContent = 'Each dot is a lap, filled with its tyre compound and ringed in the team colour. Fastest median on top. '
     + (boxplot ? 'The box is the middle half of the laps, the thick line the median, the whiskers the quickest and slowest. ' : '')
@@ -576,9 +591,10 @@ function drawDots(chosen, pl){
 }
 
 // ---- best sectors table, then the best lap vs ideal lap plot ----
+const statsOf = e => O.stats(O.lapsOf(model, e).filter(l => !isOut(l))); // laps marked as outliers are left out of the table and the plot
 function tableData(chosen, ents){
-  const rows = chosen.map(e => ({ e, s: O.stats(O.lapsOf(model, e)) }));
-  const all = ents.map(x => O.stats(O.lapsOf(model, x)));
+  const rows = chosen.map(e => ({ e, s: statsOf(e) }));
+  const all = ents.map(statsOf);
   const col = i => Math.min(...all.map(s => i === 'best' ? s.best : i === 'ideal' ? s.ideal : s.sec[i]).filter(v => v != null));
   const top = { best: col('best'), ideal: col('ideal'), 0: col(0), 1: col(1), 2: col(2) };
   const key = r => tableSort === 'ideal' ? r.s.ideal : tableSort === 'gap' ? r.s.gap : r.s.best;
@@ -592,11 +608,16 @@ function drawTable(chosen, ents){
   const cell = (v, t, d = 3) => `<td${v != null && v === t ? ' class="best"' : ''}>${O.fmt(v, d)}</td>`;
   $('sectorTable').innerHTML = `<thead><tr><th>Driver</th><th>Best lap</th><th>S1</th><th>S2</th><th>S3</th><th>Ideal lap</th><th>Gap</th></tr></thead><tbody>`
     + rows.map(({ e, s }) => `<tr><td class="who"><span class="dot" style="background:${color(e.color)}"></span>${esc(e.label)}</td>${cell(s.best, top.best)}${cell(s.sec[0], top[0])}${cell(s.sec[1], top[1])}${cell(s.sec[2], top[2])}${cell(s.ideal, top.ideal)}<td>${O.gapText(s.gap)}</td></tr>`).join('') + '</tbody>';
-  $('sectorNote').textContent = 'The ideal lap adds each sector’s best time, from any lap. Purple = the best in the session. The gap is the best lap minus the ideal lap.';
+  $('sectorNote').textContent = 'The ideal lap adds each sector’s best time, from any lap. Purple = the best in the session. The gap is the best lap minus the ideal lap. Laps marked as outliers on the lap plots are left out here and in the plot below.';
 }
 function drawDumbbell(chosen){
-  const rows = chosen.map(e => ({ e, s: O.stats(O.lapsOf(model, e)) })).filter(r => r.s.best != null).sort((a, b) => a.s.best - b.s.best);
+  const key = r => tableSort === 'ideal' ? r.s.ideal : tableSort === 'gap' ? r.s.gap : r.s.best, gapMode = tableSort === 'gap';
+  const rows = chosen.map(e => ({ e, s: statsOf(e) })).filter(r => r.s.best != null).sort((a, b) => (key(a) ?? Infinity) - (key(b) ?? Infinity) || a.s.best - b.s.best); // sorted like the table
   show('dumb', rows.length);
+  $('dumbKey').innerHTML = gapMode
+    ? '<span class="ridgeKeyItem"><i class="dumbDot"></i>best lap, with its gap to the ideal lap to its right</span><span class="ridgeKeyItem"><i class="dumbDot hollow"></i>ideal lap, the three best sectors added</span>'
+    : '<span class="ridgeKeyItem"><i class="dumbDot"></i>best lap (time to its right)</span><span class="ridgeKeyItem"><i class="dumbDot hollow"></i>ideal lap, the three best sectors added (time to its left)</span>';
+  $('dumbNote').textContent = 'The shorter the line, the closer the driver came to putting every best sector in one lap. Sorted like the table above, the first at the top.';
   if(!rows.length) return;
   const P = F1Theme.chart(), n = rows.length, panel = getComputedStyle(document.documentElement).getPropertyValue('--panel').trim() || '#fff', ink = getComputedStyle(document.documentElement).getPropertyValue('--ink2').trim() || P.text;
   const lo = Math.min(...rows.map(r => r.s.ideal ?? r.s.best)), hi = Math.max(...rows.map(r => r.s.best));
@@ -607,12 +628,12 @@ function drawDumbbell(chosen){
     rows.forEach((r, i) => { if(r.s.ideal == null) return; ctx.strokeStyle = cols[i]; ctx.globalAlpha = 0.75; ctx.beginPath();
       ctx.moveTo(x.getPixelForValue(r.s.ideal), y.getPixelForValue(i)); ctx.lineTo(x.getPixelForValue(r.s.best), y.getPixelForValue(i)); ctx.stroke(); });
     ctx.restore(); },
-    afterDatasetsDraw(ch){ // the best lap's time to the right of its dot, the ideal lap's to the left of its dot
+    afterDatasetsDraw(ch){ // the best lap's time (or, sorted by the gap, the gap) to the right of its dot, the ideal lap's time to the left of its dot
       const { ctx, scales: { x, y } } = ch; ctx.save(); ctx.font = '600 11px ' + ff; ctx.fillStyle = ink; ctx.textBaseline = 'middle'; ch._labels = [];
       const put = (text, dotX, py, side) => { ctx.textAlign = side === 'right' ? 'left' : 'right'; ctx.fillText(text, dotX + (side === 'right' ? 11 : -11), py); ch._labels.push({ text, side, dotX, y: py }); }; // for the tests
       rows.forEach((r, i) => { const py = y.getPixelForValue(i);
-        put(O.fmt(r.s.best), x.getPixelForValue(r.s.best), py, 'right');
-        if(r.s.ideal != null) put(O.fmt(r.s.ideal), x.getPixelForValue(r.s.ideal), py, 'left'); });
+        put(gapMode ? O.gapText(r.s.gap) : O.fmt(r.s.best), x.getPixelForValue(r.s.best), py, 'right');
+        if(!gapMode && r.s.ideal != null) put(O.fmt(r.s.ideal), x.getPixelForValue(r.s.ideal), py, 'left'); });
       ctx.restore(); } };
   const withIdeal = rows.map((r, i) => ({ r, i })).filter(x => x.r.s.ideal != null);
   dumbChart = new Chart($('dumbCanvas'), { type: 'scatter', plugins: [link], data: { datasets: [
@@ -623,10 +644,10 @@ function drawDumbbell(chosen){
     scales: { x: { min: lo, max: hi, title: { display: true, text: 'Lap time', color: P.text }, grid: { color: P.grid }, ticks: { color: P.text, callback: v => O.fmt(v, 1), maxTicksLimit: F1Common.isNarrow() ? 4 : 8 } },
       y: { reverse: true, min: -0.6, max: n - 0.4, grid: { display: false }, afterBuildTicks: ax => { ax.ticks = Array.from({ length: n }, (_, i) => ({ value: i })); },
         ticks: { color: ctx => cols[Math.round(ctx.tick.value)] || P.text, callback: v => rows[Math.round(v)] ? rows[Math.round(v)].e.label : '', font: { weight: '600' }, autoSkip: false } } } } });
-  // room for the time labels either side: widen the axis by what they need, in seconds
+  // room for the labels either side: widen the axis by what they need, in seconds (the best lap's label only, to its right, when sorted by the gap)
   for(let k = 0; k < 2; k++){
     const px = (dumbChart.chartArea.right - dumbChart.chartArea.left) / (dumbChart.scales.x.max - dumbChart.scales.x.min), pad = 78 / px;
-    dumbChart.options.scales.x.min = lo - pad; dumbChart.options.scales.x.max = hi + pad; dumbChart.update('none');
+    dumbChart.options.scales.x.min = lo - (gapMode ? 8 / px : pad); dumbChart.options.scales.x.max = hi + pad; dumbChart.update('none');
   }
   dumbChart._rows = rows;
 }
@@ -635,7 +656,7 @@ function drawSpeed(chosen){
   const rows = chosen.map(e => ({ e, v: O.speedIn(O.stats(O.lapsOf(model, e))[speedKind], unit) })).filter(r => r.v != null).sort((a, b) => b.v - a.v);
   show('speed', rows.length);
   if(!rows.length) return;
-  const P = F1Theme.chart(), mph = unit === 'mph', step = mph ? 5 : 10, lo = Math.floor(Math.min(...rows.map(r => r.v)) / step) * step - step, name = mph ? 'mph' : 'km/h', text = v => mph ? v.toFixed(1) : String(v);
+  const P = F1Theme.chart(), mph = unit === 'mph', step = mph ? 5 : 10, lo = Math.floor(Math.min(...rows.map(r => r.v)) / step) * step - step, name = mph ? 'mph' : 'kph', text = v => mph ? v.toFixed(1) : String(v);
   $('speedWrap').style.height = (rows.length * 26 + 50) + 'px';
   const labels = { id: 'speedLabels', afterDatasetsDraw(ch){
     const { ctx } = ch; ctx.save(); ctx.fillStyle = P.text; ctx.font = '600 11px ' + ff; ctx.textBaseline = 'middle';
@@ -654,7 +675,7 @@ const rowsOf = () => { // the laps behind the charts: every lap of the picked dr
   if(!model) return null;
   const nums = new Set(drivingOf(chosenNow()).map(d => d.num)), byNum = new Map(model.drivers.map(d => [d.num, d])), kept = new Set(O.pace(model.laps, { slow }));
   const laps = model.laps.filter(l => nums.has(l.d)); if(!laps.length) return null;
-  return [['Driver', 'Team', 'Lap', 'Time (s)', 'Sector 1', 'Sector 2', 'Sector 3', 'Tyre', 'Tyre age (laps)', 'Intermediate 1 (km/h)', 'Intermediate 2 (km/h)', 'Speed trap (km/h)', 'Pit-out lap', 'In lap', 'Shown', 'Outlier'],
+  return [['Driver', 'Team', 'Lap', 'Time (s)', 'Sector 1', 'Sector 2', 'Sector 3', 'Tyre', 'Tyre age (laps)', 'Intermediate 1 (kph)', 'Intermediate 2 (kph)', 'Speed trap (kph)', 'Pit-out lap', 'In lap', 'Shown', 'Outlier'],
     ...laps.map(l => [byNum.get(l.d).code, byNum.get(l.d).teamLabel || byNum.get(l.d).team, l.n, l.t, ...l.s, l.c, l.age, l.i1, l.i2, l.st, l.out ? 'yes' : '', l.inn ? 'yes' : '', kept.has(l) ? 'yes' : '', isOut(l) ? 'yes' : ''])];
 };
 const subtitle = () => `${year} ${raceTitle()} · ${session.name}`;
@@ -679,7 +700,7 @@ F1Export.attach($('sectorCard'), { name: 'pace-sectors', title: () => 'Best sect
 F1Export.attach($('dumbCard'), { name: 'pace-best-vs-ideal', title: () => 'Best lap vs ideal lap', subtitle, canvas: () => $('dumbCanvas'),
   csv: () => { if(!dumbChart) return null; return [['Driver', 'Best lap (s)', 'Ideal lap (s)', 'Gap (s)'], ...dumbChart._rows.map(r => [r.e.label, r.s.best, r.s.ideal, r.s.gap])]; } });
 F1Export.attach($('speedCard'), { name: 'pace-speed', title: () => 'Top speed', subtitle, canvas: () => $('speedCanvas'),
-  csv: () => speedChart ? [['Driver', unit === 'mph' ? 'mph' : 'km/h'], ...speedChart.data.labels.map((l, i) => [l, speedChart.data.datasets[0].data[i]])] : null });
+  csv: () => speedChart ? [['Driver', unit === 'mph' ? 'mph' : 'kph'], ...speedChart.data.labels.map((l, i) => [l, speedChart.data.datasets[0].data[i]])] : null });
 
 // ---- events ----
 window.addEventListener('f1selection', e => onSelection(e.detail));
@@ -691,11 +712,11 @@ $('refreshSession').addEventListener('click', () => { if(session) loadSession(se
 document.addEventListener('change', e => { // the options shared by the two lap plots stay in step
   if(e.target.classList.contains('slowChk')){ slow = e.target.checked; render(); }
   else if(e.target.classList.contains('outChk')){ showOut = e.target.checked; render(); }
+  else if(e.target.classList.contains('tsortSel')){ tableSort = e.target.value; render(); } // the table and the plot share their sort
 });
 document.addEventListener('click', e => { if(e.target.classList.contains('resetOut')){ outliers = new Set(); saveOutliers(); render(); } });
 $('boxChk').addEventListener('change', e => { boxplot = e.target.checked; render(); });
 $('speedSel').addEventListener('change', e => { speedKind = e.target.value; render(); });
-$('sortSel').addEventListener('change', e => { tableSort = e.target.value; render(); });
 $('sortSeg').addEventListener('change', e => { pickerSort = e.target.value; render(); });
 $('unitRow').addEventListener('click', e => { const b = e.target.closest('.pill'); if(!b) return; unit = b.dataset.unit; try{ localStorage.setItem(UNIT_KEY, unit); }catch(_){} render(); });
 document.querySelectorAll('.paceLegend').forEach(l => l.addEventListener('click', e => { const b = e.target.closest('.lgItem[data-code]'); if(b) setPinned(b.dataset.code); }));

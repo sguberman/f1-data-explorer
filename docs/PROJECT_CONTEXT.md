@@ -672,33 +672,36 @@ slider reaches the race weekend that is on, before its Grand Prix. Only this pag
   Cached in localStorage (`f1o:v1:`): a session over more than 2 h for a day, a live one 5 min, the session list 30 min. Fetching happens on
   loading the page or season, a season switch, letting go of the slider, choosing a session, Refresh data / **Refresh session** and Retry; the
   pickers and toggles never fetch.
+- Subtitles use the site's short race names (`F1Common.shortGP`: "Singapore GP"; "Round 13" when the calendar has no proper name).
 - **Drivers are the site's** (no teams view): each OpenF1 driver is matched by its three-letter code to the season's results (`resolve()`), which
   gives the site's driver id, name, flag, number, team id and **team colour** (`F1Common.teamColor`); OpenF1's own colours are used only for a driver
-  not in the season data (an FP1 reserve), who is listed last, unpicked, without a flag. The picker is the other pages' (team groups or Ranking,
+  not in the season data (an FP1 reserve), who is listed last, unpicked, without a flag. The picker is the other pages' (Sort by Team groups, Ranking or Fastest Lap,
   presets All, None, Top 5/10, Top 4 teams, Best of the rest, Title contention, plus Fastest 5/10, fold-away, flags and numbers via
   `F1Common.driverPickerRowHTML`, whose right-hand column here is the best lap) and the picks use the shared saved selection
   (`F1Common.loadPickerSelection`/`savePickerSelection`), so they carry to and from the Drivers page, as do season and round.
 - **Link keys** (besides `season`/`round`): `session` (FP1/FP2/FP3/Quali/Sprint…/Race), `d`, `sort=rank`, `slow=1`, `out=0`, `box=0`, `speed=i1|i2`,
-  `unit=kmh`, `tsort=ideal|gap`; defaults are left out.
+  `unit=kph`, `tsort=ideal|gap`, `sort=fast|rank`; defaults are left out.
 - **Pace laps** (`F1OpenF1.pace`): a time, not a pit-out or in lap, and within 107% of the session's best unless **Include slow laps** is on. The two lap
   plots (lines, dots) use them; the table, best-vs-ideal plot and top speeds use every lap. **Include slow laps, Show outliers and Reset outliers are
-  on both lap plots and kept in step.**
+  on both lap plots and kept in step; the tyre key (soft, medium, hard…) comes first on both.**
 - **Lap times (lines):** site team colours, a team's second driver dashed, dots coloured by tyre compound, a driver's line **breaks where the compound
-  changes** and otherwise joins the laps in order past hidden in/out laps; faster is lower. Practice, sprint and Race: x = lap number. **Qualifying
-  and sprint qualifying: x = minutes into the session** (drivers' lap numbers don't line up there), with a dashed line between the parts and Q1/Q2/Q3
-  (SQ1…) named, from OpenF1's race control "SESSION STARTED/FINISHED" messages (`F1OpenF1.qualiSegments`; a red flag inside a part doesn't start a new one).
+  changes** and otherwise joins the laps in order past hidden in/out laps; faster is lower. **Only the Sprint and the Race use lap number on x; every other
+  session (practice, qualifying, sprint qualifying) uses minutes into the session** (drivers' lap numbers don't line up there), with, in the two qualifying
+  sessions, a dashed line between the parts and Q1/Q2/Q3 (SQ1…) named, from OpenF1's race control "SESSION STARTED/FINISHED" messages (`F1OpenF1.qualiSegments`; a red flag inside a part doesn't start a new one).
   **Hover** (or tap) shows a tooltip with every driver's time at that lap, fastest first (in qualifying the lap nearest the moment, within 45 s), and a
   vertical guide. **Click a line, a dot or a legend name** to follow that driver (the others fade to 16%, also on the dot plot); click it again or the empty
   chart to let go.
 - **Outliers:** right-click a dot (long-press on a phone) on either lap plot to mark that lap as an outlier; it leaves the line and the box and is drawn
-  as a faded cross while **Show outliers** is on; right-click it again to unmark; **Reset outliers (n)** clears. Kept per session in localStorage
+  as a faded cross while **Show outliers** is on (hidden, both plots' axes fit the laps that are left); right-click it again to unmark; **Reset outliers (n)** clears. Kept per session in localStorage
   (`f1cache:paceOutliers`, the latest 30 sessions); outliers affect only the two lap plots.
 - **Lap time distribution:** a dot plot, a row per driver (fastest median on top), a dot per lap filled with its tyre compound and ringed in the team
-  colour (laps within 0.05 s fan out vertically); the **Box plot** checkbox (on by default) overlays the quartiles, median and quickest/slowest whiskers
+  colour (laps within 0.05 s fan out vertically); the **Box plot** checkbox (on by default, at the right of the options line) overlays, in front of the dots, the quartiles, median and quickest/slowest whiskers
   (no violins).
-- **Best lap vs ideal lap:** lap time on x, a row per driver sorted by best lap, a filled best-lap dot and a hollow ideal-lap dot joined by a line,
-  each dot labelled with its time (best to its right, ideal to its left); no tooltip. **Best sectors table** (session-best cells purple, gap = best − ideal).
-- **Top speed:** bars at the speed trap or intermediate 1/2, **mph by default (to the nearest 0.1; OpenF1 gives whole km/h)** or km/h; kept in
+- **Best sectors table, then the best lap vs ideal lap plot:** the two share one **Sort by** (best lap, ideal lap, gap to ideal; kept in step). The table has
+  session-best cells in purple, gap = best − ideal (never negative). The plot: lap time on x, a row per driver in the table's order, a filled best-lap dot and
+  a hollow ideal-lap dot joined by a line, each dot labelled with its time (best to its right, ideal to its left; sorted by the gap, one gap label to the
+  right of the best-lap dot); no tooltip. **Laps marked as outliers are left out of both** (and each has Reset outliers (n)).
+- **Top speed:** bars at the speed trap or intermediate 1/2, **mph by default (to the nearest 0.1; OpenF1 gives whole km/h)** or kph; kept in
   `f1cache:speedUnit` and the link. PNG and CSV on every card.
 - **Not built yet:** tyre use against allocation (#187; OpenF1 has no set allocation).
 - Tests: `53-openf1` (the pure helpers, in Node), `54-pace` (the page; the harness's `openf1` option serves `lib/openf1-fixture.js`, whose
