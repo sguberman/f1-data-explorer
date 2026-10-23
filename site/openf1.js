@@ -1,7 +1,10 @@
 // F1OpenF1 (#186): practice, qualifying and sprint lap data from OpenF1 (https://openf1.org), for the Weekend Pace page.
 // f1api.dev has no session laps, sectors, speeds or tyres, so this is the one page that talks to another API. It is
-// called from the browser (OpenF1 allows it), needs no key for finished sessions, and is cached in localStorage:
-// a session that ended more than two hours ago for a day, a session still running (or just over) for five minutes.
+// called from the browser (OpenF1 allows it) and needs no key, except that OpenF1 closes its API to everyone without an
+// account (even for past sessions) while an F1 session is live. So a finished session is read from a saved copy
+// (site/data/pace/, written by tools/pace-snapshot.mjs after each session) before the API is asked, the API is asked no faster
+// than OpenF1's free limit (3 a second), and what it answers is cached in localStorage: a session that ended more than two
+// hours ago for a day, a session still running (or just over) for five minutes; an old cached answer is used when the API is closed.
 // The pure functions (build, entities, stats, bin…) take plain data and are shared with Node (tests); the fetch part
 // only runs in a browser. Nothing here fetches except load() and sessions(): the page's toggles and pickers never do.
 const F1OpenF1 = (() => {
@@ -9,15 +12,39 @@ const F1OpenF1 = (() => {
   const SLOW = 1.07; // a lap more than 107% of the session's best counts as slow (cool-down, traffic, a spin…)
   const HOUR = 3600e3, DAY = 24 * HOUR;
 
-  // ---- fetch + cache ----
+  // ---- fetch (rate limited), cache and saved copies ----
   const KEY = 'f1o:v1:';
-  function cacheGet(path, ttl){
-    try{
-      const o = JSON.parse(localStorage.getItem(KEY + path));
-      if(o && Date.now() - o.t < ttl) return o;
-    }catch(e){}
-    return null;
+  // OpenF1 allows 3 requests a second without an account: 350 ms between requests (tests set window.F1O_SPACING to 0).
+  const spacing = () => typeof globalThis.F1O_SPACING === 'number' ? globalThis.F1O_SPACING : 350;
+  // A limiter: the function it returns resolves once at least `gap` ms have passed since the previous caller was let through, in order.
+  function makeLimiter(gap, now = () => Date.now(), sleep = ms => new Promise(r => setTimeout(r, ms))){
+    let next = 0;
+    return async () => { const at = Math.max(now(), next); next = at + (typeof gap === 'function' ? gap() : gap); const wait = at - now(); if(wait > 0) await sleep(wait); };
   }
+  const slot = makeLimiter(spacing);
+  const live = { seenAt: 0 }; // when OpenF1 last said that a live session had closed its API
+  const LIVE = /Live F1 session/i;
+  // One request: rate limited, up to two retries after a 429. A failure carries .status and .live (the "session in progress" 401).
+  async function net(path){
+    await slot();
+    let res = await fetch(BASE + path);
+    for(let attempt = 1; res.status === 429 && attempt <= 2; attempt++){ // too many requests: wait, and try again (twice at most)
+      const after = res.headers && res.headers.get ? +res.headers.get('retry-after') : 0;
+      await new Promise(r => setTimeout(r, Math.min(5, after || 1.2 * attempt) * (spacing() ? 1000 : 1)));
+      await slot(); res = await fetch(BASE + path);
+    }
+    if(!res.ok){
+      let closed = false;
+      if(res.status === 401){ try{ closed = LIVE.test((await res.json()).detail || ''); }catch(e){} }
+      const err = new Error('OpenF1 HTTP ' + res.status); err.status = res.status; err.live = closed; if(closed) live.seenAt = Date.now();
+      throw err;
+    }
+    const data = await res.json();
+    if(!Array.isArray(data)) throw new Error('OpenF1: unexpected answer');
+    return data;
+  }
+  function cacheAny(path){ try{ const o = JSON.parse(localStorage.getItem(KEY + path)); return o && o.d ? o : null; }catch(e){ return null; } }
+  function cacheGet(path, ttl){ const o = cacheAny(path); return o && Date.now() - o.t < ttl ? o : null; }
   function cachePut(path, data){
     const put = () => localStorage.setItem(KEY + path, JSON.stringify({ t: Date.now(), d: data }));
     try{ put(); }catch(e){
@@ -30,16 +57,59 @@ const F1OpenF1 = (() => {
       }catch(_){}
     }
   }
-  async function get(path, ttl, fresh){
+  // Cache, then the API; with `stale`, an older cached answer when the API can't be had (closed for a live session, or down).
+  // source: 'cache' | 'api' | 'stale'.
+  async function get(path, ttl, fresh, stale = true){
     const hit = !fresh && cacheGet(path, ttl);
-    if(hit) return { data: hit.d, at: hit.t };
-    const res = await fetch(BASE + path);
-    if(!res.ok) throw new Error('OpenF1 HTTP ' + res.status);
-    const data = await res.json();
-    if(!Array.isArray(data)) throw new Error('OpenF1: unexpected answer');
-    cachePut(path, data);
-    return { data, at: Date.now() };
+    if(hit) return { data: hit.d, at: hit.t, source: 'cache' };
+    try{
+      const data = await net(path); cachePut(path, data);
+      return { data, at: Date.now(), source: 'api' };
+    }catch(e){
+      const old = stale && cacheAny(path);
+      if(old) return { data: old.d, at: old.t, source: 'stale', blocked: !!e.live };
+      throw e;
+    }
   }
+
+  // ---- saved copies of finished sessions (data/pace/…, written by tools/pace-snapshot.mjs) ----
+  const LAP_FIELDS = ['driver_number', 'lap_number', 'date_start', 'lap_duration', 'duration_sector_1', 'duration_sector_2', 'duration_sector_3', 'i1_speed', 'i2_speed', 'st_speed', 'is_pit_out_lap'];
+  const STINT_FIELDS = ['driver_number', 'stint_number', 'lap_start', 'lap_end', 'compound', 'tyre_age_at_start'];
+  const DRIVER_FIELDS = ['driver_number', 'name_acronym', 'full_name', 'broadcast_name', 'team_name', 'team_colour'];
+  const SESSION_FIELDS = ['meeting_key', 'session_key', 'session_name', 'date_start', 'date_end', 'location', 'country_name', 'year', 'is_cancelled'];
+  const val = v => v === undefined ? null : v;
+  // What a saved session file holds: only the fields the page uses, as arrays (the field names are in the file), times in ms.
+  // raw: {laps, stints, drivers, raceControl, result} as OpenF1 answers them.
+  function compact(raw, meta, now = Date.now()){
+    const rows = (list, fields) => (list || []).map(r => fields.map(f => val(r[f])));
+    return { v: 1, key: meta.key, year: meta.year, name: meta.name, generatedAt: now,
+      fields: { laps: LAP_FIELDS, stints: STINT_FIELDS, drivers: DRIVER_FIELDS },
+      laps: (raw.laps || []).map(l => LAP_FIELDS.map(f => f === 'date_start' ? (l.date_start ? Date.parse(l.date_start) : null) : f === 'is_pit_out_lap' ? (l.is_pit_out_lap ? 1 : 0) : val(l[f]))),
+      stints: rows(raw.stints, STINT_FIELDS), drivers: rows(raw.drivers, DRIVER_FIELDS),
+      raceControl: (raw.raceControl || []).filter(r => r.category === 'SessionStatus' && /^SESSION (STARTED|FINISHED)$/.test(r.message || '')).map(r => [Date.parse(r.date), r.message]),
+      result: (raw.result || []).map(r => [r.driver_number, val(r.position), r.dns ? 1 : 0, r.dsq ? 1 : 0, r.dnf ? 1 : 0]) };
+  }
+  // The other way: OpenF1-shaped rows again, so the same code reads a saved copy and an answer from the API.
+  function inflate(snap){
+    const obj = (fields, row) => Object.fromEntries(fields.map((f, i) => [f, row[i]]));
+    const f = snap.fields || {};
+    return {
+      laps: (snap.laps || []).map(r => { const o = obj(f.laps || LAP_FIELDS, r); o.date_start = o.date_start != null ? new Date(o.date_start).toISOString() : null; o.is_pit_out_lap = !!o.is_pit_out_lap; return o; }),
+      stints: (snap.stints || []).map(r => obj(f.stints || STINT_FIELDS, r)), drivers: (snap.drivers || []).map(r => obj(f.drivers || DRIVER_FIELDS, r)),
+      raceControl: (snap.raceControl || []).map(r => ({ date: new Date(r[0]).toISOString(), category: 'SessionStatus', message: r[1] })),
+      result: (snap.result || []).map(r => ({ driver_number: r[0], position: r[1], dns: !!r[2], dsq: !!r[3], dnf: !!r[4] })) };
+  }
+  // The saved files are fetched from the site itself (same origin: no OpenF1 request, no limit). A missing file is not remembered:
+  // the next look may find it (the workflow writes it a little after the session ends).
+  const saved = new Map();
+  async function savedFile(url){
+    if(saved.has(url)) return saved.get(url);
+    let j = null;
+    try{ const r = await fetch(url); if(r.ok){ const x = await r.json(); if(x && x.v === 1) j = x; } }catch(e){}
+    if(j) saved.set(url, j);
+    return j;
+  }
+  const savedSession = s => savedFile(`data/pace/${s.year}/${s.key}.json`);
 
   // ---- sessions ----
   const SHORT = { 'Practice 1': 'FP1', 'Practice 2': 'FP2', 'Practice 3': 'FP3', 'Qualifying': 'Quali', 'Sprint Qualifying': 'Sprint Quali',
@@ -64,7 +134,8 @@ const F1OpenF1 = (() => {
     const out = {};
     await Promise.all(weekend.sessions.filter(s => resultKind(s.name) && Date.parse(s.end) <= now).map(async s => {
       try{
-        const r = await get('/session_result?session_key=' + s.key, now - Date.parse(s.end) > 2 * HOUR ? DAY : 5 * 60e3, fresh), m = resultOrder(r.data);
+        const snap = fresh ? null : await savedSession(s); // a saved copy first
+        const rows = snap ? inflate(snap).result : (await get('/session_result?session_key=' + s.key, now - Date.parse(s.end) > 2 * HOUR ? DAY : 5 * 60e3, fresh)).data, m = resultOrder(rows);
         if(Object.keys(m).length) out[resultKind(s.name)] = m;
       }catch(e){}
     }));
@@ -76,7 +147,7 @@ const F1OpenF1 = (() => {
     const by = new Map();
     (rows || []).filter(s => KINDS.has(s.session_name) && !s.is_cancelled).forEach(s => {
       if(!by.has(s.meeting_key)) by.set(s.meeting_key, { key: s.meeting_key, label: s.location, country: s.country_name, start: s.date_start, sessions: [] });
-      by.get(s.meeting_key).sessions.push({ key: s.session_key, name: s.session_name, short: shortName(s.session_name), start: s.date_start, end: s.date_end });
+      by.get(s.meeting_key).sessions.push({ key: s.session_key, name: s.session_name, short: shortName(s.session_name), start: s.date_start, end: s.date_end, year: s.year || new Date(s.date_start).getUTCFullYear() });
     });
     const out = [...by.values()];
     out.forEach(w => { w.sessions.sort((a, b) => a.start < b.start ? -1 : 1); w.start = w.sessions[0].start; });
@@ -101,9 +172,24 @@ const F1OpenF1 = (() => {
     const near = list.map(w => ({ w, d: race - Date.parse(w.start) })).filter(x => x.d >= -DAY_MS && x.d <= 6 * DAY_MS).sort((a, b) => Math.abs(a.d - 3 * DAY_MS) - Math.abs(b.d - 3 * DAY_MS));
     return near.length ? near[0].w : null;
   }
+  // The year's sessions: the cache, then OpenF1, then the saved list (data/pace/{year}.json) when OpenF1 can't be had (closed for a live
+  // session), then an older cached answer. {list, at, source: 'cache'|'api'|'saved'|'stale', blocked: OpenF1 said a live session had closed it}.
   async function sessions(year, {fresh=false}={}){
-    const r = await get('/sessions?year=' + year, 30 * 60e3, fresh);
-    return { list: weekends(r.data), at: r.at };
+    const path = '/sessions?year=' + year;
+    let r;
+    try{ r = await get(path, 30 * 60e3, fresh, false); }
+    catch(e){
+      const file = await savedFile(`data/pace/${year}.json`), old = cacheAny(path);
+      if(file) r = { data: file.sessions, at: file.generatedAt, source: 'saved', blocked: !!e.live };
+      else if(old) r = { data: old.d, at: old.t, source: 'stale', blocked: !!e.live };
+      else throw e;
+    }
+    return { list: weekends(r.data), rows: r.data, at: r.at, source: r.source, blocked: !!r.blocked };
+  }
+  // When the session in progress ends (ms), for "OpenF1 is closed until …"; null when none is on.
+  function liveUntil(list, now = Date.now()){
+    const ends = (list || []).flatMap(w => w.sessions).filter(x => Date.parse(x.start) <= now && now <= Date.parse(x.end) + 5 * 60e3).map(x => Date.parse(x.end) + 5 * 60e3);
+    return ends.length ? Math.max(...ends) : null;
   }
 
   // ---- one session ----
@@ -144,13 +230,23 @@ const F1OpenF1 = (() => {
     if(open != null && ev.length) out.push({ from: open, to: Date.parse(ev[ev.length - 1].date) });
     return out.map((g, i) => ({ label: (sprint ? 'SQ' : 'Q') + (i + 1), from: g.from, to: g.to }));
   }
+  // A session's laps, stints, drivers (and race control for qualifying): a saved copy of a finished session if there is one, otherwise the
+  // cache / OpenF1. The model's source: 'saved' | 'cache' | 'api' | 'stale' (an older cached answer, because OpenF1 is closed or down).
   async function load(session, {fresh=false, now=Date.now()}={}) {
+    const quali = isQualifying(session.name), sprint = /Sprint/.test(session.name);
+    const snap = fresh ? null : await savedSession(session);
+    if(snap){
+      const f = inflate(snap);
+      return Object.assign(build(f.laps, f.stints, f.drivers), { at: snap.generatedAt, source: 'saved', blocked: false, segments: quali ? qualiSegments(f.raceControl, sprint) : [] });
+    }
     const over = now - Date.parse(session.end) > 2 * HOUR;
     const ttl = over ? DAY : 5 * 60e3, q = '?session_key=' + session.key;
-    const quali = isQualifying(session.name);
+    const none = { data: [], at: Infinity, source: 'api' };
     const [l, s, d, rc] = await Promise.all([get('/laps' + q, ttl, fresh), get('/stints' + q, ttl, fresh), get('/drivers' + q, ttl, fresh),
-      quali ? get('/race_control' + q, ttl, fresh).catch(() => ({ data: [], at: Infinity })) : Promise.resolve({ data: [], at: Infinity })]);
-    return Object.assign(build(l.data, s.data, d.data), { at: Math.min(l.at, s.at, d.at), segments: quali ? qualiSegments(rc.data, /Sprint/.test(session.name)) : [] });
+      quali ? get('/race_control' + q, ttl, fresh).catch(() => none) : Promise.resolve(none)]);
+    const parts = [l, s, d];
+    const source = parts.some(x => x.source === 'stale') ? 'stale' : parts.every(x => x.source === 'cache') ? 'cache' : 'api';
+    return Object.assign(build(l.data, s.data, d.data), { at: Math.min(l.at, s.at, d.at), source, blocked: parts.some(x => x.blocked), segments: quali ? qualiSegments(rc.data, sprint) : [] });
   }
 
   // ---- numbers ----
@@ -209,7 +305,7 @@ const F1OpenF1 = (() => {
   const speedIn = (kmh, unit) => kmh == null ? null : unit === 'mph' ? Math.round(kmh * 0.621371 * 10) / 10 : kmh;
   const gapText = g => g == null ? '–' : (g >= 0 ? '+' : '−') + Math.abs(g).toFixed(3);
 
-  const api = { BASE, SLOW, weekends, weekendForRound, defaultWeekend, defaultSession, sessions, build, load, qualiSegments, isQualifying, results, resultOrder, resultKind, RESULT_KINDS, sessionBest, pace, entities, lapsOf, stats, bin, binWidth, fmt, gapText, speedIn, shortName };
+  const api = { BASE, SLOW, weekends, weekendForRound, defaultWeekend, defaultSession, sessions, build, load, liveUntil, live, compact, inflate, makeLimiter, SESSION_FIELDS, KINDS, qualiSegments, isQualifying, results, resultOrder, resultKind, RESULT_KINDS, sessionBest, pace, entities, lapsOf, stats, bin, binWidth, fmt, gapText, speedIn, shortName };
   return api;
 })();
 if(typeof module !== 'undefined' && module.exports) module.exports = F1OpenF1; // Node (the tests)

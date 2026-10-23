@@ -71,6 +71,7 @@ tools/                snapshot.mjs: builds site/data/{year}.json from f1api.dev 
                       Season-long pace drift (`driftTeam`/`driftDriver`/`driftWalk`, `driftStep` in racemodel.js; off unless a context sets it) was tested and not built in (#180); see docs/BACKTEST.md.
                       eras-snapshot.mjs (#135): builds site/data/eras.json (standings since 1950) from Jolpica (same workflow).
                       history-snapshot.mjs (#141): builds site/data/{1950..2020}.json (per-round results) from Jolpica (same workflow).
+                      pace-snapshot.mjs (#186): saved copies of finished OpenF1 sessions, site/data/pace/ (own workflow, pace.yml); read by the Weekend Pace page.
                       qualifying-snapshot.mjs (#158): builds site/data/grid/{2014..}.json (qualifying position and Q1–Q3 times, starting grid
                       per driver, 0 = pit lane, plus each round's circuit id, the whole calendar's circuit ids and the upcoming round's qualifying) from
                       Jolpica (same workflow); read by the Simulator and What-If (#167) and the backtest.
@@ -657,7 +658,8 @@ interaction. If the calendar fails or has no dates, the strip stays hidden.
 
 The one page that uses another API: **OpenF1** (`https://api.openf1.org/v1`), because f1api.dev has no session laps, sectors, speeds or tyres
 and Jolpica has only race laps and Q1–Q3 times. Called straight from the browser (OpenF1 sends `access-control-allow-origin`), no key,
-data from 2023 (an earlier season says so). It is a normal season page: the shared `F1Controls` (season dropdown, slider, "Round N of M — flag
+data from 2023 (an earlier season says so). **OpenF1 closes its API to everyone without an account while an F1 session is live, even for past sessions**
+(HTTP 401 "Live F1 session in progress…"); see "Saved copies" below. It is a normal season page: the shared `F1Controls` (season dropdown, slider, "Round N of M — flag
 name", Refresh data, Share) with the **`upcoming` option**: `F1Controls.mount('f1controls', {upcoming:true})` adds each calendar round after
 the loaded ones whose weekend has begun (its race date is within 4 days) as a round with no results (`{upcoming:true, raceResults:[]}`), so the
 slider reaches the race weekend that is on, before its Grand Prix. Only this page turns it on; the other pages' sliders are unchanged.
@@ -666,6 +668,17 @@ slider reaches the race weekend that is on, before its Grand Prix. Only this pag
 - **The round picks the weekend** (`F1OpenF1.weekendForRound`: the OpenF1 weekend whose first session starts within 6 days before the round's
   race date in the calendar). Because that needs OpenF1, **the slider fetches when it is let go** (`f1roundcommit`), not on every step (a
   deliberate exception to "the slider never fetches", like the Simulator's run on release, #112); cached weekends cost nothing.
+- **Saved copies (the live-session problem):** `tools/pace-snapshot.mjs`, run by `.github/workflows/pace.yml` (every 20 minutes Friday–Monday UTC, daily
+  for the list, on a change to the tool, or by hand with `all` for 2023 on), saves each finished session 20 minutes after it ends to
+  `site/data/pace/{year}/{sessionKey}.json` (`F1OpenF1.compact()`: laps, stints, drivers, qualifying's start/finish messages and the classification as arrays
+  with their field names, times in ms; about a sixth of the API's size) and the year's sessions list to `site/data/pace/{year}.json`; it commits them and
+  redeploys, never fetches a saved session twice, and ends quietly (nothing saved) when OpenF1 answers the live-session 401. The page reads a finished session
+  from its saved copy before asking OpenF1 (`F1OpenF1.load`, `results`), the sessions list from OpenF1 and then, if closed, from the saved list, and
+  uses an older cached answer last (marked "older saved copy"). **Refresh session** skips the saved copy. If the default session is the one that is live
+  and has no copy, the latest finished session of the weekend is shown with a line saying why; choosing a live session yourself says OpenF1 is closed (until
+  about when it ends, from the sessions list), that it is not saved yet, and retries by itself soon after it ends.
+- **OpenF1's free limit** is 3 requests a second: requests go out 350 ms apart (`F1OpenF1.makeLimiter`; tests set `window.F1O_SPACING = 0`), and a 429 is
+  waited out and retried (twice at most).
 - **Sessions:** Practice 1–3, Qualifying, Sprint Qualifying/Shootout, Sprint and the **Race** (no pre-season testing). Opens on the weekend's
   latest session that has started. Per session `/laps`, `/stints`, `/drivers` (plus `/race_control` for qualifying), joined by `F1OpenF1.build` into
   laps `{d, n, t, s[3], i1, i2, st, out, inn, c, age, at}` (`inn`: the last lap of a stint another stint follows; `at`: when the lap started).
@@ -713,7 +726,9 @@ slider reaches the race weekend that is on, before its Grand Prix. Only this pag
 - **Not built yet:** tyre use against allocation (#187; OpenF1 has no set allocation).
 - Tests: `53-openf1` (the pure helpers, in Node), `54-pace` (the page; the harness's `openf1` option serves `lib/openf1-fixture.js`, whose
   weekends are rounds 11–13 of the fake season, whose drivers have the fake f1api.dev drivers' codes and whose qualifying has race control messages) and
-  `55-upcoming-round` (the option).
+  `55-upcoming-round` (the option), `56-pace-snapshot` (the saved-copy tool: which sessions are saved and when, never twice, the live 401, 429, failures,
+  sessions without laps) and, in `54-pace`, the saved copies, the closed API, older cached answers and the request spacing (harness options `pace`,
+  `spacing` and `openf1.live` / `openf1.rate`).
 
 ## Design requirements (owner-approved — keep these)
 

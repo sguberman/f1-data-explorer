@@ -85,6 +85,69 @@ module.exports = async (t, h) => {
   t.check('a failed classification just leaves that sort out', Object.keys(await O.results(wk[1], { now })).length === 0);
   global.fetch = realFetch;
 
+
+  // ---- OpenF1 closed for a live session: the pause between requests, saved copies, older cached answers ----
+  const clockT = { now: 0, waits: [], order: [] };
+  const lim = O.makeLimiter(350, () => clockT.now, async ms => { clockT.waits.push(ms); });
+  await Promise.all([1, 2, 3, 4].map(async i => { await lim(); clockT.order.push(i); }));
+  t.check('four requests at once are let through 350 ms apart, in order (OpenF1 allows 3 a second): waits of 0, 350, 700 and 1050 ms', clockT.waits.join() === '350,700,1050' && clockT.order.join() === '1,2,3,4', JSON.stringify(clockT));
+  const idle = O.makeLimiter(() => 100, () => clockT.now, async ms => { clockT.now += ms; }); clockT.now = 5000; await idle(); const before = clockT.now; await idle();
+  t.check('…and a lone request is not held up', before === 5000 && clockT.now === 5100);
+
+  const until = O.liveUntil(wk, Date.parse('2026-08-28T11:45:00Z'));
+  t.check('while a session is on, when it ends (and five minutes more), for "closed until …"', until === Date.parse('2026-08-28T12:35:00Z') && O.liveUntil(wk, now) === null && O.liveUntil([], now) === null, String(until));
+
+  const store = {}; global.localStorage = { getItem: k => k in store ? store[k] : null, setItem: (k, v) => { store[k] = String(v); }, removeItem: k => { delete store[k]; } };
+  globalThis.F1O_SPACING = 0;
+  const liveBody = { detail: 'Live F1 session in progress. Global API access (including past sessions) is restricted to authenticated users until the session ends.' };
+  let net = []; let mode = 'ok'; const files = {};
+  global.fetch = async url => {
+    net.push(url);
+    if(/^data\/pace\//.test(url)) return files[url] ? { ok: true, status: 200, json: async () => files[url] } : { ok: false, status: 404, json: async () => ({}) };
+    if(mode === 'live') return { ok: false, status: 401, json: async () => liveBody };
+    if(mode === '429'){ mode = 'ok'; return { ok: false, status: 429, headers: { get: () => '0' }, json: async () => ({}) }; }
+    const body = fx.answer(url); return { ok: true, status: 200, json: async () => body };
+  };
+  const s301 = wk[0].sessions[0], s101 = wk[1].sessions[0];
+  // the API, then the cache
+  let model1 = await O.load(s101, { now }); const n1 = net.length;
+  t.check('a session is fetched from the API (laps, stints, drivers) and cached', model1.source === 'api' && model1.laps.length === 77 && net.filter(u => /api\.openf1\.org/.test(u)).length === 3, model1.source + ' ' + net.join());
+  net = []; model1 = await O.load(s101, { now });
+  t.check('…the second look is the cache: no OpenF1 request', model1.source === 'cache' && !net.some(u => /api\.openf1\.org/.test(u)));
+  // a 429 is retried once
+  mode = '429'; net = []; const model2 = await O.load(wk[1].sessions[1], { now });
+  t.check('a 429 is waited out and tried again once', model2.source === 'api' && net.filter(u => /api\.openf1\.org/.test(u)).length === 4, net.join());
+  // closed for a live session
+  mode = 'live'; net = [];
+  let err = null; try{ await O.load(wk[1].sessions[2], { now }); }catch(e){ err = e; }
+  t.check('closed for a live session: the error says so (.live, 401), and the page can tell it from "down"', err && err.live === true && err.status === 401 && O.live.seenAt > 0, String(err));
+  // an older cached answer is used
+  Object.keys(store).forEach(k => { const o = JSON.parse(store[k]); o.t = 1; store[k] = JSON.stringify(o); }); // everything is "old" now
+  net = []; const stale = await O.load(s101, { now });
+  t.check('closed, an older cached answer is used (source "stale", and it says OpenF1 was closed)', stale.source === 'stale' && stale.blocked === true && stale.laps.length === model1.laps.length, stale.source);
+  // a saved copy first
+  files['data/pace/2026/' + s301.key + '.json'] = O.compact({ laps: fx.lapsFor(301), stints: fx.stintsFor(301), drivers: fx.driversFor(301), raceControl: [], result: [] }, { key: s301.key, year: 2026, name: s301.name }, 5000);
+  net = []; const fromFile = await O.load(s301, { now });
+  t.check('a saved copy is read before the API is asked: no OpenF1 request, even with it closed', fromFile.source === 'saved' && fromFile.laps.length === 77 && fromFile.at === 5000 && net.every(u => /^data\/pace\//.test(u)), net.join());
+  net = []; mode = 'ok'; const forced = await O.load(s301, { now, fresh: true });
+  t.check('Refresh skips the saved copy and asks OpenF1', forced.source === 'api' && net.some(u => /api\.openf1\.org/.test(u)));
+  // the sessions list
+  mode = 'live'; Object.keys(store).forEach(k => delete store[k]);
+  let none = null; try{ await O.sessions(2026); }catch(e){ none = e; }
+  t.check('closed, with no saved list and no older answer, the sessions list fails (.live)', none && none.live === true);
+  files['data/pace/2026.json'] = { v: 1, year: 2026, generatedAt: 7000, sessions: fx.SESSIONS };
+  const fromList = await O.sessions(2026);
+  t.check('…with a saved list (data/pace/2026.json) it is used, and says OpenF1 was closed', fromList.source === 'saved' && fromList.blocked === true && fromList.list.length === 3 && fromList.at === 7000);
+  mode = 'ok'; Object.keys(store).forEach(k => delete store[k]);
+  const live1 = await O.sessions(2027); mode = 'live'; Object.keys(store).forEach(k => { const o = JSON.parse(store[k]); o.t = 1; store[k] = JSON.stringify(o); });
+  const old1 = await O.sessions(2027);
+  t.check('…or an older cached list when there is no saved one', live1.source === 'api' && old1.source === 'stale' && old1.blocked === true && old1.list.length === 3);
+  // the classifications come from a saved copy too
+  files['data/pace/2026/' + wk[1].sessions[3].key + '.json'] = O.compact({ laps: [], stints: [], drivers: [], raceControl: [], result: fx.resultFor(104) }, { key: 104, year: 2026, name: 'Qualifying' }, 5000);
+  net = []; const res2 = await O.results(wk[1], { now });
+  t.check('a classification is read from a saved copy when there is one (no request for it)', res2.quali && res2.quali[1] === 1 && !net.some(u => /session_key=104/.test(u)), net.join());
+  delete global.localStorage; delete globalThis.F1O_SPACING;
+
   // ---- bins and formats ----
   t.check('bins count laps and clamp the ends', JSON.stringify(O.bin([90.0, 90.05, 90.1, 89, 99], 90, 0.1, 3)) === '[3,1,1]', JSON.stringify(O.bin([90.0, 90.05, 90.1, 89, 99], 90, 0.1, 3)));
   t.check('bin width: about 24 bins, never under 0.1 s', O.binWidth(90, 91) === 0.1 && O.binWidth(90, 96) === 0.3 && O.binWidth(90, 90) === 0.1);

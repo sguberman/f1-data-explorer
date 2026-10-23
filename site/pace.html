@@ -215,6 +215,7 @@ let selected = null; // site driver ids; null = the default (follows the standin
 let pinned = null; // the driver code being followed on the lap plots (the others are dimmed)
 let outliers = new Set(); // laps marked as outliers in this session: 'driverNumber:lapNumber'
 let lapChart = null, dotChart = null, dumbChart = null, speedChart = null, dotRows = [];
+let notice = '', retryTimer = null; // a line about where the data came from; a retry set for when a live session ends
 
 const status = (text, err) => { const s = $('paceStatus'); s.className = 'paceStatus' + (err ? ' err' : ''); s.innerHTML = text; };
 const color = c => F1Theme.team(c);
@@ -273,9 +274,18 @@ function chooseSort(s){
   if(!sortLocked || !sortAvailable(sortKey)) sortKey = defaultSort(s);
 }
 
+// ---- OpenF1 closed for a live session ----
+const clock = ms => new Date(ms).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+// OpenF1 answers nobody without an account while an F1 session is live (finished sessions are read from saved copies, data/pace/, when there are some).
+const closedText = until => `OpenF1 is closed to the public while a session is live${until ? ` (until about ${clock(until)})` : ''}`;
+function retryWhenOver(until, again){ // try again just after the live session ends, if the page is still showing the failure
+  clearTimeout(retryTimer); const wait = until ? until - Date.now() + 60e3 : 0;
+  if(wait > 0 && wait < 4 * 3600e3) retryTimer = setTimeout(again, wait);
+}
+
 // ---- season and round ----
 async function onSelection(detail){
-  const my = ++token;
+  const my = ++token; clearTimeout(retryTimer); notice = '';
   year = detail.year; seasonRounds = detail.seasonRounds; resultRounds = seasonRounds.filter(r => !r.upcoming); round = detail.round; fresh = !!detail.fresh;
   weekends = []; weekend = null; session = null; model = null; results = {}; resultsCache = {};
   const link = F1Share.take(); // a shared link's setup, first season only
@@ -297,11 +307,14 @@ async function onSelection(detail){
   if(year < FIRST_YEAR){ render(); status(`OpenF1 has lap data from ${FIRST_YEAR} on, so there is nothing to show for ${year}.`, true); return; }
   status('Loading the sessions…');
   try{
-    weekends = (await O.sessions(year, { fresh })).list;
+    const r = await O.sessions(year, { fresh }); weekends = r.list;
+    if(r.source === 'stale') notice = 'an older saved list of the sessions' + (r.blocked ? '; ' + closedText(O.liveUntil(weekends)) : '');
   }catch(e){
     if(my !== token) return;
-    render(); status('Couldn’t load the sessions from OpenF1. <button type="button" class="f1c-link" id="retry">Retry</button>', true);
-    $('retry').addEventListener('click', () => onSelection({ year, seasonRounds, round, fresh: true }));
+    const again = () => onSelection({ year, seasonRounds, round, fresh: true });
+    render(); status(e.live ? `${closedText(null)}, and this season’s sessions are not saved here yet. <button type="button" class="f1c-link" id="retry">Retry</button>` : 'Couldn’t load the sessions from OpenF1. <button type="button" class="f1c-link" id="retry">Retry</button>', true);
+    $('retry').addEventListener('click', again);
+    if(e.live) retryTimer = setTimeout(again, 20 * 60e3);
     return;
   }
   if(my !== token) return;
@@ -316,10 +329,11 @@ function showRound(r){
   $('sessChips').innerHTML = weekend.sessions.map(x =>
     `<button type="button" class="sessBtn" data-key="${x.key}" title="${esc(x.name)}"${Date.parse(x.start) > now ? ' disabled' : ''}>${esc(x.short)}</button>`).join('');
   const want = weekend.sessions.find(s => s.short === linkSession && Date.parse(s.start) <= now); linkSession = null;
-  loadSession(want || O.defaultSession(weekend, now), fresh);
+  loadSession(want || O.defaultSession(weekend, now), fresh, !want);
 }
-async function loadSession(s, fresh){
-  const my = ++token; session = s; model = null; pinned = null;
+// `auto`: the page chose the session (not you): if it is live and OpenF1 is closed, the latest finished session of the weekend is shown instead.
+async function loadSession(s, fresh, auto = false){
+  const my = ++token; clearTimeout(retryTimer); session = s; model = null; pinned = null; if(!auto) notice = '';
   [...$('sessChips').children].forEach(b => { const on = +b.dataset.key === s.key; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on); });
   $('refreshSession').hidden = false;
   loadOutliers();
@@ -331,12 +345,19 @@ async function loadSession(s, fresh){
     chooseSort(s);
   }catch(e){
     if(my !== token) return;
-    model = null; render();
-    status('Couldn’t load this session from OpenF1. <button type="button" class="f1c-link" id="retry">Retry</button>', true);
-    $('retry').addEventListener('click', () => loadSession(s, true));
+    model = null;
+    const until = e.live ? O.liveUntil(weekends) : null, now = Date.now();
+    const done = auto && e.live && weekend.sessions.filter(x => x.key !== s.key && Date.parse(x.end) <= now).pop(); // the latest finished one
+    if(done){ notice = `${s.name} is live: ${closedText(until)}; showing ${done.name}`; return loadSession(done, false, true); }
+    render();
+    const again = () => loadSession(s, true);
+    status(e.live ? `${closedText(until)}, and ${esc(s.name)} is not saved here yet. <button type="button" class="f1c-link" id="retry">Retry</button>` : 'Couldn’t load this session from OpenF1. <button type="button" class="f1c-link" id="retry">Retry</button>', true);
+    $('retry').addEventListener('click', again);
+    if(e.live) retryWhenOver(until, again);
     return;
   }
   if(my !== token) return;
+  if(model.source === 'stale') notice = `an older saved copy${model.blocked ? '; ' + closedText(O.liveUntil(weekends)) : ''}`;
   render();
 }
 
@@ -446,8 +467,8 @@ function render(){
   renderPresets(ents, picked); renderPicker(ents, picked, order);
   const when = loadedAt ? new Date(loadedAt).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' }) : '';
   const nLaps = model.laps.filter(l => l.t != null).length;
-  status(nLaps ? `${esc(session.name)} · ${model.drivers.length} drivers · ${nLaps} timed laps · fetched ${when}`
-               : `${esc(session.name)}: no lap data yet. It appears soon after the session starts.`);
+  status((nLaps ? `${esc(session.name)} · ${model.drivers.length} drivers · ${nLaps} timed laps · ${model.source === 'saved' ? 'saved' : 'fetched'} ${when}`
+               : `${esc(session.name)}: no lap data yet. It appears soon after the session starts.`) + (notice ? ' · ' + esc(notice) : ''));
   const P = F1Theme.chart(); Chart.defaults.font.family = ff; Chart.defaults.color = P.text;
   const where = `${raceTitle()} · ${session.short}`;
   $('lapSub').textContent = $('dotSub').textContent = `${where} · ${slow ? 'all laps' : 'laps within 107% of the best, no in or out laps'}`;
@@ -758,7 +779,7 @@ F1Export.attach($('speedCard'), { name: 'pace-speed', title: () => 'Top speed', 
 // ---- events ----
 window.addEventListener('f1selection', e => onSelection(e.detail));
 window.addEventListener('f1roundchange', e => { if(weekends.length) status(`Round ${e.detail.round}: let go of the slider to load this weekend.`); });
-window.addEventListener('f1roundcommit', e => { if(year >= FIRST_YEAR && weekends.length){ fresh = false; ++token; showRound(e.detail.round); } }); // a weekend is fetched when the slider is released, not on every step
+window.addEventListener('f1roundcommit', e => { if(year >= FIRST_YEAR && weekends.length){ fresh = false; ++token; notice = ''; showRound(e.detail.round); } }); // a weekend is fetched when the slider is released, not on every step
 window.addEventListener('themechange', () => render());
 $('sessChips').addEventListener('click', e => { const b = e.target.closest('.sessBtn'); if(!b || b.disabled || !weekend) return; fresh = false; loadSession(weekend.sessions.find(s => s.key === +b.dataset.key), false); });
 $('refreshSession').addEventListener('click', () => { if(session) loadSession(session, true); });
