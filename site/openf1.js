@@ -49,6 +49,28 @@ const F1OpenF1 = (() => {
   const KINDS = new Set(['Practice 1', 'Practice 2', 'Practice 3', 'Qualifying', 'Sprint Qualifying', 'Sprint Shootout', 'Sprint', 'Race']);
   const isQualifying = name => /Qualifying|Shootout/.test(name || '');
 
+  // The classified sessions the page can sort by: kind -> OpenF1 session names.
+  const RESULT_KINDS = { gp: ['Race'], sprint: ['Sprint'], quali: ['Qualifying'], sprintquali: ['Sprint Qualifying', 'Sprint Shootout'] };
+  const resultKind = name => Object.keys(RESULT_KINDS).find(k => RESULT_KINDS[k].includes(name)) || null;
+  // A classification (OpenF1's /session_result rows) as {driver number: finishing position}; null for no position, did not start or disqualified.
+  function resultOrder(rows){
+    const m = {};
+    (rows || []).forEach(r => { m[r.driver_number] = r.position != null && !r.dns && !r.dsq ? r.position : null; });
+    return m;
+  }
+  // The classifications of a weekend's sessions that have finished: {gp, sprint, quali, sprintquali} -> resultOrder. A session that
+  // has not finished, or whose classification can't be had, is left out.
+  async function results(weekend, {fresh=false, now=Date.now()}={}){
+    const out = {};
+    await Promise.all(weekend.sessions.filter(s => resultKind(s.name) && Date.parse(s.end) <= now).map(async s => {
+      try{
+        const r = await get('/session_result?session_key=' + s.key, now - Date.parse(s.end) > 2 * HOUR ? DAY : 5 * 60e3, fresh), m = resultOrder(r.data);
+        if(Object.keys(m).length) out[resultKind(s.name)] = m;
+      }catch(e){}
+    }));
+    return out;
+  }
+
   // A year's sessions grouped into weekends, in date order: [{key, label, country, start, sessions:[{key, name, short, start, end}]}].
   function weekends(rows){
     const by = new Map();
@@ -187,7 +209,7 @@ const F1OpenF1 = (() => {
   const speedIn = (kmh, unit) => kmh == null ? null : unit === 'mph' ? Math.round(kmh * 0.621371 * 10) / 10 : kmh;
   const gapText = g => g == null ? '–' : (g >= 0 ? '+' : '−') + Math.abs(g).toFixed(3);
 
-  const api = { BASE, SLOW, weekends, weekendForRound, defaultWeekend, defaultSession, sessions, build, load, qualiSegments, isQualifying, sessionBest, pace, entities, lapsOf, stats, bin, binWidth, fmt, gapText, speedIn, shortName };
+  const api = { BASE, SLOW, weekends, weekendForRound, defaultWeekend, defaultSession, sessions, build, load, qualiSegments, isQualifying, results, resultOrder, resultKind, RESULT_KINDS, sessionBest, pace, entities, lapsOf, stats, bin, binWidth, fmt, gapText, speedIn, shortName };
   return api;
 })();
 if(typeof module !== 'undefined' && module.exports) module.exports = F1OpenF1; // Node (the tests)

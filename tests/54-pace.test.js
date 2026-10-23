@@ -46,6 +46,8 @@ module.exports = async (t, h) => {
   t.check('no page errors', p.errors.length === 0, p.errors.join('; '));
 
   // ---- the site's picker: flags, numbers, team groups, the site's team colours ----
+  t.check('in practice the sort defaults to the fastest lap: one list, numbered, quickest first', await p.evaluate(() => document.querySelector('.sortSeg').value === 'fast' && document.querySelectorAll('#pacePicker .pickerTeamLabel').length === 0 && [...document.querySelectorAll('#pacePicker .pickerRank')].map(e => e.textContent).join() === '1,2,3,4,5,6'));
+  await p.selectOption('#pickCard .sortSeg', 'team'); await p.waitForTimeout(100);
   const pk = await p.evaluate(() => ({
     teams: [...document.querySelectorAll('#pacePicker .pickerTeamLabel')].map(e => e.textContent),
     flags: document.querySelectorAll('#pacePicker .pickerRow .flag').length, nums: [...document.querySelectorAll('#pacePicker .pickerNum')].map(e => e.textContent).join(),
@@ -61,9 +63,9 @@ module.exports = async (t, h) => {
   t.check('team colours are the site’s (not OpenF1’s) in the picker, lap lines and bars', pk.dot === rgb(pk.site) && pk.line === pk.site && pk.bar === pk.site && pk.site !== '#111111', JSON.stringify([pk.dot, pk.line, pk.bar, pk.site]));
   t.check('every driver is on the lap lines, the dots, the bars, the table and the best vs ideal plot', s.lines.join() === 'DA0,DA1,DB0,DB1,DC0,DC1' && s.dots === 41 && s.bars.length === 6 && s.table.length === 6 && s.dumb.length === 6, JSON.stringify([s.lines, s.dots, s.bars]));
   t.check('the picker folds away like the others', await p.evaluate(() => { document.getElementById('pickerToggle').click(); const hidden = getComputedStyle(document.getElementById('pacePicker')).display === 'none'; document.getElementById('pickerToggle').click(); return hidden; }));
-  await p.selectOption('#sortSeg', 'rank'); await p.waitForTimeout(100);
+  await p.selectOption('#pickCard .sortSeg', 'rank'); await p.waitForTimeout(100);
   t.check('Sort by Ranking lists them in one list with the standings rank', await p.evaluate(() => document.querySelectorAll('#pacePicker .pickerTeamLabel').length === 0 && document.querySelectorAll('#pacePicker .pickerRank').length === 6));
-  await p.selectOption('#sortSeg', 'team');
+  await p.selectOption('#pickCard .sortSeg', 'fast');
 
   // ---- the lap lines ----
   const lines = await p.evaluate(() => lapChart.data.datasets.map(d => [d.data.filter(q => q.y !== null).length, d.data.map(q => q.y === null ? '|' : q.n).join()]));
@@ -145,11 +147,11 @@ module.exports = async (t, h) => {
   await p.selectOption('#sectorCard .tsortSel', 'best');
 
   // ---- the driver picker can sort by the fastest lap ----
-  await p.selectOption('#sortSeg', 'fast'); await p.waitForTimeout(100);
+  await p.selectOption('#pickCard .sortSeg', 'fast'); await p.waitForTimeout(100);
   const fastRows = await p.evaluate(() => ({ codes: [...document.querySelectorAll('#pacePicker .pickerCodeTag')].map(e => e.textContent).join(), ranks: [...document.querySelectorAll('#pacePicker .pickerRank')].map(e => e.textContent).join(),
     pts: [...document.querySelectorAll('#pacePicker .pickerPts')].map(e => e.textContent), teams: document.querySelectorAll('#pacePicker .pickerTeamLabel').length, url: location.search }));
-  t.check('Sort by Fastest Lap: one list, quickest first, numbered, with the lap time', fastRows.codes === 'DA0,DA1,DB0,DB1,DC0,DC1' && fastRows.ranks === '1,2,3,4,5,6' && fastRows.teams === 0 && fastRows.pts[0] === '1:30.020' && /sort=fast/.test(fastRows.url), JSON.stringify(fastRows));
-  await p.selectOption('#sortSeg', 'team');
+  t.check('Sort by Fastest Lap: one list, quickest first, numbered, with the lap time', fastRows.codes === 'DA0,DA1,DB0,DB1,DC0,DC1' && fastRows.ranks === '1,2,3,4,5,6' && fastRows.teams === 0 && fastRows.pts[0] === '1:30.020' && !/sort=/.test(fastRows.url), JSON.stringify(fastRows));
+  await p.selectOption('#pickCard .sortSeg', 'fast');
 
   // ---- the keys, the box plot checkbox and layering, short race names ----
   const keys = await p.evaluate(() => ({ lap: [...document.querySelectorAll('#lapLegend .lgItem')].map(e => e.querySelector('.tyre') ? 'T:' + e.textContent : 'D:' + e.textContent).slice(0, 4).join(),
@@ -248,12 +250,45 @@ module.exports = async (t, h) => {
   t.check('moving the slider changes the label but fetches nothing until it is let go', /Round 12 of 13/.test((await state(p)).label) && p.openf1Hits.length === n1 && /let go of the slider/.test((await state(p)).status), `${(await state(p)).label} ${(await state(p)).status}`);
   await commit(p); await ready(p);
   s = await state(p);
-  t.check('letting go loads that weekend, all its sessions enabled, on the Race (the latest that has run)', hits(p) === 'sessions,laps,stints,drivers,laps,stints,drivers' && s.chips.map(c => c[0]).join() === 'FP1,FP2,FP3,Quali,Race' && s.chips.every(c => !c[2]) && s.chips.find(c => c[1])[0] === 'Race' && /Race/.test(s.status), hits(p) + JSON.stringify(s.chips));
+  t.check('letting go loads that weekend, all its sessions enabled, on the Race (the latest that has run), and the classifications of the sessions that have finished', hits(p) === 'sessions,laps,stints,drivers,laps,stints,drivers,session_result,session_result' && s.chips.map(c => c[0]).join() === 'FP1,FP2,FP3,Quali,Race' && s.chips.every(c => !c[2]) && s.chips.find(c => c[1])[0] === 'Race' && /Race/.test(s.status), hits(p) + JSON.stringify(s.chips));
+
   t.check('the Race plots lap by lap', await p.evaluate(() => lapChart.options.scales.x.title.text) === 'Lap of the race' && (await state(p)).lines.length > 0);
+
+  // ---- the shared sort (the list and both lap plots), its session defaults and its lock ----
+  const orders = q => q.evaluate(() => { const codes = sel => [...document.querySelectorAll(sel)].map(e => e.dataset.code || e.textContent);
+    return { picker: [...document.querySelectorAll('#pacePicker .pickerCodeTag')].map(e => e.textContent).join(), picked: [...document.querySelectorAll('#pacePicker .pickerRow')].filter(r => r.querySelector('input').checked).map(r => r.querySelector('.pickerCodeTag').textContent).join(),
+      lines: lapChart.data.datasets.filter(d => !d._outlier).map(d => d.label).join(), legend: codes('#lapLegend .lgItem[data-code]').join(), dots: dotRows.map(r => r.e.label).join(), dotLegend: codes('#dotLegend .lgItem[data-code]').join(),
+      sels: [...document.querySelectorAll('.sortSeg')].map(x => x.value).join(), locks: [...document.querySelectorAll('.sortLock')].map(b => b.getAttribute('aria-pressed')).join(), url: location.search,
+      opts: [...document.querySelector('#lapCard .sortSeg').options].map(o => o.textContent).join(), ranks: [...document.querySelectorAll('#pacePicker .pickerRank')].map(e => e.textContent).join() }; });
+  const followed = (o, order) => { const want = order.split(',').filter(c => o.picked.split(',').includes(c)).join(); return o.lines === want && o.legend === want && o.dots === want && o.dotLegend === want; };
+  let od = await orders(p);
+  t.check('on the Race the sort defaults to the GP result, and the options offer the results of the sessions that have finished', od.sels === 'gp,gp,gp' && od.opts === 'Team,Ranking,Fastest Lap,Median Lap,GP Result,Quali Result', JSON.stringify([od.sels, od.opts]));
+  t.check('…the list is in finishing order, numbered by the result', od.picker === 'DB0,DA1,DC1,DA0,DC0,DB1' && od.ranks === '1,2,3,4,5,6', JSON.stringify([od.picker, od.ranks]));
+  t.check('…and the lap lines, their legend, the dot plot rows and their legend follow it', followed(od, 'DB0,DA1,DC1,DA0,DC0,DB1'), JSON.stringify(od));
+  t.check('the lock is off to begin with, on all three controls', od.locks === 'false,false,false' && await p.$$eval('.sortLock', b => b.every(x => /unlocked/i.test(x.getAttribute('aria-label')) && !!x.querySelector('svg'))));
+  await p.click('.sessBtn:has-text("Quali")'); await ready(p);
+  od = await orders(p);
+  t.check('unlocked, choosing the Quali session moves the sort to the Quali result', od.sels === 'quali,quali,quali' && od.picker === 'DC0,DA0,DB1,DA1,DB0,DC1' && followed(od, od.picker), JSON.stringify(od));
+  await p.selectOption('#dotCard .sortSeg', 'median'); await p.waitForTimeout(100);
+  od = await orders(p);
+  t.check('choosing a sort on one plot sets the list and the other plot too (Median Lap: the median shows in the list)', od.sels === 'median,median,median' && followed(od, od.picker) && /^1:3\d\.\d{3}$/.test(await p.$eval('#pacePicker .pickerPts', e => e.textContent)) && /sort=median/.test(od.url), JSON.stringify(od));
+  t.check('…and picking it did not lock it', od.locks === 'false,false,false' && !/lock=1/.test(od.url));
+  await p.click('.sessBtn:has-text("FP2")'); await ready(p);
+  od = await orders(p);
+  t.check('unlocked, the next session brings the sort back to the session’s own (the fastest lap in practice)', od.sels === 'fast,fast,fast' && !/sort=/.test(od.url), JSON.stringify([od.sels, od.url]));
+  await p.selectOption('#lapCard .sortSeg', 'rank'); await p.click('#lapCard .sortLock'); await p.waitForTimeout(100);
+  od = await orders(p);
+  t.check('the lock is one setting on all three controls, and is kept in the address', od.locks === 'true,true,true' && /lock=1/.test(od.url) && /sort=rank/.test(od.url), JSON.stringify([od.locks, od.url]));
+  await p.click('.sessBtn:has-text("Race")'); await ready(p);
+  od = await orders(p);
+  t.check('locked, changing the session leaves the sort alone', od.sels === 'rank,rank,rank' && followed(od, od.picker), JSON.stringify(od));
+  await p.click('#pickCard .sortLock'); await p.click('.sessBtn:has-text("Quali")'); await ready(p);
+  od = await orders(p);
+  t.check('unlocked again, it follows the session', od.locks === 'false,false,false' && od.sels === 'quali,quali,quali');
   await p.click('.sessBtn:has-text("Quali")'); await ready(p);
   const q = await p.evaluate(() => ({ title: lapChart.options.scales.x.title.text, seg: model.segments.map(g => g.label).join(), first: lapChart.data.datasets[0].data[0].x, plug: lapChart.config.plugins.map(x => x.id).join(),
     x: lapChart.data.datasets.flatMap(d => d.data).filter(v => v.y !== null).map(v => v.x), note: document.getElementById('lapNote').textContent }));
-  t.check('qualifying: time into the session on the x axis, so the parts line up for every driver', q.title === 'Minutes into the session' && q.first === 4 && Math.max(...q.x) > 47 && Math.min(...q.x) >= 4, JSON.stringify([q.title, q.first]));
+  t.check('qualifying: time into the session on the x axis, so the parts line up for every driver', q.title === 'Minutes into the session' && Math.min(...q.x) === 4 && Math.max(...q.x) > 47, JSON.stringify([q.title, q.first]));
   t.check('…with Q1, Q2 and Q3 marked by a dashed line between them (from the race control messages)', q.seg === 'Q1,Q2,Q3' && /qualiParts/.test(q.plug) && /qualifying parts/.test(q.note) && /race_control/.test(hits(p)), q.seg + hits(p));
   const qpx = await p.evaluate(() => { const r = document.getElementById('lapCanvas').getBoundingClientRect(); document.getElementById('lapCanvas').scrollIntoView({ block: 'center' }); const r2 = document.getElementById('lapCanvas').getBoundingClientRect();
     return [r2.left + lapChart.scales.x.getPixelForValue(25.2), r2.top + lapChart.chartArea.top + 40]; });
@@ -262,12 +297,37 @@ module.exports = async (t, h) => {
   t.check('hovering in qualifying shows the drivers’ laps near that moment', !qtip.hidden && /into the session/.test(qtip.head) && qtip.rows === 6, JSON.stringify(qtip));
   await p.click('.sessBtn:has-text("FP2")'); await ready(p);
   t.check('practice has no parts again', await p.evaluate(() => !model.segments.length && lapChart.options.scales.x.title.text === 'Minutes into the session'));
+  await p.selectOption('#lapCard .sortSeg', 'gp'); await p.click('#lapCard .sortLock'); await p.waitForTimeout(100);
+  await release(p, 13); await commit(p); await ready(p);
+  od = await orders(p);
+  t.check('locked on a result the new weekend does not have yet, the sort falls back to the session’s own (the lock stays)', od.sels === 'fast,fast,fast' && od.locks === 'true,true,true' && !/GP Result/.test(od.opts), JSON.stringify([od.sels, od.opts]));
   await p.goto('http://site.test/drivers.html'); await h.loaded(p);
   t.check('the round is carried to the Drivers page', await p.evaluate(() => F1Controls.state.round) === 12);
   await h.setRound(p, 10);
   await p.goto('http://site.test/pace.html'); await ready(p, /timed laps|no lap data|no sessions/);
   s = await state(p);
   t.check('…and the round chosen there is carried here: a round with no OpenF1 weekend says so, with nothing drawn', s.slider[0] === 10 && /no sessions for round 10/.test(s.status) && s.lines === null, JSON.stringify([s.slider, s.status]));
+  await p.done();
+
+  // ---- a sprint weekend has the sprint results too; a link restores the sort and the lock ----
+  p = await open(); await ready(p);
+  await release(p, 11); await commit(p); await ready(p);
+  let sp = await orders(p);
+  t.check('the sprint weekend: five sessions, and the result sorts of all four', (await state(p)).chips.map(c => c[0]).join() === 'FP1,Sprint Quali,Sprint,Quali,Race' && sp.opts === 'Team,Ranking,Fastest Lap,Median Lap,GP Result,Sprint Result,Quali Result,Sprint Quali Result', JSON.stringify([(await state(p)).chips.map(c => c[0]).join(), sp.opts]));
+  await p.click('.sessBtn[title="Sprint Qualifying"]'); await ready(p);
+  sp = await orders(p);
+  t.check('Sprint Quali defaults to the Sprint Quali result', sp.sels === 'sprintquali,sprintquali,sprintquali' && sp.picker === 'DC1,DC0,DA0,DA1,DB0,DB1' && followed(sp, sp.picker), JSON.stringify(sp));
+  await p.click('.sessBtn[title="Sprint"]'); await ready(p);
+  sp = await orders(p);
+  t.check('the Sprint defaults to the Sprint result; a driver who did not start is last, with no number', sp.sels === 'sprint,sprint,sprint' && sp.picker === 'DA1,DA0,DB0,DC0,DB1,DC1' && sp.ranks === '1,2,3,4,5', JSON.stringify([sp.picker, sp.ranks]));
+  t.check('the Sprint plots by lap number, the other sessions by minutes', await p.evaluate(() => lapChart.options.scales.x.title.text) === 'Lap of the race');
+  await p.done();
+  p = await h.openPage('pace', { openf1: {}, now: fx.NOW }); await p.goto('http://site.test/pace.html?season=2026&round=12&sort=median&lock=1&session=Quali'); await ready(p);
+  sp = await orders(p);
+  t.check('a link restores the sort and the lock', sp.sels === 'median,median,median' && sp.locks === 'true,true,true' && /Qualifying/.test((await state(p)).status), JSON.stringify([sp.sels, sp.locks]));
+  await p.done();
+  p = await h.openPage('pace', { openf1: {}, now: fx.NOW }); await p.goto('http://site.test/pace.html?season=2026&round=12&sort=sprint'); await ready(p);
+  t.check('a link with a sort that weekend does not have is ignored', (await orders(p)).sels === 'gp,gp,gp');
   await p.done();
 
   // ---- the cache, a reserve driver the season has not seen ----
@@ -292,7 +352,7 @@ module.exports = async (t, h) => {
   s = await state(p);
   t.check('a shared link restores session, drivers, options and unit', s.chips.find(c => c[1])[0] === 'FP1' && s.rows.filter(r => r[1]).map(r => r[0]).sort().join() === 'd1_0,d2_0' &&
     await p.$$eval('.slowChk', c => c.every(x => x.checked)) && await p.$$eval('.outChk', c => c.every(x => !x.checked)) && !(await p.$eval('#boxChk', e => e.checked)) && await p.$eval('#speedSel', e => e.value) === 'i1' &&
-    await p.$eval('#sectorCard .tsortSel', e => e.value) === 'gap' && await p.$eval('#dumbCard .tsortSel', e => e.value) === 'gap' && await p.$eval('#sortSeg', e => e.value) === 'fast' && await p.$eval('#unitRow [data-unit="kph"]', e => e.classList.contains('active')), JSON.stringify(s.rows));
+    await p.$eval('#sectorCard .tsortSel', e => e.value) === 'gap' && await p.$eval('#dumbCard .tsortSel', e => e.value) === 'gap' && await p.$eval('#pickCard .sortSeg', e => e.value) === 'fast' && await p.$eval('#unitRow [data-unit="kph"]', e => e.classList.contains('active')), JSON.stringify(s.rows));
   await p.done();
   p = await h.openPage('pace', { openf1: {}, now: fx.NOW }); await p.goto('http://site.test/pace.html?season=2026&round=11'); await ready(p);
   t.check('a link with a round opens that weekend', (await state(p)).slider[0] === 11 && /Race/.test((await state(p)).status));

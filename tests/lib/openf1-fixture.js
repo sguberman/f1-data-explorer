@@ -1,7 +1,7 @@
 // A fake OpenF1 (#186): the weekends of rounds 11, 12 and 13 of the fake 2026 season in lib/fixture.js (Grand Prix on 2026-07-19, 2026-08-02 and 2026-08-30),
 // two drivers in each of three teams, deterministic laps. Their codes (DA0 … DC1) are the fake f1api.dev drivers' codes, so the page
 // can match them; OpenF1's team colours are not the site's on purpose. A reserve driver (ZZZ) drives FP1 only and is not in the season.
-// The "now" the tests use is 2026-08-28 17:00 UTC: round 12 is over; round 13 has run FP1 and FP2 only.
+// Round 11 is a sprint weekend (FP1, Sprint Qualifying, Sprint, Qualifying, Race). The "now" the tests use is 2026-08-28 17:00 UTC: round 12 is over; round 13 has run FP1 and FP2 only.
 const NOW = '2026-08-28T17:00:00Z';
 
 const SESSIONS = [];
@@ -9,9 +9,9 @@ const add = (meeting, loc, country, key, name, start, end) => SESSIONS.push({ me
   date_start: start, date_end: end, location: loc, country_name: country, country_code: 'XXX', circuit_key: meeting, circuit_short_name: loc, gmt_offset: '00:00:00', year: 2026, is_cancelled: false });
 add(9, 'Sakhir', 'Bahrain', 91, 'Day 1', '2026-02-11T07:00:00+00:00', '2026-02-11T16:00:00+00:00'); // pre-season testing: not a weekend
 add(3, 'Silverstone', 'United Kingdom', 301, 'Practice 1', '2026-07-17T11:30:00+00:00', '2026-07-17T12:30:00+00:00'); // round 11
-add(3, 'Silverstone', 'United Kingdom', 302, 'Practice 2', '2026-07-17T15:00:00+00:00', '2026-07-17T16:00:00+00:00');
-add(3, 'Silverstone', 'United Kingdom', 303, 'Practice 3', '2026-07-18T10:30:00+00:00', '2026-07-18T11:30:00+00:00');
-add(3, 'Silverstone', 'United Kingdom', 304, 'Qualifying', '2026-07-18T14:00:00+00:00', '2026-07-18T15:00:00+00:00');
+add(3, 'Silverstone', 'United Kingdom', 302, 'Sprint Qualifying', '2026-07-17T15:30:00+00:00', '2026-07-17T16:30:00+00:00'); // round 11 is a sprint weekend
+add(3, 'Silverstone', 'United Kingdom', 303, 'Sprint', '2026-07-18T11:00:00+00:00', '2026-07-18T12:00:00+00:00');
+add(3, 'Silverstone', 'United Kingdom', 304, 'Qualifying', '2026-07-18T15:00:00+00:00', '2026-07-18T16:00:00+00:00');
 add(3, 'Silverstone', 'United Kingdom', 305, 'Race', '2026-07-19T13:00:00+00:00', '2026-07-19T15:00:00+00:00');
 add(1, 'Budapest', 'Hungary', 101, 'Practice 1', '2026-07-31T11:30:00+00:00', '2026-07-31T12:30:00+00:00');
 add(1, 'Budapest', 'Hungary', 102, 'Practice 2', '2026-07-31T15:00:00+00:00', '2026-07-31T16:00:00+00:00');
@@ -40,8 +40,9 @@ const startOf = key => Date.parse(SESSIONS.find(x => x.session_key === key).date
 const MIN = 60e3;
 // Qualifying runs in three parts, 18, 15 and 12 minutes long with breaks between; a driver's laps 1–4 are in Q1, 5–8 in Q2 and 9–11 in Q3.
 const qualiOffset = k => k <= 4 ? (k - 1) * 4 * MIN : k <= 8 ? 25 * MIN + (k - 5) * 4 * MIN : 47 * MIN + (k - 9) * 4 * MIN;
+const nameOf = key => SESSIONS.find(x => x.session_key === key).session_name, isQuali = key => /Qualifying/.test(nameOf(key));
 const lapsFor = key => {
-  const out = [], quali = key % 100 === 4;
+  const out = [], quali = isQuali(key);
   roster(key).forEach(([n], i) => {
     for(let k = 1; k <= 11; k++){
       const push = (k >= 2 && k <= 5) || (k >= 8 && k <= 10);
@@ -66,12 +67,16 @@ const stintsFor = key => roster(key).flatMap(([n]) => [
 
 // Race control: when each qualifying part starts and finishes (and a red flag in Q1 that stops it and restarts it).
 const raceControlFor = key => {
-  if(key % 100 !== 4) return [];
+  if(!isQuali(key)) return [];
   const t0 = startOf(key), at = m => new Date(t0 + m * MIN).toISOString(), row = (m, category, message) => ({ date: at(m), category, message, flag: null, session_key: key, meeting_key: 0 });
   return [row(0, 'SessionStatus', 'SESSION STARTED'), row(0, 'Flag', 'GREEN LIGHT - PIT EXIT OPEN'), row(5, 'SessionStatus', 'SESSION ABORTED'), row(7, 'SessionStatus', 'SESSION STARTED'),
     row(18, 'SessionStatus', 'SESSION FINISHED'), row(20, 'Other', 'FIA STEWARDS: Q1 INCIDENT NOTED'), row(25, 'SessionStatus', 'SESSION STARTED'), row(40, 'SessionStatus', 'SESSION FINISHED'),
     row(47, 'SessionStatus', 'SESSION STARTED'), row(60, 'SessionStatus', 'SESSION FINISHED')];
 };
+
+// The classifications (driver numbers, first place first): sessions differ, so a sort by each is visible. In the Sprint 81 did not start.
+const ORDERS = { 'Qualifying': [1, 63, 44, 12, 16, 81], 'Sprint Qualifying': [81, 1, 63, 12, 16, 44], 'Sprint': [12, 63, 16, 1, 44, 81], 'Race': [16, 12, 81, 63, 1, 44] };
+const resultFor = key => (ORDERS[nameOf(key)] || []).map((n, i) => ({ position: nameOf(key) === 'Sprint' && n === 81 ? null : i + 1, driver_number: n, number_of_laps: 11, dnf: false, dns: nameOf(key) === 'Sprint' && n === 81, dsq: false, session_key: key, meeting_key: 0 }));
 
 // Answers a request to https://api.openf1.org/v1/…; `empty` lists session keys with no data yet.
 function answer(url, { empty = [] } = {}){
@@ -80,9 +85,10 @@ function answer(url, { empty = [] } = {}){
   if(path === '/sessions') return SESSIONS;
   if(empty.includes(key)) return [];
   if(path === '/race_control') return raceControlFor(key);
+  if(path === '/session_result') return resultFor(key);
   if(path === '/laps') return lapsFor(key);
   if(path === '/stints') return stintsFor(key);
   if(path === '/drivers') return driversFor(key);
   return null;
 }
-module.exports = { NOW, SESSIONS, DRIVERS, RESERVE, raceControlFor, answer, lapsFor, stintsFor, driversFor };
+module.exports = { NOW, SESSIONS, DRIVERS, RESERVE, raceControlFor, resultFor, ORDERS, answer, lapsFor, stintsFor, driversFor };

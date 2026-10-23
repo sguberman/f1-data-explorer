@@ -69,6 +69,22 @@ module.exports = async (t, h) => {
   const team = O.stats(O.lapsOf(m, ts[0]));
   t.check('a team’s bests are the better of its drivers', team.best === Math.min(O.stats(O.lapsOf(m, ds[0])).best, O.stats(O.lapsOf(m, ds[1])).best) && team.n === 22);
 
+
+  // ---- classifications (the result sorts) ----
+  t.check('sessions with a classification: the Race, Sprint, Qualifying and Sprint Qualifying (or Shootout)', O.resultKind('Race') === 'gp' && O.resultKind('Sprint') === 'sprint' && O.resultKind('Qualifying') === 'quali' &&
+    O.resultKind('Sprint Qualifying') === 'sprintquali' && O.resultKind('Sprint Shootout') === 'sprintquali' && O.resultKind('Practice 1') === null);
+  const race = O.resultOrder(fx.resultFor(305)), sprint = O.resultOrder(fx.resultFor(303));
+  t.check('a classification becomes {driver number: position}', JSON.stringify(race) === JSON.stringify({ 16: 1, 12: 2, 81: 3, 63: 4, 1: 5, 44: 6 }) && O.resultOrder(null) && Object.keys(O.resultOrder([])).length === 0, JSON.stringify(race));
+  t.check('a driver who did not start (or was disqualified) has no position', sprint[81] === null && sprint[12] === 1 && O.resultOrder([{ driver_number: 5, position: 3, dsq: true }])[5] === null && O.resultOrder([{ driver_number: 5, position: null }])[5] === null);
+  const realFetch = global.fetch; let asked = [];
+  global.fetch = async url => { asked.push(new URL(url).pathname.replace('/v1', '') + new URL(url).search); const body = fx.answer(url); return { ok: !!body, status: body ? 200 : 404, json: async () => body }; };
+  const done = await O.results(wk[1], { now }), early = await O.results(wk[2], { now });
+  t.check('the classifications of a weekend are fetched for the sessions that have finished: Quali and the Race of round 12', Object.keys(done).sort().join() === 'gp,quali' && done.gp[16] === 1 && done.quali[1] === 1, JSON.stringify(done));
+  t.check('…one request each, and none for a weekend whose sessions have not finished', asked.join() === '/session_result?session_key=104,/session_result?session_key=105' && Object.keys(early).length === 0, asked.join());
+  global.fetch = async () => { throw new Error('offline'); };
+  t.check('a failed classification just leaves that sort out', Object.keys(await O.results(wk[1], { now })).length === 0);
+  global.fetch = realFetch;
+
   // ---- bins and formats ----
   t.check('bins count laps and clamp the ends', JSON.stringify(O.bin([90.0, 90.05, 90.1, 89, 99], 90, 0.1, 3)) === '[3,1,1]', JSON.stringify(O.bin([90.0, 90.05, 90.1, 89, 99], 90, 0.1, 3)));
   t.check('bin width: about 24 bins, never under 0.1 s', O.binWidth(90, 91) === 0.1 && O.binWidth(90, 96) === 0.3 && O.binWidth(90, 90) === 0.1);
