@@ -676,7 +676,8 @@ slider reaches the race weekend that is on, before its Grand Prix. Only this pag
   from its saved copy before asking OpenF1 (`F1OpenF1.load`, `results`), the sessions list from OpenF1 and then, if closed, from the saved list, and
   uses an older cached answer last (marked "older saved copy"). **Refresh session** skips the saved copy. If the default session is the one that is live
   and has no copy, the latest finished session of the weekend is shown with a line saying why; choosing a live session yourself says OpenF1 is closed (until
-  about when it ends, from the sessions list), that it is not saved yet, and retries by itself soon after it ends.
+  about when it ends, from the sessions list), that it is not saved yet, and retries by itself when it should reopen (OpenF1 was still closed 26 minutes after Austin FP1's scheduled end and open 46 minutes after it, so the page assumes
+  the closed window runs until 45 minutes after a session ends).
 - **OpenF1's free limit** is 3 requests a second: requests go out 350 ms apart (`F1OpenF1.makeLimiter`; tests set `window.F1O_SPACING = 0`), and a 429 is
   waited out and retried (twice at most).
 - **Sessions:** Practice 1–3, Qualifying, Sprint Qualifying/Shootout, Sprint and the **Race** (no pre-season testing). Opens on the weekend's

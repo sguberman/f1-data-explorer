@@ -187,9 +187,12 @@ const F1OpenF1 = (() => {
     }
     return { list: weekends(r.data), rows: r.data, at: r.at, source: r.source, blocked: !!r.blocked };
   }
-  // When the session in progress ends (ms), for "OpenF1 is closed until …"; null when none is on.
+  // OpenF1 stays closed for a while after a session ends: it was still closed 26 minutes after Austin FP1's scheduled end and open again 46
+  // minutes after it (2026-10-23), so the closed window is taken to run until 45 minutes after the end.
+  const CLOSED_AFTER = 45 * 60e3;
+  // When OpenF1 should reopen (ms) while a session is on or has just ended, for "closed until about …"; null when none is.
   function liveUntil(list, now = Date.now()){
-    const ends = (list || []).flatMap(w => w.sessions).filter(x => Date.parse(x.start) <= now && now <= Date.parse(x.end) + 5 * 60e3).map(x => Date.parse(x.end) + 5 * 60e3);
+    const ends = (list || []).flatMap(w => w.sessions).filter(x => Date.parse(x.start) <= now && now <= Date.parse(x.end) + CLOSED_AFTER).map(x => Date.parse(x.end) + CLOSED_AFTER);
     return ends.length ? Math.max(...ends) : null;
   }
 

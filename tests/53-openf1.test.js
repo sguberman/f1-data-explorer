@@ -95,7 +95,7 @@ module.exports = async (t, h) => {
   t.check('…and a lone request is not held up', before === 5000 && clockT.now === 5100);
 
   const until = O.liveUntil(wk, Date.parse('2026-08-28T11:45:00Z'));
-  t.check('while a session is on, when it ends (and five minutes more), for "closed until …"', until === Date.parse('2026-08-28T12:35:00Z') && O.liveUntil(wk, now) === null && O.liveUntil([], now) === null, String(until));
+  t.check('while a session is on (or ended less than 45 minutes ago), when OpenF1 should reopen: 45 minutes after it ends', until === Date.parse('2026-08-28T13:15:00Z') && O.liveUntil(wk, Date.parse('2026-08-28T13:10:00Z')) === until && O.liveUntil(wk, Date.parse('2026-08-28T13:20:00Z')) === null && O.liveUntil(wk, now) === null && O.liveUntil([], now) === null, String(until));
 
   const store = {}; global.localStorage = { getItem: k => k in store ? store[k] : null, setItem: (k, v) => { store[k] = String(v); }, removeItem: k => { delete store[k]; } };
   globalThis.F1O_SPACING = 0;
