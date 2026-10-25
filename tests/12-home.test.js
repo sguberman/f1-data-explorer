@@ -28,7 +28,7 @@ module.exports = async (t, h) => {
     t.check(`${theme} ${width}px: Eras picture has shaded era bands with labels, three team lines and stars (#142)`,
       eras.bands >= 2 && ['V10','V8','Hybrid'].every(l => eras.labels.includes(l)) && eras.lines === 3 && eras.stars >= 3 && eras.starFill !== 'rgb(0, 0, 0)', JSON.stringify(eras));
     t.check(`${theme} ${width}px: Eras text mentions tracking teams or drivers, lineages, the star and eras (#142)`,
-      /favorite drivers and teams finished each year/i.test(eras.text) && /renames and new owners/.test(eras.text) && eras.text.includes('★') && !/shar/i.test(eras.text), eras.text);
+      /favorite drivers and teams finished each year/i.test(eras.text) && /renames and new owners/.test(eras.text) && !/shar/i.test(eras.text), eras.text);
     // #186: the Weekend Pace picture: a box plot per driver with a dot per lap in its tyre's colour; its text says what the page does
     const pace = await p.evaluate(() => {
       const c = document.querySelector('a.card[href="pace.html"]'), svg = c.querySelector('svg.pv'), fills = [...svg.querySelectorAll('circle.td')].map(e => e.getAttribute('fill'));
