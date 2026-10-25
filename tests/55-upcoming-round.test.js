@@ -15,8 +15,11 @@ module.exports = async (t, h) => {
   t.check('four days before the Grand Prix the slider reaches that round, and opens on it', begun.max === 13 && begun.value === 13 && begun.state === 13, JSON.stringify(begun));
   t.check('the added round has no results, an upcoming flag and the circuit’s country; the label names it', JSON.stringify(now.stub) === '[[13,0,"Hungary"]]' && now.label === 'Round 13 of 13 — Round 13 Grand Prix', JSON.stringify(now));
   t.check('the status line says so', /^12 rounds loaded · race weekend of round 13$/.test(now.status), now.status);
-  for(const name of ['drivers', 'constructors', 'position', 'whatif', 'simulator']){
+  for(const name of ['drivers', 'constructors', 'position', 'simulator']){
     const o = await slider(name, fx.NOW);
     t.check(`${name}: the slider is unchanged (the option is off)`, o.max === 12 && o.stub.length === 0 && /^12 rounds loaded$/.test(o.status), JSON.stringify(o));
   }
+  // #191: What-If's own `next` option: its slider always reaches the next race (the round it edits), even before that weekend begins; round 1 is out
+  const wi = await slider('whatif', '2026-08-01T00:00:00Z');
+  t.check('whatif: the slider reaches the next race whatever the date, and opens on it', wi.max === 13 && wi.value === 13 && JSON.stringify(wi.stub) === '[[13,0,"Hungary"]]', JSON.stringify(wi));
 };
