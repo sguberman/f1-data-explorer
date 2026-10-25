@@ -85,7 +85,7 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
 <div class="wrap">
 <div class="theme-bar"><nav id="siteNav" class="site-nav" aria-label="Site"></nav><div id="themeToggle"></div></div>
 <h1>Weekend Pace</h1>
-<p class="sub">Practice, sprint, qualifying and Grand Prix lap times, sectors, top speeds and tyres for a race weekend, from OpenF1. Move the slider to the round, pick the drivers to compare, then a session. The numbers are there soon after each session ends.</p>
+<p class="sub">Lap times, sectors, top speeds and tyres for each session of a race weekend, from OpenF1. Move the slider to a round, pick drivers to compare, then pick a session. Data appears soon after each session ends.</p>
 <div id="f1controls" class="f1c"></div>
 
 <div class="card" id="pickCard">
@@ -188,7 +188,7 @@ h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
 </div>
 <div class="paceChartBox" id="speedWrap"><canvas id="speedCanvas" role="img" aria-label="Top speed of each picked driver"></canvas></div>
 <div class="paceEmpty" id="speedEmpty">Nothing to show.</div>
-<div class="note" id="speedNote">OpenF1 gives each speed in whole kph (km/h); mph is converted to the nearest 0.1. Each speed is read at one point on the lap, so it depends on the fuel load and engine mode of that run, not only on the car.</div>
+<div class="note" id="speedNote">OpenF1 gives speeds in whole km/h. mph is converted to the nearest 0.1. Each speed is read at one point on the lap, so fuel load and engine mode affect it as well as the car.</div>
 </div>
 </div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
@@ -408,7 +408,7 @@ function setPicked(ids, ents){
 
 const PRESETS = [['all', 'All'], ['none', 'None'], ['5', 'Top 5'], ['10', 'Top 10'], ['top4', 'Top 4 teams', 'The drivers of the top 4 teams in the constructors’ standings'],
   ['rest', 'Best of the rest', 'Everyone outside the top 4 teams'], ['contention', 'Title contention', 'The leader and everyone who can still win the title'],
-  ['sessiontop5', 'Session top 5', 'The first five in this session: the fastest lap in practice, the result in qualifying, the sprint and the race']];
+  ['sessiontop5', 'Session top 5', 'The first five in this session: by fastest lap in practice, by result in qualifying, sprint and race']];
 function renderPresets(ents, picked){
   $('presetRow').innerHTML = PRESETS.map(([k, label, title]) => `<button type="button" class="pill" data-preset="${k}"${title ? ` title="${esc(title)}"` : ''}>${label}</button>`).join('');
   const ids = new Set(ents.map(e => e.id));
@@ -467,7 +467,7 @@ function syncControls(){
   const opts = SORTS.filter(([k]) => sortAvailable(k)).map(([k, label]) => `<option value="${k}">${label}</option>`).join('');
   document.querySelectorAll('.sortSeg').forEach(x => { x.innerHTML = opts; x.value = sortKey; });
   document.querySelectorAll('.sortLock').forEach(b => { b.innerHTML = sortLocked ? LOCK_ICON.on : LOCK_ICON.off; b.setAttribute('aria-pressed', sortLocked);
-    b.title = sortLocked ? 'Locked: this sort stays when you change the session. Click to unlock.' : 'Unlocked: this sort follows each session’s own (fastest lap in practice, the result in qualifying, the sprint and the race). Click to lock it.';
+    b.title = sortLocked ? 'Locked: this sort stays when you change the session. Click to unlock.' : 'Unlocked: the sort follows each session's own order (fastest lap in practice, result in qualifying, sprint and race). Click to lock it.';
     b.setAttribute('aria-label', sortLocked ? 'Sort locked' : 'Sort unlocked'); });
   document.querySelectorAll('#unitRow .pill').forEach(b => b.classList.toggle('active', b.dataset.unit === unit));
 }
@@ -629,8 +629,8 @@ function drawLaps(chosen, pl){
   $('lapLegend').innerHTML = tyreKeyHTML(laps.map(l => l.c).filter(Boolean))
     + [...new Set(datasets.filter(d => !d._outlier).map(d => d._code))].map(c => { const d = datasets.find(x => x._code === c && !x._outlier);
     return `<button type="button" class="lgItem" data-code="${esc(c)}" aria-pressed="false"><i class="${d._dash ? 'dash' : ''}" style="--c:${d._color}"></i>${esc(c)}</button>`; }).join('');
-  $('lapNote').textContent = 'Dots show the tyre compound; a driver’s line breaks at each pit stop (a new stint, also on the same tyre) and joins the laps in order past the hidden in and out laps. A team’s second driver is dashed. '
-    + 'Click a line, a dot or a name to follow one driver; click it again to release. Right-click (long-press on a phone) a dot to mark it as an outlier.'
+  $('lapNote').textContent = 'Dots show the tyre compound. A driver's line breaks at each pit stop, even on the same tyre, and skips the hidden in and out laps. A team's second driver is dashed. '
+    + 'Click a line, dot or name to follow one driver. Click again to release. Right-click a dot (long-press on a phone) to mark it as an outlier.'
     + (tm && segs.length ? ' Dashed lines mark the qualifying parts.' : '');
 }
 
@@ -673,9 +673,9 @@ function drawDots(chosen, pl){
         ticks: { color: ctx => color(rows[Math.round(ctx.tick.value)]?.e.color) || P.text, callback: v => rows[Math.round(v)] ? rows[Math.round(v)].e.label : '', font: { weight: '600' }, autoSkip: false } } } } });
   $('dotLegend').innerHTML = tyreKeyHTML([...pts, ...(showOut ? bad : [])].map(p => p.c).filter(Boolean))
     + rows.map(r => `<button type="button" class="lgItem" data-code="${esc(r.e.label)}" aria-pressed="false"><i style="--c:${color(r.e.color)}"></i>${esc(r.e.label)}</button>`).join('');
-  $('dotNote').textContent = 'Each dot is a lap, filled with its tyre compound and ringed in the team colour. Rows and names follow the Sort by above. '
-    + (boxplot ? 'The box is the middle half of the laps, the thick line the median, the whiskers the quickest and slowest. ' : '')
-    + 'Click a dot or a name to follow one driver. Right-click (long-press on a phone) a dot to mark it as an outlier; outliers are left out of the box.';
+  $('dotNote').textContent = 'Each dot is a lap, filled with its tyre compound and ringed in the team colour. Rows follow Sort by above. '
+    + (boxplot ? 'The box covers the middle half of the laps, the thick line is the median, and the whiskers reach the quickest and slowest. ' : '')
+    + 'Click a dot or name to follow one driver. Right-click a dot (long-press on a phone) to mark it as an outlier. Outliers are left out of the box.';
 }
 
 // ---- best sectors table, then the best lap vs ideal lap plot ----
@@ -696,7 +696,7 @@ function drawTable(chosen, ents){
   const cell = (v, t, d = 3) => `<td${v != null && v === t ? ' class="best"' : ''}>${O.fmt(v, d)}</td>`;
   $('sectorTable').innerHTML = `<thead><tr><th>Driver</th><th>Best lap</th><th>S1</th><th>S2</th><th>S3</th><th>Ideal lap</th><th>Gap</th></tr></thead><tbody>`
     + rows.map(({ e, s }) => `<tr><td class="who"><span class="dot" style="background:${color(e.color)}"></span>${esc(e.label)}</td>${cell(s.best, top.best)}${cell(s.sec[0], top[0])}${cell(s.sec[1], top[1])}${cell(s.sec[2], top[2])}${cell(s.ideal, top.ideal)}<td>${O.gapText(s.gap)}</td></tr>`).join('') + '</tbody>';
-  $('sectorNote').textContent = 'The ideal lap adds each sector’s best time, from any lap. Purple = the best in the session. The gap is the best lap minus the ideal lap. Laps marked as outliers on the lap plots are left out here and in the plot below.';
+  $('sectorNote').textContent = 'The ideal lap adds up each sector's best time, from any lap. Purple is the best in the session. Gap is the best lap minus the ideal lap. Outlier laps are left out here and in the plot below.';
 }
 function drawDumbbell(chosen){
   const key = r => tableSort === 'ideal' ? r.s.ideal : tableSort === 'gap' ? r.s.gap : r.s.best, gapMode = tableSort === 'gap';
@@ -705,7 +705,7 @@ function drawDumbbell(chosen){
   $('dumbKey').innerHTML = gapMode
     ? '<span class="ridgeKeyItem"><i class="dumbDot"></i>best lap, with its gap to the ideal lap to its right</span><span class="ridgeKeyItem"><i class="dumbDot hollow"></i>ideal lap, the three best sectors added</span>'
     : '<span class="ridgeKeyItem"><i class="dumbDot"></i>best lap (time to its right)</span><span class="ridgeKeyItem"><i class="dumbDot hollow"></i>ideal lap, the three best sectors added (time to its left)</span>';
-  $('dumbNote').textContent = 'The shorter the line, the closer the driver came to putting every best sector in one lap. Sorted like the table above, the first at the top.';
+  $('dumbNote').textContent = 'A shorter line means the driver came closer to putting every best sector into one lap. Sorted like the table above.';
   if(!rows.length) return;
   const P = F1Theme.chart(), n = rows.length, panel = getComputedStyle(document.documentElement).getPropertyValue('--panel').trim() || '#fff', ink = getComputedStyle(document.documentElement).getPropertyValue('--ink2').trim() || P.text;
   const lo = Math.min(...rows.map(r => r.s.ideal ?? r.s.best)), hi = Math.max(...rows.map(r => r.s.best));

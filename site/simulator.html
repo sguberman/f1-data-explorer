@@ -113,7 +113,7 @@ canvas{max-width:100%;}
     </div>
     <div id="driverPicker" class="f1-skel"></div>
     <div class="note" id="countNote" hidden></div>
-    <div class="note">The simulation always includes every driver who raced in the latest round (anyone else keeps their points); this only chooses who's shown in the results.</div>
+    <div class="note">The simulation always includes every driver who raced in the latest round. Anyone else keeps their points. This only picks who is shown in the results.</div>
   </div>
 
   <!-- #42/#14/#11: per-driver DNF and win settings for tracked drivers, plus collisions between any two drivers -->
@@ -128,7 +128,7 @@ canvas{max-width:100%;}
     <div class="oc-sub">Collisions</div>
     <div id="collisionList"></div>
     <button class="reset" id="addCollision" type="button">+ Add a collision</button>
-    <div class="note">In each collision, both drivers retire from the same Grand Prix, on top of their DNFs above.</div>
+    <div class="note">In each collision, both drivers retire from the same Grand Prix. This adds to their DNFs above.</div>
   </div>
 
   <div class="card row">
@@ -153,7 +153,7 @@ canvas{max-width:100%;}
   </div>
   <div class="status" id="status">Loading…</div>
   <!-- #17: results stay visible when settings change; this says they're from the previous settings -->
-  <div class="stale" id="staleNote" hidden><span>Settings changed since this run — the results below are from the previous settings.</span><button type="button" id="rerun">Run again</button></div>
+  <div class="stale" id="staleNote" hidden><span>You changed the settings. The results below are from the previous settings.</span><button type="button" id="rerun">Run again</button></div>
 
   <div class="card" id="oddsCard" style="display:none;">
     <h2>Championship win probability</h2>
@@ -178,7 +178,7 @@ canvas{max-width:100%;}
     </div>
     <div class="ridgeWrap" id="ridgePosWrap"><canvas id="ridgePosCanvas"></canvas></div>
     <div class="ridgeKey"><span class="ridgeKeyItem"><i class="ridgeKeyMode"></i>most common finish</span><span class="ridgeKeyItem"><i class="ridgeKeyMedian"></i>median</span></div>
-    <div class="note">Each ridge is one tracked driver's share of simulated seasons landing at each final position, tallest at their most likely finish. Position is rank in the full simulated standings — every driver who has raced this season, not just the tracked set, with equal points split by countback — so finishing behind an untracked driver is possible; when the most common finish is outside the positions shown, its marker on the last column says which. Ordered by most common finish, best on top.</div>
+    <div class="note">Each ridge shows how often a tracked driver ended in each final position, tallest at their most likely finish. Position is rank among every driver who has raced this season, not just the tracked ones, with ties on points split by countback. So a tracked driver can finish behind an untracked one. If the most common finish is outside the positions shown, its marker on the last column says which. Ordered by most common finish, best on top.</div>
   </div>
 
   <div class="card" id="ridgePointsCard" style="display:none;">
@@ -191,7 +191,7 @@ canvas{max-width:100%;}
     
     <div class="ridgeWrap" id="ridgePointsWrap"><canvas id="ridgePointsCanvas"></canvas></div>
     <div class="ridgeKey"><span class="ridgeKeyItem"><i class="ridgeKeyMode"></i>most common final points</span><span class="ridgeKeyItem"><i class="ridgeKeyMedian"></i>median</span></div>
-    <div class="note">Each ridge is one tracked driver's spread of possible final point totals. Overlap between two ridges is a rough read on how contested that gap still is — heavy overlap means the sim sees it as a toss-up. The marker sits on the most common 10-point range and shows the most common exact total in it. The dashed line is the median total. Ordered by most common (or median) final points, highest on top.</div>
+    <div class="note">Each ridge shows the range of possible final point totals for a tracked driver. Heavy overlap between two ridges means the simulation sees that gap as a toss-up. The marker sits on the most common 10-point range and shows the most common exact total in it. The dashed line is the median. Ordered by most common (or median) final points, highest on top.</div>
   </div>
 </div>
 
@@ -946,7 +946,7 @@ function renderOdds(roster, odds){
    </div>`).join('');
  const total=odds.reduce((a,b)=>a+b,0), rest=Math.max(0,100-total);
  document.getElementById('oddsNote').textContent = rest>=0.1
-   ? `Tracked drivers total ${total.toFixed(1)}% — the other ${rest.toFixed(1)}% of simulated seasons were won by a driver outside the tracked set.`
+   ? `Tracked drivers total ${total.toFixed(1)}%. A driver outside the tracked set won the other ${rest.toFixed(1)}% of simulated seasons.`
    : `Tracked drivers won effectively every simulated season.`;
 }
 
