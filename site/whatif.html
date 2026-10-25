@@ -109,6 +109,8 @@ tr.champ td{background:var(--inset);}
   <div class="wiPresets" id="presetBar"><span class="presetLbl">Start from</span>
     <button class="reset" id="useActual" type="button" hidden>Actual result</button>
     <button class="reset" id="useStandings" type="button">Standings order</button>
+    <button class="reset" id="useQuali" type="button" hidden title="Round qualifying order, from the Grand Prix qualifying result">Qualifying order</button>
+    <button class="reset" id="useGrid" type="button" hidden title="The Grand Prix starting grid (pit-lane starters at the back)">Starting grid</button>
     <button class="reset" id="useClinch" type="button" hidden>🏆 Title clinch</button>
     <button class="reset" id="useSim" type="button" title="Simulate this race 30,000 times and use the most likely finishing order">🎲 Simulated</button>
     <span class="wiForm"><span class="presetLbl" id="winLbl">Form from</span>
@@ -226,6 +228,15 @@ function standingIds(){
  const standing=F1Common.standingsOrder(seasonRounds, L, 'drivers').filter(id=>roster[id]);
  return [...standing, ...Object.keys(roster).filter(id=>!standing.includes(id))];
 }
+// #191: round T's qualifying classification or starting grid (pit lane = 0, at the back) as a gp order; drivers without a
+// position follow in standings order. null when the loaded grid file has nothing for round T.
+function gridOrder(mode){
+ const tr=grid && grid.rounds.find(x=>x.round===T); if(!tr) return null;
+ const pos = mode==='grid' ? Object.entries(tr.grid||{}).map(([id,p])=>[id,p===0?Infinity:p]) : (tr.qualifying||[]).map(q=>[q.driverId,q.position]);
+ const ids=pos.filter(([id])=>roster[id]).sort((a,b)=>a[1]-b[1]).map(x=>x[0]);
+ if(!ids.length) return null;
+ return [...ids, ...standingIds().filter(id=>!ids.includes(id)), null];
+}
 function resetOrders(mode){
  const act=actualRound();
  const all=standingIds();
@@ -234,6 +245,7 @@ function resetOrders(mode){
  sessions.forEach(s=>{
    if(mode==='sim') orders[s]=simulatedOrder(s, all);
    else if(mode==='clinch' && clinch) orders[s]=clinch.orders[s].slice();
+   else if((mode==='quali' || mode==='grid') && s==='gp' && gridOrder(mode)) orders[s]=gridOrder(mode);
    else if(mode==='actual' && act){
      orders[s]=orderFrom(s==='gp' ? act.raceResults : act.sprintResults);
    }else orders[s]=[...all, null];
@@ -386,6 +398,8 @@ function render(){
  document.getElementById('presetBar').hidden = !has;
  const act=actualRound();
  document.getElementById('useActual').hidden = !has || !act;
+ document.getElementById('useQuali').hidden = !has || !gridOrder('quali');
+ document.getElementById('useGrid').hidden = !has || !gridOrder('grid');
  const cb=document.getElementById('useClinch');
  cb.hidden = !has || !clinch;
  cb.title = clinch ? `A finishing order with which ${clinch.what}` : '';
@@ -551,6 +565,8 @@ document.getElementById('orders').addEventListener('keydown', e=>{
 });
 document.getElementById('useActual').addEventListener('click', ()=>resetOrders('actual'));
 document.getElementById('useStandings').addEventListener('click', ()=>resetOrders('standings'));
+document.getElementById('useQuali').addEventListener('click', ()=>resetOrders('quali'));
+document.getElementById('useGrid').addEventListener('click', ()=>resetOrders('grid'));
 document.getElementById('useClinch').addEventListener('click', ()=>resetOrders('clinch'));
 document.getElementById('useSim').addEventListener('click', ()=>resetOrders('sim'));
 document.getElementById('winLess').addEventListener('click', ()=>stepWindow(-1));
