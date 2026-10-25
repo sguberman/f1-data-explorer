@@ -412,7 +412,10 @@ const PRESETS = [['all', 'All'], ['none', 'None'], ['5', 'Top 5'], ['10', 'Top 1
 function renderPresets(ents, picked){
   $('presetRow').innerHTML = PRESETS.map(([k, label, title]) => `<button type="button" class="pill" data-preset="${k}"${title ? ` title="${esc(title)}"` : ''}>${label}</button>`).join('');
   const ids = new Set(ents.map(e => e.id));
-  F1Common.markActivePreset(sets(ents), picked.filter(id => ids.has(id)));
+  const all = sets(ents), mine = picked.filter(id => ids.has(id));
+  F1Common.markActivePreset(all, mine);
+  if(!selected && F1Share.sameSet(mine, all.sessiontop5)) // on the default picks, Session top 5 is the one lit when another preset has the same drivers
+    document.querySelectorAll('#presetRow button[data-preset]').forEach(b => b.classList.toggle('active', b.dataset.preset === 'sessiontop5'));
 }
 // The drivers in the shared sort: the list, the lap lines and their legend, and the dot plot's rows all follow it.
 // {list: entities in order, num: {id: the number shown in the list (rank, place or result), or null}, value(e): the right-hand column}

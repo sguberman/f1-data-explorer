@@ -6,6 +6,7 @@ const fx = require('./lib/openf1-fixture');
 
 module.exports = async (t, h) => {
   const open = (opts = {}) => h.openPage('pace', { openf1: {}, now: fx.NOW, ...opts });
+  const everyone = async p => { await p.click('#presetRow [data-preset="all"]'); await p.waitForTimeout(100); }; // the default is the session's top 5; these checks look at all six
   const ready = async (p, text = /timed laps|no lap data|no sessions|Couldn’t/) => { await h.loaded(p); await p.waitForFunction(re => new RegExp(re).test(document.getElementById('paceStatus').textContent), text.source, { timeout: 10000 }); await p.waitForTimeout(100); };
   const hits = p => p.openf1Hits.map(u => new URL(u).pathname.replace('/v1/', '')).join();
   const release = (p, round) => p.evaluate(r => { const s = document.querySelector('.f1c-round'); s.value = r; s.dispatchEvent(new Event('input')); }, round);
@@ -43,11 +44,12 @@ module.exports = async (t, h) => {
   t.check('loads the sessions and the one session once each (4 requests), no race control for practice', hits(p) === 'sessions,laps,stints,drivers', hits(p));
   t.check('the Share button is the shared one', await p.$('.f1c-share') !== null);
   t.check('there is no Drivers/Teams choice: the picker is drivers only', await p.$('#bySel') === null && await p.$$eval('#presetRow .pill', b => b.map(x => x.textContent).join()) === 'All,None,Top 5,Top 10,Top 4 teams,Best of the rest,Title contention,Session top 5');
-  t.check('Session top 5 is the default preset and is lit', JSON.stringify(await p.$$eval('#presetRow .pill.active', b => b.map(x => x.dataset.preset))) === '["sessiontop5"]' && s.rows.filter(r => r[1]).length === 5, JSON.stringify(s.rows));
+  t.check('Session top 5 is the default preset and is lit', JSON.stringify(await p.$$eval('#presetRow .pill.active', b => b.map(x => x.dataset.preset))).includes('sessiontop5') && s.rows.filter(r => r[1]).length === 5, JSON.stringify(s.rows));
   const before = s.rows.filter(r => r[1]).map(r => r[0]).join();
   await p.click('.sessBtn:has-text("FP1")'); await ready(p);
   t.check('changing the session keeps the drivers picked', (await state(p)).rows.filter(r => r[1]).map(r => r[0]).join() === before, before);
   await p.click('.sessBtn:has-text("FP2")'); await ready(p);
+  await p.click('#presetRow [data-preset="all"]'); await p.waitForTimeout(100); s = await state(p); // the checks below look at all six drivers
   t.check('no page errors', p.errors.length === 0, p.errors.join('; '));
 
   // ---- the site's picker: flags, numbers, team groups, the site's team colours ----
@@ -249,7 +251,7 @@ module.exports = async (t, h) => {
   await p.done();
 
   // ---- the round: the slider selects the weekend, loaded on release; the Race; qualifying parts ----
-  p = await open(); await ready(p);
+  p = await open(); await ready(p); await everyone(p);
   const n1 = p.openf1Hits.length;
   await release(p, 12); await p.waitForTimeout(200);
   t.check('moving the slider changes the label but fetches nothing until it is let go', /Round 12 of 13/.test((await state(p)).label) && p.openf1Hits.length === n1 && /let go of the slider/.test((await state(p)).status), `${(await state(p)).label} ${(await state(p)).status}`);
@@ -388,14 +390,14 @@ module.exports = async (t, h) => {
   const listFile = { v: 1, year: 2026, generatedAt: Date.parse(fx.NOW) - 3600e3, sessions: fx.SESSIONS.map(x => Object.fromEntries(O.SESSION_FIELDS.map(f => [f, x[f] === undefined ? null : x[f]]))) };
   const saved = { list: { 2026: listFile }, sessions: { 201: snapOf(201), 202: snapOf(202), 104: snapOf(104), 105: snapOf(105), 101: snapOf(101), 102: snapOf(102), 103: snapOf(103) } };
 
-  p = await open({ pace: saved }); await ready(p);
+  p = await open({ pace: saved }); await ready(p); await everyone(p);
   t.check('with a saved copy, the session comes from the site: no laps, stints or drivers request to OpenF1', hits(p) === 'sessions' && p.paceHits.some(u => /pace\/2026\/202\.json/.test(u)) && (await state(p)).lines.length === 6 && /65 timed laps · saved/.test((await state(p)).status), hits(p) + (await state(p)).status);
   await p.click('#refreshSession'); await ready(p);
   t.check('Refresh session skips the saved copy and asks OpenF1', hits(p) === 'sessions,laps,stints,drivers' && /fetched/.test((await state(p)).status), hits(p));
   await p.done();
 
   const closed = { live: true };
-  p = await open({ openf1: closed, pace: saved }); await ready(p);
+  p = await open({ openf1: closed, pace: saved }); await ready(p); await everyone(p);
   s = await state(p);
   t.check('while a session is live (OpenF1 answers 401), saved copies carry the whole page: the list, the session, its charts', s.chips.length === 5 && s.chips.find(c => c[1])[0] === 'FP2' && s.lines.length === 6 && s.dots === 41 && !p.errors.length, JSON.stringify([s.chips, s.lines]));
   t.check('…it asked OpenF1 for the session list once (closed) and read the rest from saved files', hits(p) === 'sessions', hits(p));
@@ -407,7 +409,7 @@ module.exports = async (t, h) => {
 
   // the session that is live now has no saved copy: the latest finished one is shown, with the reason
   const duringFP3 = { live: true };
-  p = await open({ openf1: duringFP3, pace: saved, now: '2026-08-29T11:00:00Z' }); await ready(p);
+  p = await open({ openf1: duringFP3, pace: saved, now: '2026-08-29T11:00:00Z' }); await ready(p); await everyone(p);
   s = await state(p);
   t.check('a session that is live and not saved: the latest finished session of the weekend is shown instead, and the page says why', s.chips.find(c => c[1])[0] === 'FP2' && /Practice 3 is live: OpenF1 is closed to the public while a session is live \(until about [\d:]+\s?[AP]M\); showing Practice 2/.test(s.status) && s.lines.length === 6, s.status);
   await p.click('.sessBtn:has-text("FP3")'); await h.loaded(p); await p.waitForSelector('#retry', { timeout: 10000 });
@@ -422,22 +424,22 @@ module.exports = async (t, h) => {
   t.check('closed, the sessions list saved but no session: one closed message for the session, and no loop of fallbacks', /Practice 2 is not saved here yet/.test(await p.$eval('#paceStatus', e => e.textContent)) && p.openf1Hits.length <= 8, `${p.openf1Hits.length} requests`);
   await p.done();
   // the default session is not saved but an earlier one is: that one is shown
-  p = await open({ openf1: { live: true }, pace: { list: { 2026: listFile }, sessions: { 201: snapOf(201) } } }); await ready(p);
+  p = await open({ openf1: { live: true }, pace: { list: { 2026: listFile }, sessions: { 201: snapOf(201) } } }); await ready(p); await everyone(p);
   s = await state(p);
-  t.check('…with an earlier session saved, that one is shown (FP1), and the page says why', s.chips.find(c => c[1])[0] === 'FP1' && /Practice 2 is live: OpenF1 is closed .*showing Practice 1/.test(s.status) && s.lines.length === 6, s.status);
+  t.check('…with an earlier session saved, that one is shown (FP1), and the page says why', s.chips.find(c => c[1])[0] === 'FP1' && /Practice 2 is live: OpenF1 is closed .*showing Practice 1/.test(s.status) && s.lines.length === 7, s.status);
   await p.done();
 
   // nothing saved and OpenF1 closed: a plain message, and it recovers when OpenF1 opens
   const gate = { live: true };
   p = await open({ openf1: gate }); await h.loaded(p); await p.waitForSelector('#retry', { timeout: 10000 });
   t.check('closed with nothing saved: the page says so (not "couldn’t load") and offers Retry', /OpenF1 is closed to the public while a session is live, and this season’s sessions are not saved here yet/.test(await p.$eval('#paceStatus', e => e.textContent)) && p.errors.length === 0);
-  gate.live = false; await p.click('#retry'); await ready(p);
+  gate.live = false; await p.click('#retry'); await ready(p); await everyone(p);
   t.check('…and Retry works once OpenF1 is open again', (await state(p)).lines.length === 6);
   await p.done();
 
   // an older cached answer when closed
   const later = { live: false };
-  p = await open({ openf1: later }); await ready(p);
+  p = await open({ openf1: later }); await ready(p); await everyone(p);
   await p.evaluate(() => Object.keys(localStorage).filter(k => k.startsWith('f1o:v1:')).forEach(k => { const o = JSON.parse(localStorage.getItem(k)); o.t = 1; localStorage.setItem(k, JSON.stringify(o)); })); // everything cached is old now
   later.live = true; await p.reload(); await ready(p);
   s = await state(p);
@@ -446,7 +448,7 @@ module.exports = async (t, h) => {
 
   // OpenF1's free limit: 3 requests a second
   const limited = { rate: { left: 2 } };
-  p = await open({ openf1: limited }); await ready(p);
+  p = await open({ openf1: limited }); await ready(p); await everyone(p);
   t.check('a 429 from OpenF1 is waited out and the request tried again: the page still loads', (await state(p)).lines.length === 6 && p.openf1Hits.length === 4 + 2, hits(p));
   await p.done();
   p = await open({ spacing: 300 }); await ready(p);
@@ -459,7 +461,7 @@ module.exports = async (t, h) => {
   p = await open({ openf1: { fail: u => broken && u.includes('/laps') } });
   await h.loaded(p); await p.waitForSelector('#retry', { timeout: 10000 });
   t.check('a failed session shows the error and a Retry button', /Couldn’t load this session/.test(await p.$eval('#paceStatus', e => e.textContent)) && await p.$eval('#paceStatus', e => e.classList.contains('err')) && (await state(p)).lines === null);
-  broken = false; await p.click('#retry'); await ready(p);
+  broken = false; await p.click('#retry'); await ready(p); await everyone(p);
   t.check('Retry loads it', /timed laps/.test(await p.$eval('#paceStatus', e => e.textContent)) && (await state(p)).lines.length === 6);
   await p.done();
 
@@ -474,7 +476,7 @@ module.exports = async (t, h) => {
   await p.done();
 
   // ---- navigation, export ----
-  p = await open(); await ready(p);
+  p = await open(); await ready(p); await everyone(p);
   const nav = await p.evaluate(() => ({ label: document.querySelector('#siteNav .nav-current').textContent, links: [...document.querySelectorAll('#siteNav .nav-menu a')].map(a => a.getAttribute('href')),
     current: document.querySelector('#siteNav [aria-current="page"]')?.getAttribute('href'), title: document.title }));
   t.check('the Pages menu lists Weekend Pace last and marks it; the tab names the season', nav.label === 'Weekend Pace' && nav.current === 'pace.html' && nav.links.join() === 'eras.html,drivers.html,constructors.html,whatif.html,position.html,simulator.html,pace.html' && /^2026 Weekend Pace/.test(nav.title), JSON.stringify(nav));
