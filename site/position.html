@@ -97,7 +97,7 @@ html.f1-loading #heatStats{min-height:120px;}
  <span style="font-size:13px;font-weight:600;color:var(--ink);">Talking points</span>
 </div>
 <div id="heatStats" class="tpGrid f1-skel"></div>
-<div style="font-size:12px;color:var(--muted);line-height:1.6;margin:8px 2px 2px;">Every driver, as of the slider's round. Grand Prix finishes only. Streaks: the longest run of rounds in a row so far (points count the sprint too).</div>
+<div style="font-size:12px;color:var(--muted);line-height:1.6;margin:8px 2px 2px;">Every driver after the slider's round. Grand Prix finishes only. Streaks are the longest run of rounds in a row so far. Points streaks count the sprint too.</div>
 </div>
 <div class="card" id="heatCard" style="margin-bottom:16px;">
 <div style="display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px;margin:0 0 10px;">
@@ -377,9 +377,9 @@ function drawHeat(){
  const none=!heatRows.length;
  box.style.display=none?'none':''; document.getElementById('heatEmpty').style.display=none?'block':'none';
  document.getElementById('heatKey').style.display=none?'none':'';
- document.getElementById('heatNote').textContent=none?'':`Gold, silver and bronze for a Grand Prix podium; then the stronger the blue, the better the finish, down to P10. P11 and below (no points) are faint. `
+ document.getElementById('heatNote').textContent=none?'':`Gold, silver and bronze mark a Grand Prix podium. After that, stronger blue means a better finish, down to P10. P11 and below (no points) are faint. `
    +`NC = not classified. ${L<currentSeasonRounds.length?`Rounds after Round ${L} are left blank. `:''}`
-   +(includeSprints?'Hover or tap a square for the race, with the sprint finish on sprint weekends.':'Hover or tap a square for the race; turn on Sprints above to add sprint finishes.');
+   +(includeSprints?'Hover or tap a square for the race. Sprint weekends also show the sprint finish.':'Hover or tap a square for the race. Turn on Sprints above to add sprint finishes.');
  if(none){ grid.innerHTML=''; return; }
  grid.style.setProperty('--hs-n', currentSeasonRounds.length);
  grid.innerHTML='<span class="hsCorner"></span>'
