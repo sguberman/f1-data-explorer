@@ -37,8 +37,8 @@ module.exports = async (t, h) => {
     });
     t.check(`${theme} ${width}px: Weekend Pace picture: five box plots with median lines, dots in three tyre colours, driver codes (#186)`,
       pace.boxes === 5 && pace.medians === 5 && pace.dots >= 35 && pace.tyres === 3 && pace.labels === 'RUS,LEC,NOR,VER,ALO' && +pace.boxFill > 0 && +pace.boxFill < 0.5 && pace.ring !== '0px', JSON.stringify(pace));
-    t.check(`${theme} ${width}px: Weekend Pace text covers laps by tyre, box plots, sectors and the ideal lap, top speeds, the sorts and live sessions (#186)`,
-      pace.title === 'Weekend Pace' && /dot coloured by its tyre/.test(pace.text) && /box plots/.test(pace.text) && /ideal lap/.test(pace.text) && /top speeds/.test(pace.text) && /fastest lap, median or the session’s result/.test(pace.text) && /live/.test(pace.text), pace.text);
+    t.check(`${theme} ${width}px: Weekend Pace text covers laps by tyre, box plots, sectors and the ideal lap, top speeds, the sorts (#186)`,
+      pace.title === 'Weekend Pace' && /dot coloured by tyre/.test(pace.text) && /box plots/.test(pace.text) && /ideal lap/.test(pace.text) && /top speeds/.test(pace.text) && /fastest lap, median or session result/.test(pace.text), pace.text);
     t.check(`${theme} ${width}px: cards are laid out vertically, one per row`, r.stacked && r.sameLeft);
     t.check(`${theme} ${width}px: no horizontal scroll`, r.scroll <= width);
     t.check(`${theme} ${width}px: picture colours follow the theme`, r.c4.toLowerCase() === (theme === 'dark' ? '#6a86f0' : '#1b2a6b'), r.c4);

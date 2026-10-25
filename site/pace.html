@@ -467,7 +467,7 @@ function syncControls(){
   const opts = SORTS.filter(([k]) => sortAvailable(k)).map(([k, label]) => `<option value="${k}">${label}</option>`).join('');
   document.querySelectorAll('.sortSeg').forEach(x => { x.innerHTML = opts; x.value = sortKey; });
   document.querySelectorAll('.sortLock').forEach(b => { b.innerHTML = sortLocked ? LOCK_ICON.on : LOCK_ICON.off; b.setAttribute('aria-pressed', sortLocked);
-    b.title = sortLocked ? 'Locked: this sort stays when you change the session. Click to unlock.' : 'Unlocked: the sort follows each session's own order (fastest lap in practice, result in qualifying, sprint and race). Click to lock it.';
+    b.title = sortLocked ? 'Locked: this sort stays when you change the session. Click to unlock.' : 'Unlocked: the sort follows each session’s own order (fastest lap in practice, result in qualifying, sprint and race). Click to lock it.';
     b.setAttribute('aria-label', sortLocked ? 'Sort locked' : 'Sort unlocked'); });
   document.querySelectorAll('#unitRow .pill').forEach(b => b.classList.toggle('active', b.dataset.unit === unit));
 }
@@ -629,7 +629,7 @@ function drawLaps(chosen, pl){
   $('lapLegend').innerHTML = tyreKeyHTML(laps.map(l => l.c).filter(Boolean))
     + [...new Set(datasets.filter(d => !d._outlier).map(d => d._code))].map(c => { const d = datasets.find(x => x._code === c && !x._outlier);
     return `<button type="button" class="lgItem" data-code="${esc(c)}" aria-pressed="false"><i class="${d._dash ? 'dash' : ''}" style="--c:${d._color}"></i>${esc(c)}</button>`; }).join('');
-  $('lapNote').textContent = 'Dots show the tyre compound. A driver's line breaks at each pit stop, even on the same tyre, and skips the hidden in and out laps. A team's second driver is dashed. '
+  $('lapNote').textContent = 'Dots show the tyre compound. A driver’s line breaks at each pit stop, even on the same tyre, and skips the hidden in and out laps. A team’s second driver is dashed. '
     + 'Click a line, dot or name to follow one driver. Click again to release. Right-click a dot (long-press on a phone) to mark it as an outlier.'
     + (tm && segs.length ? ' Dashed lines mark the qualifying parts.' : '');
 }
@@ -696,7 +696,7 @@ function drawTable(chosen, ents){
   const cell = (v, t, d = 3) => `<td${v != null && v === t ? ' class="best"' : ''}>${O.fmt(v, d)}</td>`;
   $('sectorTable').innerHTML = `<thead><tr><th>Driver</th><th>Best lap</th><th>S1</th><th>S2</th><th>S3</th><th>Ideal lap</th><th>Gap</th></tr></thead><tbody>`
     + rows.map(({ e, s }) => `<tr><td class="who"><span class="dot" style="background:${color(e.color)}"></span>${esc(e.label)}</td>${cell(s.best, top.best)}${cell(s.sec[0], top[0])}${cell(s.sec[1], top[1])}${cell(s.sec[2], top[2])}${cell(s.ideal, top.ideal)}<td>${O.gapText(s.gap)}</td></tr>`).join('') + '</tbody>';
-  $('sectorNote').textContent = 'The ideal lap adds up each sector's best time, from any lap. Purple is the best in the session. Gap is the best lap minus the ideal lap. Outlier laps are left out here and in the plot below.';
+  $('sectorNote').textContent = 'The ideal lap adds up each sector’s best time, from any lap. Purple is the best in the session. Gap is the best lap minus the ideal lap. Outlier laps are left out here and in the plot below.';
 }
 function drawDumbbell(chosen){
   const key = r => tableSort === 'ideal' ? r.s.ideal : tableSort === 'gap' ? r.s.gap : r.s.best, gapMode = tableSort === 'gap';
