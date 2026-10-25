@@ -840,9 +840,9 @@ const F1Common = (() => {
   }
 
   // #85: the "Try it in What-If →" link for a title that can be clinched at the race after `round`:
-  // `whatif.html?season=Y&round=L&start=clinch` opens What-If on round L+1, starting from a finishing order that clinches
+  // `whatif.html?season=Y&round=L+1&start=clinch` opens What-If on round L+1 (#191: its slider edits that round), starting from a finishing order that clinches
   // it. The round is left out on the latest round (`latest`), as #31's links do.
-  const clinchLink = (year, round, latest) => `whatif.html?season=${year}${round<latest ? '&round='+round : ''}&start=clinch`;
+  const clinchLink = (year, round, latest) => `whatif.html?season=${year}${round<latest ? '&round='+(round+1) : ''}&start=clinch`;
 
   // #85: the "Title race" line above the points chart (both championship pages), written into `el`. When someone can
   // clinch at the next race it ends with a link to try that race in What-If (clinchLink()).
