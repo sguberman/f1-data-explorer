@@ -384,11 +384,19 @@ function sets(ents){
   const ranked = [...keep(st), ...ents.map(e => e.id).filter(id => !st.includes(id))]; // then whoever has no ranking yet, fastest first
   const comp = L ? F1Common.presetSets(resultRounds, L, 'drivers', { year, calendar }) : { top4: [], rest: [], contention: [] };
   return { all: ents.map(e => e.id), none: [], 5: ranked.slice(0, 5), 10: ranked.slice(0, 10), top4: keep(comp.top4), rest: keep(comp.rest), contention: keep(comp.contention),
-    fast5: ents.slice(0, 5).map(e => e.id), fast10: ents.slice(0, 10).map(e => e.id), ranked };
+    sessiontop5: sessionTop(ents, 5), ranked };
 }
+function sessionTop(ents, n){ // the first n in the session's own order (fastest lap in practice, the result in qualifying, the sprint and the race), whatever the sort
+  const k = session ? defaultSort(session) : 'fast', byBest = (a, b) => (a.best ?? Infinity) - (b.best ?? Infinity);
+  const list = O.RESULT_KINDS[k] && results[k] ? [...ents].sort((a, b) => ((results[k][a.nums[0]] ?? Infinity) - (results[k][b.nums[0]] ?? Infinity)) || byBest(a, b)) : ents;
+  return list.slice(0, n).map(e => e.id);
+}
+// The default is the top 5 of the session the page opened on, kept when the session changes (until the season does).
+let frozenDefault = null, frozenYear = null;
 function defaultIds(ents){
-  const s = sets(ents), d = F1Common.defaultSelection(s, s.ranked);
-  return d.length ? d : s.fast5;
+  if(frozenYear !== year){ frozenDefault = null; frozenYear = year; }
+  if(!frozenDefault && ents.length) frozenDefault = sessionTop(ents, 5);
+  return frozenDefault || [];
 }
 const pickedIds = ents => selected || defaultIds(ents);
 function setPicked(ids, ents){
@@ -400,11 +408,14 @@ function setPicked(ids, ents){
 
 const PRESETS = [['all', 'All'], ['none', 'None'], ['5', 'Top 5'], ['10', 'Top 10'], ['top4', 'Top 4 teams', 'The drivers of the top 4 teams in the constructors’ standings'],
   ['rest', 'Best of the rest', 'Everyone outside the top 4 teams'], ['contention', 'Title contention', 'The leader and everyone who can still win the title'],
-  ['fast5', 'Fastest 5', 'The five quickest in this session'], ['fast10', 'Fastest 10', 'The ten quickest in this session']];
+  ['sessiontop5', 'Session top 5', 'The first five in this session: the fastest lap in practice, the result in qualifying, the sprint and the race']];
 function renderPresets(ents, picked){
   $('presetRow').innerHTML = PRESETS.map(([k, label, title]) => `<button type="button" class="pill" data-preset="${k}"${title ? ` title="${esc(title)}"` : ''}>${label}</button>`).join('');
   const ids = new Set(ents.map(e => e.id));
-  F1Common.markActivePreset(sets(ents), picked.filter(id => ids.has(id)));
+  const all = sets(ents), mine = picked.filter(id => ids.has(id));
+  F1Common.markActivePreset(all, mine);
+  if(!selected && F1Share.sameSet(mine, all.sessiontop5)) // on the default picks, Session top 5 is the one lit when another preset has the same drivers
+    document.querySelectorAll('#presetRow button[data-preset]').forEach(b => b.classList.toggle('active', b.dataset.preset === 'sessiontop5'));
 }
 // The drivers in the shared sort: the list, the lap lines and their legend, and the dot plot's rows all follow it.
 // {list: entities in order, num: {id: the number shown in the list (rank, place or result), or null}, value(e): the right-hand column}
