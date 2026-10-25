@@ -42,7 +42,7 @@ html.f1-loading #talkingPoints{min-height:120px;}
 <div class="wrap">
 <div class="theme-bar"><nav id="siteNav" class="site-nav" aria-label="Site"></nav><div id="themeToggle"></div></div>
 <h1>Drivers' Championship</h1>
-<p class="sub">Points for the drivers you pick below (top 5 by default), projected to the end of the season from each driver's recent races (5 by default; change it with Projection from). Move the slider, or drag the handle on the chart, to see the standings as of any round. Tap a round on the chart for its result.</p>
+<p class="sub">Points for the drivers you pick (top 5 by default), projected to the end of the season from their last 5 races. Change that with Projection from. Move the slider or drag the chart handle to see the standings after any round. Tap a round for its result.</p>
 <div id="f1controls" class="f1c"></div>
 <div class="card" style="margin-bottom:16px;">
 <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:10px;">
@@ -71,7 +71,7 @@ html.f1-loading #talkingPoints{min-height:120px;}
  <span id="tpSub" style="font-size:12px;color:var(--sub);"></span>
 </div>
 <div id="talkingPoints" class="tpGrid f1-skel"></div>
-<div style="font-size:12px;color:var(--muted);line-height:1.6;margin:8px 2px 2px;">Every driver, as of the slider's round. Wins and podiums: Grands Prix only. Points streak: rounds in a row, up to this one, with points from the Grand Prix or the sprint. Moves: the standings now against 5 rounds earlier (ties on points broken by countback).</div>
+<div style="font-size:12px;color:var(--muted);line-height:1.6;margin:8px 2px 2px;">Every driver after the slider's round. Wins and podiums count Grands Prix only. Points streak is the number of rounds in a row, up to this one, with points from the Grand Prix or sprint. Moves compares the standings with 5 rounds earlier. Ties on points go to countback.</div>
 </div>
 <div class="card" style="margin-bottom:16px;">
 <div id="titleRace" class="titleRace" hidden></div>
@@ -102,7 +102,7 @@ html.f1-loading #talkingPoints{min-height:120px;}
 <canvas id="projChart" role="img" aria-label="Line chart of each selected driver's projected final championship points, as projected after each round of the season."></canvas>
 </div>
 <div id="projLegend" class="endLegend"></div>
-<div style="font-size:12px;color:var(--muted);line-height:1.6;margin:8px 2px 2px;">What the projection on the chart above would have said after each round: points so far plus the average of the most recent rounds each driver took part in (Projection from, 5 by default), for every round left. Hover over a round, or tap it, to see each projection then.</div>
+<div style="font-size:12px;color:var(--muted);line-height:1.6;margin:8px 2px 2px;">What the projection above would have said after each round: points so far, plus the average of each driver's recent rounds (Projection from, 5 by default) for every round left. Hover or tap a round to see it.</div>
 </div>
 <div class="card">
 <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;margin:0 0 10px;">
@@ -144,7 +144,7 @@ function totalRounds(){
 let posChart=null;
 const POS_NOTES={
  actual:"Position in the drivers' standings after each round, for the whole season so far. Ties on points are broken by countback (most wins, then most second places, and so on).",
- proj:"Projected finishing order after each round, from the same projection as the chart at the top (points so far plus the recent-rounds average for every round left, as set by Projection from). Ties go to the higher-placed driver in the standings."
+ proj:"Projected finishing order after each round. It uses the same projection as the top chart: points so far plus the recent-rounds average for every round left, as set by Projection from. Ties go to the driver higher in the standings."
 };
 // #113: tap a round on the position chart for its result, in a panel under that chart (its own URL keys: presult,
 // psession). The chart covers the whole season, so every loaded round can be opened, whatever the slider says.

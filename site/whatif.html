@@ -98,7 +98,7 @@ tr.champ td{background:var(--inset);}
 <div class="wrap">
 <div class="theme-bar"><nav id="siteNav" class="site-nav" aria-label="Site"></nav><div id="themeToggle"></div></div>
 <h1>What-If Results</h1>
-<p class="sub" id="pageSub">Drag the drivers into any finishing order to see what it would do to both championships.</p>
+<p class="sub" id="pageSub">Drag the drivers into any finishing order to see how both championships change.</p>
 <div id="f1controls" class="f1c"></div>
 
 <div class="card" id="orderCard">
@@ -114,7 +114,7 @@ tr.champ td{background:var(--inset);}
     <button class="reset" id="useGrid" type="button" hidden title="The Grand Prix starting grid (pit-lane starters at the back)">Starting grid</button>
     <button class="reset" id="useClinch" type="button" hidden>🏆 Title clinch</button>
     <button class="reset" id="useSim" type="button" title="Simulate this race 30,000 times and use the most likely finishing order">🎲 Simulated</button>
-    <button class="reset" id="useSimOrder" type="button" title="Simulate the race(s) 30,000 times with the order as it is now as the starting grid (drivers below the Not classified line start from the pit lane)">🎲 Simulate from this order</button>
+    <button class="reset" id="useSimOrder" type="button" title="Simulate the race(s) 30,000 times, starting from the current order as the grid. Drivers below the Not classified line start from the pit lane.">🎲 Simulate from this order</button>
     <span class="wiForm"><span class="presetLbl" id="winLbl">Form from</span>
       <span class="stepper" role="group" aria-labelledby="winLbl">
         <button type="button" id="winLess" aria-label="Use fewer races">−</button>
@@ -134,7 +134,7 @@ tr.champ td{background:var(--inset);}
     <div><div class="orderTitle">Drivers</div><div class="clinchRes" id="clinchDrivers" aria-live="polite"></div><table class="stTable" id="driverTable"></table></div>
     <div><div class="orderTitle">Constructors</div><div class="clinchRes" id="clinchTeams" aria-live="polite"></div><table class="stTable" id="teamTable"></table></div>
   </div>
-  <div class="note">▲/▼ are places gained or lost against the standings before this round. Ties on points are broken by countback (most wins, then most second places, and so on), the same as the championship-position charts.</div>
+  <div class="note">▲/▼ show places gained or lost against the standings before this round. Ties on points go to countback: most wins, then most second places, and so on. The championship-position charts do the same.</div>
 </div>
 </div>
 
@@ -465,8 +465,8 @@ function render(){
  document.getElementById('orderHeading').textContent = `Your result for Round ${T}: ${raceName(T)}`;
  document.getElementById('resultHeading').textContent = `Championships after Round ${T}`;
  document.getElementById('pageSub').textContent = act
-   ? `Round ${T} has already happened: it starts from the actual result. Drag the drivers to replay it differently and see what it would have done to both championships.`
-   : `Drag the drivers into any finishing order for Round ${T} to see what it would do to both championships.`;
+   ? `Round ${T} has already happened, so it starts from the actual result. Drag the drivers to replay it and see how both championships would have changed.`
+   : `Drag the drivers into any finishing order for Round ${T} to see how both championships change.`;
  document.getElementById('orderNote').textContent =
    `Starts from ${startMode==='clinch' && clinch ? 'a finishing order with which '+clinch.what : act ? 'the actual result' : 'the drivers’ standings after Round '+L}. ${simNote}Drag a driver by the handle, or focus the handle and use the arrow keys. `
    + `Drag the “Not classified” line to set who doesn’t finish (no points). Points: ${PTS_GP.join('-')}`
