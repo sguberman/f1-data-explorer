@@ -161,6 +161,21 @@ const F1OpenF1 = (() => {
     return out;
   }
 
+  // A finished session's classification as [{code, position}] (three-letter driver codes, no position / did not start / disqualified left out):
+  // a saved copy first, otherwise the cache / OpenF1 (#191: What-If's qualifying order for a round the grid file doesn't have yet).
+  async function classification(session, {fresh=false, now=Date.now()}={}){
+    const snap = fresh ? null : await savedSession(session);
+    let result, drivers;
+    if(snap){ const f = inflate(snap); result = f.result; drivers = f.drivers; }
+    else{
+      const ttl = now - Date.parse(session.end) > 2 * HOUR ? DAY : 5 * 60e3, q = '?session_key=' + session.key;
+      const [r, d] = await Promise.all([get('/session_result' + q, ttl, fresh), get('/drivers' + q, ttl, fresh)]);
+      result = r.data; drivers = d.data;
+    }
+    const code = {}; drivers.forEach(d => { code[d.driver_number] = d.name_acronym; });
+    return result.filter(r => r.position != null && !r.dns && !r.dsq && code[r.driver_number]).map(r => ({ code: code[r.driver_number], position: r.position }));
+  }
+
   // A year's sessions grouped into weekends, in date order: [{key, label, country, start, sessions:[{key, name, short, start, end}]}].
   function weekends(rows){
     const by = new Map();
@@ -330,7 +345,7 @@ const F1OpenF1 = (() => {
   const speedIn = (kmh, unit) => kmh == null ? null : unit === 'mph' ? Math.round(kmh * 0.621371 * 10) / 10 : kmh;
   const gapText = g => g == null ? '–' : (g >= 0 ? '+' : '−') + Math.abs(g).toFixed(3);
 
-  const api = { BASE, SLOW, weekends, weekendForRound, defaultWeekend, defaultSession, sessions, build, load, hasSaved, liveUntil, live, compact, inflate, makeLimiter, SESSION_FIELDS, KINDS, qualiSegments, neutralLaps, isQualifying, hasRaceControl, results, resultOrder, resultKind, RESULT_KINDS, sessionBest, pace, entities, lapsOf, stats, bin, binWidth, fmt, gapText, speedIn, shortName };
+  const api = { BASE, SLOW, weekends, weekendForRound, defaultWeekend, defaultSession, sessions, build, load, hasSaved, liveUntil, live, compact, inflate, makeLimiter, SESSION_FIELDS, KINDS, qualiSegments, neutralLaps, isQualifying, hasRaceControl, results, classification, resultOrder, resultKind, RESULT_KINDS, sessionBest, pace, entities, lapsOf, stats, bin, binWidth, fmt, gapText, speedIn, shortName };
   return api;
 })();
 if(typeof module !== 'undefined' && module.exports) module.exports = F1OpenF1; // Node (the tests)

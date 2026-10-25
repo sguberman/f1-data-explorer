@@ -14,6 +14,7 @@
 <script src="counting.js"></script>
 <script src="racemodel.js"></script>
 <script src="data.js"></script>
+<script src="openf1.js"></script>
 <script src="share.js"></script>
 <script src="export.js"></script>
 <script src="controls.js"></script>
@@ -143,7 +144,7 @@ tr.champ td{background:var(--inset);}
 // the season already loaded — dragging and the buttons never fetch.
 let PTS_GP=[25,18,15,12,10,8,6,4,2,1]; // the season's scoring (#141: F1Common.scoring), set when a season loads
 const sprintPoints = year => F1Common.scoring(year).sprint;
-let year=null, seasonRounds=[], calendar=null, L=0, T=0, grid=null, tracks=null, simKnown=null; // grid: the season's qualifying and starting grid (#167)
+let year=null, seasonRounds=[], calendar=null, L=0, T=0, grid=null, tracks=null, simKnown=null, hasNext=false, openQuali=null; // grid: the season's qualifying and starting grid (#167)
 // orders[session] = [driverId…] with null as the "not classified" divider: everyone after it gets no position.
 let orders={}, sessions=[], roster={};
 // #85: clinch = the "🏆 Title clinch" preset for round T ({orders, kinds, who, what}), or null when no title can be won
@@ -156,11 +157,12 @@ const SIM_RUNS=30000, WINDOW_DEFAULT=Infinity, WINDOW_MIN=3; // #162: the whole 
 let dataWindow=WINDOW_DEFAULT, simNote='';
 
 async function buildFromSelection(detail){
- year=detail.year; seasonRounds=detail.seasonRounds; PTS_GP=F1Common.scoring(year).gp;
+ year=detail.year; seasonRounds=detail.seasonRounds.filter(r=>!r.upcoming); hasNext=detail.seasonRounds.some(r=>r.upcoming); PTS_GP=F1Common.scoring(year).gp;
  { const cn=document.getElementById('countNote'); cn.textContent=F1Counting.asAwardedNote(year); cn.hidden=!cn.textContent; } // #141
  calendar = seasonRounds.length ? await F1Data.getCalendar(year) : null;
  grid = seasonRounds.length ? await F1Data.loadGrid(year, detail.fresh) : null; // null when there is none: the model runs without it (#167)
  tracks = seasonRounds.length ? await F1Data.loadTracks(detail.fresh) : null; // likewise (#169)
+ await loadOpenQuali(detail.fresh);
  // #31: a shared link's keys, first season only
  const link = F1Share.take();
  if(link){ const w=link.get('w'); if(w==='all') dataWindow=Infinity; else if(/^\d{1,3}$/.test(w||'') && +w>=WINDOW_MIN) dataWindow=+w; }
@@ -190,7 +192,7 @@ F1Share.register(()=>{
  return out;
 });
 function setRound(round){
- L=round; T=L+1; simNote='';
+ T=round; L=T-1; // #191: the slider's round is the one being edited; the standings are those before it simNote='';
  const actual=seasonRounds.find(r=>r.round===T);
  const total=calendar && calendar.totalRounds ? calendar.totalRounds : Math.max(seasonRounds.length, F1Common.seasonMeta(year).rounds);
  const empty=document.getElementById('emptyMsg');
@@ -214,6 +216,19 @@ function setRound(round){
  resetOrders(startMode==='clinch' ? 'clinch' : actual ? 'actual' : 'standings');
  defaultOrders = JSON.parse(JSON.stringify(orders)); // #31: the round's starting order isn't put in the URL
 }
+// #191: the next race's qualifying order from OpenF1 (as the Weekend Pace page reads it) when the grid file doesn't have it yet. Only
+// on load / Refresh data, never while interacting; any failure just leaves the preset out.
+async function loadOpenQuali(fresh){
+ openQuali=null;
+ const next=seasonRounds.length+1, g=grid && grid.rounds.find(x=>x.round===next);
+ if(!hasNext || (g && g.qualifying && g.qualifying.length)) return;
+ try{
+  const cal=await F1Data.getCalendar(year, {dates:true}), {list}=await F1OpenF1.sessions(year, {fresh});
+  const w=F1OpenF1.weekendForRound(list, cal, next), s=w && w.sessions.find(x=>x.name==='Qualifying' && Date.parse(x.end)<=Date.now());
+  const rows=s ? await F1OpenF1.classification(s, {fresh}) : [];
+  if(rows.length) openQuali={round:next, rows};
+ }catch(e){ /* no qualifying order from OpenF1: the preset stays out */ }
+}
 const raceName = r => (calendar && calendar.raceNames && calendar.raceNames[r]) || ('Round '+r);
 function actualRound(){ return seasonRounds.find(r=>r.round===T); }
 // Order as a list of ids (classified first, in position order) + null divider + the rest.
@@ -231,7 +246,13 @@ function standingIds(){
 // #191: round T's qualifying classification or starting grid (pit lane = 0, at the back) as a gp order; drivers without a
 // position follow in standings order. null when the loaded grid file has nothing for round T.
 function gridOrder(mode){
- const tr=grid && grid.rounds.find(x=>x.round===T); if(!tr) return null;
+ const tr=grid && grid.rounds.find(x=>x.round===T);
+ if(mode==='quali' && !(tr && tr.qualifying && tr.qualifying.length) && openQuali && openQuali.round===T){
+  const byCode={}; Object.keys(roster).forEach(id=>{ if(roster[id].code) byCode[roster[id].code]=id; });
+  const ids=openQuali.rows.filter(r=>byCode[r.code]).sort((a,b)=>a.position-b.position).map(r=>byCode[r.code]);
+  return ids.length ? [...ids, ...standingIds().filter(id=>!ids.includes(id)), null] : null;
+ }
+ if(!tr) return null;
  const pos = mode==='grid' ? Object.entries(tr.grid||{}).map(([id,p])=>[id,p===0?Infinity:p]) : (tr.qualifying||[]).map(q=>[q.driverId,q.position]);
  const ids=pos.filter(([id])=>roster[id]).sort((a,b)=>a[1]-b[1]).map(x=>x[0]);
  if(!ids.length) return null;
@@ -583,7 +604,7 @@ F1Export.attach(document.getElementById('resultCard'), {
 window.addEventListener('f1selection', e=>buildFromSelection(e.detail));
 window.addEventListener('f1roundchange', e=>{ startMode=null; if(seasonRounds.length) setRound(e.detail.round); });
 window.addEventListener('themechange', ()=>{ if(sessions.length) render(); });
-F1Controls.mount('f1controls');
+F1Controls.mount('f1controls', { next: true }); // #191: the slider's round is the one being edited
 </script>
 </body>
 </html>

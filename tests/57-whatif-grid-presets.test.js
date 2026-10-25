@@ -38,4 +38,27 @@ module.exports = async (t, h) => {
   p = await open({ 2026: null });
   t.check('no grid file: neither button shows', (await hidden(p, '#useQuali')) && (await hidden(p, '#useGrid')));
   await p.done();
+
+  // ---- #191: the slider's round is the round being edited (it reaches the next race), and the qualifying order falls back to OpenF1 ----
+  p = await open({ 2026: null });
+  const st = await p.evaluate(() => [F1Controls.state.round, document.querySelector('.f1c-round').min, document.querySelector('.f1c-round').max, document.querySelector('.f1c-roundlabel').textContent].join('|'));
+  t.check('slider opens on the next race (13), which is the round edited; it runs 2 to 13', st.startsWith('13|2|13|Round 13 of 13') && /Round 13/.test(await p.textContent('#orderHeading')), st);
+  await h.setRound(p, 12); await p.waitForTimeout(80);
+  t.check('slider 12 edits round 12, from its actual result', /Round 12/.test(await p.textContent('#orderHeading')) && !(await hidden(p, '#useActual')));
+  await p.done();
+
+  const opts = (extra = {}) => ({ grids: { 2026: null }, openf1: Object.assign({}, extra) });
+  p = await h.openPage('whatif', opts()); await h.loaded(p);
+  const oh = p.openf1Hits.length;
+  t.check('no grid file: OpenF1 is asked for round 13\'s qualifying once at load', p.openf1Hits.some(u => /session_result/.test(u)), p.openf1Hits.join(' '));
+  t.check('…and the Qualifying order preset shows (Starting grid does not)', !(await hidden(p, '#useQuali')) && (await hidden(p, '#useGrid')));
+  await p.click('#useQuali');
+  const oq = await order13(p);
+  t.check('…and fills the order from OpenF1\'s classification, one row per driver and the NC line last', oq[oq.length - 1] === null && new Set(oq.filter(Boolean)).size === oq.filter(Boolean).length, oq.join());
+  t.check('the preset fetches nothing more', p.openf1Hits.length === oh && p.errors.length === 0, p.errors.join('; '));
+  await p.done();
+
+  p = await h.openPage('whatif', opts({ fail: () => true })); await h.loaded(p);
+  t.check('OpenF1 failing: no button, no errors on the page', (await hidden(p, '#useQuali')) && (await p.$$('.wiList li')).length > 0);
+  await p.done();
 };

@@ -61,9 +61,9 @@ module.exports = async (t, h) => {
   t.check('what-if: CSV links for both tables, no PNG', await p.$eval('#resultCard .exportRow', r => r.textContent.replace(/\s+/g, ' ').trim()) === 'Drivers CSV · Constructors CSV');
   f = await grab(p, '#resultCard .exp-csv'); rows = csvRows(f.data);
   const tbl = await p.$$eval('#driverTable tr[data-id]', trs => trs.map(tr => tr.children[0].textContent + '/' + tr.children[5].textContent));
-  t.check('what-if: drivers CSV matches the table', rows[0][0] === 'Position' && rows.slice(1).map(r => r[0] + '/' + r[5]).join() === tbl.join() && f.name === 'f1-2026-whatif-r12-drivers.csv', f.name + ' ' + rows[0].join());
+  t.check('what-if: drivers CSV matches the table', rows[0][0] === 'Position' && rows.slice(1).map(r => r[0] + '/' + r[5]).join() === tbl.join() && f.name === 'f1-2026-whatif-r13-drivers.csv', f.name + ' ' + rows[0].join());
   f = await grab(p, '#resultCard .exp-csv2');
-  t.check('what-if: constructors CSV', f.name === 'f1-2026-whatif-r12-constructors.csv' && csvRows(f.data).length === 12, f.name);
+  t.check('what-if: constructors CSV', f.name === 'f1-2026-whatif-r13-constructors.csv' && csvRows(f.data).length === 12, f.name);
   await p.done();
 
   // #76: the site icon sits in the bottom-right corner of the picture, beside the address.

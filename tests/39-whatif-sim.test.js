@@ -86,7 +86,7 @@ module.exports = async (t, h) => {
 
   // Sprint weekend: both lists are simulated. Round 11 had a sprint (slider at 10).
   const s = await h.openPage('whatif'); await h.loaded(s);
-  await s.goto(link.replace(/round=\d+&?/, '') + '&round=10'); await h.loaded(s);
+  await s.goto(link.replace(/round=\d+&?/, '') + '&round=11'); await h.loaded(s);
   t.check('a link restores Form from', (await s.textContent('#winVal')) === 'last 6 races');
   await s.click('#useSim');
   const sp = await s.$$eval('.wiList[data-session="sprint"] > li', l => l.map(x => x.dataset.id || null));
