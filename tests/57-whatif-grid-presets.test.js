@@ -61,4 +61,16 @@ module.exports = async (t, h) => {
   p = await h.openPage('whatif', opts({ fail: () => true })); await h.loaded(p);
   t.check('OpenF1 failing: no button, no errors on the page', (await hidden(p, '#useQuali')) && (await p.$$('.wiList li')).length > 0);
   await p.done();
+
+  // saved copies first: with the list and the qualifying session saved, OpenF1 is never asked
+  const O = require('../site/openf1.js'), fx = require('./lib/openf1-fixture');
+  const snap = key => { const x = fx.SESSIONS.find(q => q.session_key === key); return O.compact({ laps: [], stints: [], drivers: fx.driversFor(key), raceControl: [], result: fx.resultFor(key) }, { key, year: 2026, name: x.session_name }, Date.parse(fx.NOW)); };
+  const list = { v: 1, year: 2026, generatedAt: Date.parse(fx.NOW), sessions: fx.SESSIONS.map(x => Object.fromEntries(O.SESSION_FIELDS.map(f => [f, x[f] === undefined ? null : x[f]]))) };
+  p = await h.openPage('whatif', { grids: { 2026: null }, openf1: {}, pace: { list: { 2026: list }, sessions: { 204: snap(204) } } }); await h.loaded(p);
+  t.check('saved list and qualifying: the preset shows and OpenF1 is not asked at all', !(await hidden(p, '#useQuali')) && p.openf1Hits.length === 0 && p.paceHits.some(u => /pace\/2026\/204\.json/.test(u)), p.openf1Hits.join(' '));
+  await p.done();
+  // a saved list without the qualifying session: OpenF1 is the fallback
+  p = await h.openPage('whatif', { grids: { 2026: null }, openf1: {}, pace: { list: { 2026: list }, sessions: {} } }); await h.loaded(p);
+  t.check('no saved qualifying session: OpenF1 is the fallback, and the preset shows', !(await hidden(p, '#useQuali')) && p.openf1Hits.some(u => /session_result/.test(u)), p.openf1Hits.join(' '));
+  await p.done();
 };

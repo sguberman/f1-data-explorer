@@ -216,18 +216,25 @@ function setRound(round){
  resetOrders(startMode==='clinch' ? 'clinch' : actual ? 'actual' : 'standings');
  defaultOrders = JSON.parse(JSON.stringify(orders)); // #31: the round's starting order isn't put in the URL
 }
-// #191: the next race's qualifying order from OpenF1 (as the Weekend Pace page reads it) when the grid file doesn't have it yet. Only
-// on load / Refresh data, never while interacting; any failure just leaves the preset out.
+// #191: the next race's qualifying order from the Weekend Pace page's data when the grid file doesn't have it yet: the saved copies
+// (data/pace/…, same site, no OpenF1 request) first, OpenF1 itself only when there is no saved copy of that qualifying session. Only on
+// load / Refresh data, never while interacting; any failure just leaves the preset out.
 async function loadOpenQuali(fresh){
  openQuali=null;
  const next=seasonRounds.length+1, g=grid && grid.rounds.find(x=>x.round===next);
  if(!hasNext || (g && g.qualifying && g.qualifying.length)) return;
+ const O=F1OpenF1, over=w=>w && w.sessions.find(x=>x.name==='Qualifying' && Date.parse(x.end)<=Date.now());
  try{
-  const cal=await F1Data.getCalendar(year, {dates:true}), {list}=await F1OpenF1.sessions(year, {fresh});
-  const w=F1OpenF1.weekendForRound(list, cal, next), s=w && w.sessions.find(x=>x.name==='Qualifying' && Date.parse(x.end)<=Date.now());
-  const rows=s ? await F1OpenF1.classification(s, {fresh}) : [];
+  const cal=await F1Data.getCalendar(year, {dates:true});
+  let rows=null;
+  const saved=fresh ? null : await O.savedWeekends(year), sq=saved && over(O.weekendForRound(saved, cal, next));
+  if(sq) rows=await O.savedClassification(sq);
+  if(!rows){
+   const {list}=await O.sessions(year, {fresh}), s=over(O.weekendForRound(list, cal, next));
+   rows=s ? await O.classification(s, {fresh}) : [];
+  }
   if(rows.length) openQuali={round:next, rows};
- }catch(e){ /* no qualifying order from OpenF1: the preset stays out */ }
+ }catch(e){ /* no qualifying order: the preset stays out */ }
 }
 const raceName = r => (calendar && calendar.raceNames && calendar.raceNames[r]) || ('Round '+r);
 function actualRound(){ return seasonRounds.find(r=>r.round===T); }
