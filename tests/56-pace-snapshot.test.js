@@ -80,4 +80,36 @@ module.exports = async (t, h) => {
   t.check('…but one with none after a day is saved as it is, so it is not asked for for ever', r.written.includes(301));
   t.check('the pause between requests is kept (OpenF1’s free limit is 3 a second)', await (async () => { const stamps = []; const w = async ms => { stamps.push(ms); };
     await runYear(2026, { fetchImpl: fake([]), dir: tmp(), now: now - 30 * 24 * 3600e3, wait: w, gap: 350 }); return stamps.length > 0 && stamps.every(x => x === 350); })());
+
+  // ---- #201: a Race's starting grid is saved once qualifying is over, and kept up to date until the race starts ----
+  const gridFile = (d, key = 205) => path.join(d, '2026', `${key}-grid.json`);
+  const withGrid = (calls, rows, status) => { const inner = fake(calls); return async url => /starting_grid/.test(url) ? (calls.push('/starting_grid'), status === 401 ? { ok: false, status: 401, json: async () => ({ detail: 'Live F1 session in progress. Global API access (including past sessions) is restricted to authenticated users until the session ends.' }) } : { ok: true, status: 200, json: async () => rows }) : inner(url); };
+  const afterQuali = Date.parse('2026-08-29T16:00:00Z'); // round 13's qualifying ended at 15:00; its race is tomorrow
+  dir = tmp(); calls = [];
+  r = await runYear(2026, { fetchImpl: fake(calls), dir, now: Date.parse('2026-08-29T14:30:00Z'), wait: noWait, gap: 0 });
+  t.check('qualifying is not over yet: no starting grid is asked for or saved', !calls.some(c => /starting_grid/.test(c)) && !fs.existsSync(gridFile(dir)) && r.grids.length === 0, calls.join(' '));
+  calls = [];
+  r = await runYear(2026, { fetchImpl: fake(calls), dir, now: afterQuali, wait: noWait, gap: 0 });
+  const g1 = fs.existsSync(gridFile(dir)) && read(gridFile(dir));
+  t.check('once qualifying is over the next race\'s grid is saved (and no finished or past race\'s)', r.grids.join() === '205' && calls.filter(c => /starting_grid/.test(c)).join() === '/starting_grid?session_key=205' && !fs.existsSync(gridFile(dir, 105)), JSON.stringify(r) + calls.join(' '));
+  t.check('the file holds grid positions and driver codes as arrays, pole first', g1 && g1.v === 1 && g1.key === 205 && JSON.stringify(g1.grid) === JSON.stringify(fx.STARTING.map((n, i) => [n, i + 1])) && g1.drivers.some(([n, c]) => n === 63 && c === 'DA0'), JSON.stringify(g1));
+  t.check('read back, it gives [{code, position}] in grid order', JSON.stringify(O.gridRows(g1).slice(0, 2)) === '[{"code":"DB0","position":1},{"code":"DA0","position":2}]', JSON.stringify(O.gridRows(g1).slice(0, 2)));
+  r = await runYear(2026, { fetchImpl: fake([], undefined), dir, now: afterQuali + 3600e3, wait: noWait, gap: 0 });
+  t.check('an unchanged grid is not written again', r.grids.length === 0 && read(gridFile(dir)).fetchedAt === g1.fetchedAt, JSON.stringify(r));
+  const swapped = fx.gridFor(205).map((x, i) => ({ ...x, position: i === 0 ? 2 : i === 1 ? 1 : x.position })); // a late penalty swaps the first two
+  r = await runYear(2026, { fetchImpl: withGrid([], swapped), dir, now: afterQuali + 7200e3, wait: noWait, gap: 0 });
+  t.check('a changed grid (a late penalty) is written again', r.grids.join() === '205' && read(gridFile(dir)).grid[0][0] === 63 && read(gridFile(dir)).fetchedAt === afterQuali + 7200e3, JSON.stringify(read(gridFile(dir)).grid[0]));
+  calls = [];
+  r = await runYear(2026, { fetchImpl: withGrid(calls, []), dir, now: afterQuali + 8000e3, wait: noWait, gap: 0 });
+  t.check('an empty answer (not published yet) keeps the saved grid and is not a failure', r.grids.length === 0 && r.failed.length === 0 && read(gridFile(dir)).grid[0][0] === 63);
+  calls = [];
+  r = await runYear(2026, { fetchImpl: withGrid(calls, swapped), dir, now: Date.parse('2026-08-30T13:01:00Z'), wait: noWait, gap: 0 });
+  t.check('once the race has started it is not asked for again', !calls.includes('/starting_grid') && r.grids.length === 0, calls.join(' '));
+  dir = tmp(); calls = [];
+  r = await runYear(2026, { fetchImpl: withGrid(calls, [], 401), dir, now: afterQuali, wait: noWait, gap: 0 });
+  t.check('closed for a live session: nothing is saved and the run ends quietly', !fs.existsSync(gridFile(dir)) && r.failed.length === 0, JSON.stringify(r));
+  dir = tmp();
+  const brokenFake = calls2 => { const inner = fake(calls2); return async url => /starting_grid/.test(url) ? { ok: false, status: 500, json: async () => ({}) } : inner(url); };
+  r = await runYear(2026, { fetchImpl: brokenFake([]), dir, now: afterQuali, wait: noWait, gap: 0 });
+  t.check('a failing request is skipped (and tried again next run); the sessions are still saved', r.failed.includes(205) && !fs.existsSync(gridFile(dir)) && r.written.length > 0, JSON.stringify(r));
 };

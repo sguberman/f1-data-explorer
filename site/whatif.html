@@ -164,6 +164,7 @@ async function buildFromSelection(detail){
  grid = seasonRounds.length ? await F1Data.loadGrid(year, detail.fresh) : null; // null when there is none: the model runs without it (#167)
  tracks = seasonRounds.length ? await F1Data.loadTracks(detail.fresh) : null; // likewise (#169)
  await loadOpenQuali(detail.fresh);
+ await loadSavedGrid(detail.fresh);
  // #31: a shared link's keys, first season only
  const link = F1Share.take();
  if(link){ const w=link.get('w'); if(w==='all') dataWindow=Infinity; else if(/^\d{1,3}$/.test(w||'') && +w>=WINDOW_MIN) dataWindow=+w; }
@@ -246,6 +247,26 @@ async function loadOpenQuali(fresh){
   if(needGp){ const rows=await find(next, ['Qualifying']); if(rows) openQuali={round:next, rows}; }
   for(const r of sprints){ const rows=await find(r, O.RESULT_KINDS.sprintquali); if(rows) sprintQuali[r]=rows; }
  }catch(e){ /* no qualifying order: the presets stay as they were */ }
+}
+// #201: the next race's starting grid from the copy saved ahead of the race (data/pace/{year}/{key}-grid.json, from OpenF1 while it is open), where the
+// grid file has none yet (Jolpica has the grid only after the race). It fills the grid file's `grid` for that round, so the Starting grid preset and the
+// simulating buttons use it like the real one, and Jolpica's own grid replaces it after the race. Drivers are matched by three-letter code. On load /
+// Refresh data only; any failure leaves the round as it was.
+async function loadSavedGrid(fresh){
+ const next=seasonRounds.length+1;
+ if(!hasNext || !grid) return;
+ let g=grid.rounds.find(x=>x.round===next);
+ if(g && Object.keys(g.grid||{}).length) return;
+ try{
+  const O=F1OpenF1, cal=await F1Data.getCalendar(year, {dates:true}), saved=await O.savedWeekends(year);
+  const w=saved && O.weekendForRound(saved, cal, next), race=w && w.sessions.find(x=>x.name==='Race');
+  const rows=race && await O.savedGrid(race, fresh);
+  if(!rows) return;
+  const byCode={}; seasonRounds.forEach(r=>r.raceResults.forEach(q=>{ if(q.code) byCode[q.code]=q.driverId; }));
+  const map={}; rows.forEach(r=>{ if(byCode[r.code]) map[byCode[r.code]]=r.position; });
+  if(!Object.keys(map).length) return;
+  if(g) g.grid=map; else grid.rounds.push({round:next, raceName:raceName(next), circuitId:null, qualifying:[], grid:map});
+ }catch(e){ /* no saved grid: the presets stay as they were */ }
 }
 const raceName = r => (calendar && calendar.raceNames && calendar.raceNames[r]) || ('Round '+r);
 function actualRound(){ return seasonRounds.find(r=>r.round===T); }

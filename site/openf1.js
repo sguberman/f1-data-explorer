@@ -126,6 +126,21 @@ const F1OpenF1 = (() => {
     return j;
   }
   const savedSession = s => savedFile(`data/pace/${s.year}/${s.key}.json`);
+  // #201: a Race's starting grid saved ahead of the race (data/pace/{year}/{key}-grid.json, tools/pace-snapshot.mjs): OpenF1's /starting_grid
+  // rows and the session's drivers as arrays, kept small. gridFile builds it, gridRows reads it back as [{code, position}].
+  const gridFile = (key, grid, drivers, now = Date.now()) => ({ v: 1, key, fetchedAt: now,
+    grid: grid.filter(r => r.position != null).map(r => [r.driver_number, r.position]).sort((a, b) => a[1] - b[1]),
+    drivers: drivers.map(d => [d.driver_number, d.name_acronym]) });
+  const gridRows = f => { const code = new Map(f.drivers); return f.grid.filter(([n]) => code.has(n)).map(([n, p]) => ({ code: code.get(n), position: p })); };
+  // A race's saved grid as [{code, position}] (no OpenF1 request; null when there is none). `fresh` (Refresh data) downloads the file again.
+  async function savedGrid(session, fresh = false){
+    try{
+      const r = await fetch(`data/pace/${session.year}/${session.key}-grid.json`, fresh ? { cache: 'reload' } : {});
+      if(!r.ok) return null;
+      const f = await r.json();
+      return f && f.v === 1 && Array.isArray(f.grid) && Array.isArray(f.drivers) ? gridRows(f) : null;
+    }catch(e){ return null; }
+  }
   const hasSaved = async s => !!(await savedSession(s));
 
   // ---- sessions ----
@@ -357,7 +372,7 @@ const F1OpenF1 = (() => {
   const speedIn = (kmh, unit) => kmh == null ? null : unit === 'mph' ? Math.round(kmh * 0.621371 * 10) / 10 : kmh;
   const gapText = g => g == null ? '–' : (g >= 0 ? '+' : '−') + Math.abs(g).toFixed(3);
 
-  const api = { BASE, SLOW, weekends, weekendForRound, defaultWeekend, defaultSession, sessions, build, load, hasSaved, liveUntil, live, compact, inflate, makeLimiter, SESSION_FIELDS, KINDS, qualiSegments, neutralLaps, isQualifying, hasRaceControl, results, classification, savedWeekends, savedClassification, resultOrder, resultKind, RESULT_KINDS, sessionBest, pace, entities, lapsOf, stats, bin, binWidth, fmt, gapText, speedIn, shortName };
+  const api = { BASE, SLOW, weekends, weekendForRound, defaultWeekend, defaultSession, sessions, build, load, hasSaved, liveUntil, live, compact, inflate, makeLimiter, SESSION_FIELDS, KINDS, qualiSegments, neutralLaps, isQualifying, hasRaceControl, results, classification, savedWeekends, savedClassification, savedGrid, gridFile, gridRows, resultOrder, resultKind, RESULT_KINDS, sessionBest, pace, entities, lapsOf, stats, bin, binWidth, fmt, gapText, speedIn, shortName };
   return api;
 })();
 if(typeof module !== 'undefined' && module.exports) module.exports = F1OpenF1; // Node (the tests)

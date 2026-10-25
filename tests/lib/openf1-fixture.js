@@ -81,6 +81,10 @@ const raceControlFor = key => {
 const ORDERS = { 'Qualifying': [1, 63, 44, 12, 16, 81], 'Sprint Qualifying': [81, 1, 63, 12, 16, 44], 'Sprint': [12, 63, 16, 1, 44, 81], 'Race': [16, 12, 81, 63, 1, 44] };
 const resultFor = key => (ORDERS[nameOf(key)] || []).map((n, i) => ({ position: nameOf(key) === 'Sprint' && n === 81 ? null : i + 1, driver_number: n, number_of_laps: 11, dnf: false, dns: nameOf(key) === 'Sprint' && n === 81, dsq: false, session_key: key, meeting_key: 0 }));
 
+// The Races' starting grid (driver numbers, pole first), as /starting_grid gives it (#201); other sessions have none.
+const STARTING = [16, 63, 44, 1, 12, 81];
+const gridFor = key => nameOf(key) === 'Race' ? STARTING.map((n, i) => ({ position: i + 1, driver_number: n, lap_duration: 90 + i, meeting_key: 0, session_key: key })) : [];
+
 // Answers a request to https://api.openf1.org/v1/…; `empty` lists session keys with no data yet.
 function answer(url, { empty = [] } = {}){
   const u = new URL(url), key = +u.searchParams.get('session_key');
@@ -92,6 +96,7 @@ function answer(url, { empty = [] } = {}){
   if(path === '/laps') return lapsFor(key);
   if(path === '/stints') return stintsFor(key);
   if(path === '/drivers') return driversFor(key);
+  if(path === '/starting_grid') return gridFor(key);
   return null;
 }
-module.exports = { NOW, SESSIONS, DRIVERS, RESERVE, raceControlFor, resultFor, ORDERS, answer, lapsFor, stintsFor, driversFor };
+module.exports = { STARTING, gridFor, NOW, SESSIONS, DRIVERS, RESERVE, raceControlFor, resultFor, ORDERS, answer, lapsFor, stintsFor, driversFor };
