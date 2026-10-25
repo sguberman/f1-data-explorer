@@ -1,4 +1,4 @@
-// #60: f1api.dev is asked about rounds newer than the season file at most once a day per season, across the
+// #60: Jolpica is asked about rounds newer than the season file at most once a day per season, across the
 // whole site. Other pages and season switches reuse that check; Refresh data checks again; a failed check
 // isn't kept.
 module.exports = async (t, h) => {
@@ -26,11 +26,11 @@ module.exports = async (t, h) => {
   t.check('…same data after switching back', await rounds(p) === firstRounds);
 
   // A day later, the next load checks again.
-  await p.evaluate(() => { const k = 'f1cache:v2:2026/checked', e = JSON.parse(localStorage.getItem(k)); e.exp = Date.now() - 1; localStorage.setItem(k, JSON.stringify(e)); });
+  await p.evaluate(() => { const k = 'f1cache:v3:2026/checked', e = JSON.parse(localStorage.getItem(k)); e.exp = Date.now() - 1; localStorage.setItem(k, JSON.stringify(e)); });
   await go(p, 'drivers');
   t.check('a day later the next load checks again', p.apiHits.length > first && p.apiHits.slice(first).every(u => /\/2026\/13\//.test(u)), since(p, first));
   const afterDay = p.apiHits.length;
-  t.check('the check is remembered for a day', await p.evaluate(() => { const e = JSON.parse(localStorage.getItem('f1cache:v2:2026/checked')); return e.exp - Date.now() > 23.9*3600e3; }));
+  t.check('the check is remembered for a day', await p.evaluate(() => { const e = JSON.parse(localStorage.getItem('f1cache:v3:2026/checked')); return e.exp - Date.now() > 23.9*3600e3; }));
 
   // Refresh data checks right away.
   await p.click('.f1c-refresh'); await h.loaded(p);
@@ -67,7 +67,7 @@ module.exports = async (t, h) => {
   const liveHits = p.apiHits.length, liveRounds = await rounds(p);
   await go(p, 'simulator');
   // (the simulator still asks for the calendar once, since there's no season file to carry it)
-  t.check('no season file: the next page asks f1api.dev for no rounds', liveHits > 20 && !p.apiHits.slice(liveHits).some(u => /\/2026\/\d+\//.test(u)), `${liveHits} then ${since(p, liveHits)}`);
+  t.check('no season file: the next page asks Jolpica for no rounds', liveHits > 20 && !p.apiHits.slice(liveHits).some(u => /\/2026\/\d+\//.test(u)), `${liveHits} then ${since(p, liveHits)}`);
   t.check('…with the same data', await rounds(p) === liveRounds && liveRounds === firstRounds);
   t.check('live fallback: no page errors', p.errors.length === 0, p.errors.join('; '));
   await p.done();

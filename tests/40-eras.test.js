@@ -83,7 +83,7 @@ module.exports = async (t, h) => {
   const pngText = await pp.evaluate(() => [window.__shared, location.href]);
   t.check('phone: the PNG share carries the page address as its text', pngText[0].length === 1 && pngText[0][0] === pngText[1], JSON.stringify(pngText));
   await pp.done();
-  t.check('no page errors, and nothing fetched from f1api.dev', p.errors.length === 0 && p.apiHits.length === 0, p.errors.join('; ') + p.apiHits.join());
+  t.check('no page errors, and nothing fetched from Jolpica', p.errors.length === 0 && p.apiHits.length === 0, p.errors.join('; ') + p.apiHits.join());
   t.check('the Pages menu names the page', await h.text(p, '#siteNav .nav-current') === 'Eras');
   t.check('status says how many seasons and that the last is partial', /11 seasons · 1966–2026 \(2026 so far\)/.test(await h.text(p, '#erasStatus')), await h.text(p, '#erasStatus'));
   const state = () => p.evaluate(() => ({

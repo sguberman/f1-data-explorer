@@ -1,4 +1,4 @@
-// Shared test plumbing (issue #53). Pages are served from ../site at http://site.test/, f1api.dev is answered
+// Shared test plumbing (issue #53). Pages are served from ../site at http://site.test/, Jolpica is answered
 // by the fixture, and Chart.js comes from node_modules — so tests run offline and deterministically.
 const { chromium } = require('playwright');
 const fs = require('fs'), path = require('path');
@@ -15,13 +15,13 @@ async function launch(){ browser = await chromium.launch(); }
 async function close(){ if(browser) await browser.close(); }
 
 // Opens a page in a fresh context. Options:
-//   theme 'light'|'dark', width (px), fail(url) -> true to answer that f1api.dev request with HTTP 500,
-//   delay (ms) before each f1api.dev response.
+//   theme 'light'|'dark', width (px), fail(url) -> true to answer that Jolpica request with HTTP 500,
+//   delay (ms) before each Jolpica response.
 //   now (ms or date string): fixes the page's clock (Date) at that moment (#89); timezone (IANA name) and
 //   locale set the browser's time zone and locale.
 //   snapshots: {year: object} served as site/data/{year}.json (#13). The real season files in site/data/ are
 //   never served, so tests always use the fake season; without this option every season file is a 404 and
-//   pages load live from the (fake) f1api.dev, as before.
+//   pages load live from the (fake) Jolpica, as before.
 //   eras: an object served as site/data/eras.json (#135); without it that file is a 404.
 //   grids: {year: object|null} served as site/data/grid/{year}.json (#167); null = a 404 (no qualifying data); a year not
 //     listed gets the real file in site/data/grid/. page.gridHits lists the requests for it.
@@ -29,7 +29,7 @@ async function close(){ if(browser) await browser.close(); }
 //   pace: {list:{year: file}, sessions:{key: file}} served as site/data/pace/… (#186; a saved copy of a session, tools/pace-snapshot.mjs); anything else there is a 404. page.paceHits lists the requests.
 //   spacing: ms the Weekend Pace page waits between OpenF1 requests (0 here, its real value is 350).
 //   openf1: {fail(url), live: true|fn(url) (OpenF1 closed for a live session: 401), rate: {left: n} (the first n get a 429), empty:[session keys], answer(url, options) (replaces the fixture)} answers api.openf1.org from lib/openf1-fixture.js (#186); left out = the request is blocked. page.openf1Hits lists the requests.
-// The returned page has .errors (uncaught page errors), .apiHits (f1api.dev requests made) and .done().
+// The returned page has .errors (uncaught page errors), .apiHits (Jolpica requests made) and .done().
 async function openPage(name, {theme='light', width=1000, fail=()=>false, delay=0, snapshots={}, grids={}, tracks=undefined, openf1=null, pace={}, spacing=0, eras=null, now=null, timezone, locale}={}){
   const ctx = await browser.newContext({ viewport:{width, height:1400}, ...(timezone ? {timezoneId:timezone} : {}), ...(locale ? {locale} : {}) });
   if(now !== null) await ctx.clock.setFixedTime(now);
@@ -38,7 +38,7 @@ async function openPage(name, {theme='light', width=1000, fail=()=>false, delay=
   const apiHits = [], snapshotHits = [], gridHits = [], trackHits = [], openf1Hits = [], openf1Times = [], paceHits = [];
   await ctx.route('**/*', async route => {
     const url = route.request().url();
-    if(url.startsWith('https://f1api.dev/')){
+    if(url.startsWith('https://api.jolpi.ca/')){
       apiHits.push(url);
       if(delay) await new Promise(r => setTimeout(r, delay));
       const headers = {'access-control-allow-origin':'*'};

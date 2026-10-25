@@ -1,33 +1,26 @@
-/* F1Data — shared fetch/cache/normalize layer for f1api.dev (https://f1api.dev/docs)
+/* F1Data — shared fetch/cache/normalize layer for Jolpica (https://api.jolpi.ca/ergast/f1, the Ergast API's successor)
    Design notes:
    - Every completed round is cached permanently in localStorage (results never change once a season moves on).
    - The single most-recently-seen round is cached with a short TTL instead, since post-race penalties can
      still revise points for a day or two — we don't want a stale wrong classification stuck forever.
    - Rounds are discovered by walking round=1,2,3... until the API returns an empty result set, rather than
-     depending on a separate calendar endpoint, so this keeps working even if that endpoint's shape differs
-     from what's documented.
-   - Sprint results are fetched from the separate /sprint/race endpoint — no guessing at race/sprint splits.
-   - Results carry only what f1api.dev gives: a classified `position` (null when not classified, "NC") and
-     points. Retirement causes aren't tracked (#46): f1api.dev gives none, and a retired driver who was
-     still classified simply has a position like anyone else. */
+     depending on the calendar endpoint.
+   - Race results come from /{year}/{round}/results.json and sprint results from /{year}/{round}/sprint.json (a round with
+     no sprint, or not run yet, answers 200 with no races).
+   - Results carry only what Jolpica gives: a classified `position` (null when not classified: its positionText is a
+     letter such as R, D or W) and points. Retirement causes aren't tracked (#46): a retired driver who was still
+     classified simply has a position like anyone else. */
 const F1Data = (() => {
-  const API = 'https://f1api.dev/api';
-  const CACHE_NS = 'f1cache:v2:'; // v2 (#18): results now keep driver number/nationality, team nationality and circuit country
-  try{ // drop the old v1 entries, which lack those fields
-    for(let i=localStorage.length-1;i>=0;i--){ const k=localStorage.key(i); if(k && k.startsWith('f1cache:v1:')) localStorage.removeItem(k); }
+  const API = 'https://api.jolpi.ca/ergast/f1';
+  const CACHE_NS = 'f1cache:v3:'; // v3 (#199): results now come from Jolpica (different team names and driver numbers than f1api.dev's)
+  try{ // drop the old entries
+    for(let i=localStorage.length-1;i>=0;i--){ const k=localStorage.key(i); if(k && /^f1cache:v[12]:/.test(k)) localStorage.removeItem(k); }
   }catch(e){ /* storage unavailable */ }
   const FRESH_ROUND_TTL_MS = 60 * 60 * 1000; // 1 hour — only applied to the latest round seen in a load
   const MAX_ROUNDS = 26;
   const CHECK_TTL_MS = 24 * 60 * 60 * 1000; // #60: how long a check for new rounds is reused, site-wide
 
-  // Hand corrections for f1api.dev's calendar sprint flag, for rounds where it's missing or wrong
-  // (seen in practice: an upcoming round on a live season whose schedule.sprintRace.date hadn't been
-  // populated yet). Keyed "year:round" -> true/false.
-  const SPRINT_OVERRIDES = {
-    '2026:17': true // Singapore — f1api.dev's calendar had no sprintRace.date as of Oct 2026
-  };
-
-  // Each entry is {v: value, exp: expiry ms or null, t: when it was fetched from f1api.dev}. `t` (issue #49)
+  // Each entry is {v: value, exp: expiry ms or null, t: when it was fetched}. `t` (issue #49)
   // is missing on entries cached before it existed — those read as "fetch time unknown".
   function cacheGetEntry(key){
     try{
@@ -48,7 +41,7 @@ const F1Data = (() => {
     try{ localStorage.setItem(CACHE_NS+key, JSON.stringify({v:value, exp: ttlMs?Date.now()+ttlMs:null, t})); }
     catch(e){ /* storage full or unavailable — fail silently, just refetches next time */ }
   }
-  // issue #23: drop every cached f1api.dev response (all seasons). Leaves other localStorage keys — the
+  // issue #23: drop every cached Jolpica response (all seasons). Leaves other localStorage keys — the
   // theme and the selected season — alone, since they don't start with CACHE_NS.
   function clearCache(){
     try{
@@ -89,23 +82,22 @@ const F1Data = (() => {
   // JSON) as distinct from a confirmed empty response — callers must NOT permanently cache a failure,
   // since that would silently and permanently lock in "no sprint" for a round that may have had one.
   async function fetchSession(season, round, kind){
-    const path = kind==='sprint' ? `${season}/${round}/sprint/race` : `${season}/${round}/race`;
+    const path = kind==='sprint' ? `${season}/${round}/sprint/race` : `${season}/${round}/race`; // cache key
     const cached = cacheGetEntry(path);
     if(cached !== undefined) return { ...cached.v, failed:false, _fresh:false, _key:path, _t:cached.t };
     let race = null, failed = false;
     try{
-      const data = await fetchJSON(`${API}/${path}`);
-      race = data && data.races ? data.races : null;
+      const data = await fetchJSON(`${API}/${season}/${round}/${kind==='sprint' ? 'sprint' : 'results'}.json?limit=100`);
+      race = data && data.MRData && data.MRData.RaceTable && data.MRData.RaceTable.Races ? data.MRData.RaceTable.Races[0] : null;
     }catch(e){
       race = null;
-      // A 404 is a confirmed "not found" (e.g. no sprint this round), not a fetch failure — leave
-      // `failed` false so the caller caches this as a real negative result instead of refusing to
-      // cache it and re-checking (and re-404ing) on every single future load.
+      // A 404 is a confirmed "not found", not a fetch failure — leave `failed` false so the caller caches
+      // this as a real negative result instead of refusing to cache it and re-checking on every future load.
       if(!(e && e.notFound)) failed = true;
     }
-    // f1api.dev uses a DIFFERENT key for sprint results than race results — "sprintRaceResults" vs
-    // "results". Using the wrong key silently finds nothing, every time, for every sprint round.
-    const resultsArr = race ? (kind==='sprint' ? race.sprintRaceResults : race.results) : null;
+    // Race results sit under `Results`, sprint results under `SprintResults`. A round with no sprint, or not run yet,
+    // has no race in the answer at all.
+    const resultsArr = race ? (kind==='sprint' ? race.SprintResults : race.Results) : null;
     const hasResults = Array.isArray(resultsArr) && resultsArr.length>0;
     const norm = hasResults
       ? { ok:true, raceName: race.raceName, country: circuitCountry(race), results: normalizeResults(resultsArr, kind) }
@@ -113,34 +105,34 @@ const F1Data = (() => {
     return { ...norm, failed, _fresh:true, _key:path, _t:Date.now() };
   }
 
-  // #18: the circuit's country, for the round's flag. f1api.dev sends `circuit` as an object or a one-item array.
+  // #18: the circuit's country, for the round's flag.
   function circuitCountry(race){
-    const c = Array.isArray(race.circuit) ? race.circuit[0] : race.circuit;
-    return (c && c.country) || null;
+    const c = race && race.Circuit, country = c && c.Location && c.Location.country;
+    return country || null;
   }
 
-  // #85: the circuit's city (f1api.dev's circuit.city; `locality` as Ergast/Jolpica name it), for the homepage's next race.
+  // #85: the circuit's city (Jolpica's Location.locality), for the homepage's next race.
   function circuitCity(race){
-    const c = Array.isArray(race.circuit) ? race.circuit[0] : race.circuit;
-    const city = c && (c.city || c.locality || (c.location && c.location.locality));
+    const c = race && race.Circuit, city = c && c.Location && c.Location.locality;
     return typeof city === 'string' && city.trim() ? city.trim() : null;
   }
 
   function normalizeResults(resultsArr, kind){
     if(!resultsArr) return [];
     return resultsArr.map(r=>{
+      const d = r.Driver || {}, c = r.Constructor || {};
       return {
-        driverId: r.driver.driverId,
-        code: r.driver.shortName,
-        name: r.driver.name+' '+r.driver.surname,
-        teamId: r.team.teamId,
-        teamName: r.team.teamName,
-        number: Number.isFinite(parseInt(r.driver.number,10)) ? parseInt(r.driver.number,10) : null, // #18
-        nationality: r.driver.nationality || null,
-        teamNationality: r.team.nationality || r.team.teamNationality || null,
-        // a classified finishing position, or null when not classified (f1api.dev sends null, "-" or "NC")
-        position: Number.isFinite(parseInt(r.position,10)) && parseInt(r.position,10)>=1 ? parseInt(r.position,10) : null,
-        points: r.points||0,
+        driverId: d.driverId,
+        code: d.code || String(d.familyName || '').slice(0,3).toUpperCase(),
+        name: d.givenName+' '+d.familyName,
+        teamId: c.constructorId,
+        teamName: c.name,
+        number: Number.isFinite(parseInt(d.permanentNumber,10)) ? parseInt(d.permanentNumber,10) : null, // #18
+        nationality: d.nationality || null,
+        teamNationality: c.nationality || null,
+        // a classified finishing position, or null when not classified (positionText is a letter: R, D, W, N…)
+        position: /^\d+$/.test(String(r.positionText)) && parseInt(r.positionText,10)>=1 ? parseInt(r.positionText,10) : null,
+        points: Number(r.points)||0,
         session: kind
       };
     });
@@ -151,13 +143,13 @@ const F1Data = (() => {
   // - rounds: array of {round, raceName, raceResults:[...], sprintResults:[...]|null}
   // - failed (issue #48): true if any fetch failed, so some results may be missing — the load stops at
   //   the first failed round, and a failed sprint fetch reads as "no sprint" for that round.
-  // - fetchedAt (issue #49): latest time any data used by this load was fetched from f1api.dev
+  // - fetchedAt (issue #49): latest time any data used by this load was fetched
   //   (ms timestamp), or null if unknown.
   const BATCH_SIZE = 5;
 
   // #13: each season is also published as one file, site/data/{year}.json, written by a scheduled GitHub
   // workflow (tools/snapshot.mjs): {v, year, generatedAt, complete, calendar, rounds}. One request loads a
-  // whole season; a complete season then needs nothing from f1api.dev, and an in-progress one only asks it
+  // whole season; a complete season then needs nothing from Jolpica, and an in-progress one only asks it
   // about rounds after the snapshot. If the file is missing or broken, the season loads live as before.
   const snapshots = {}; // year -> snapshot loaded this page view (its calendar is reused by getCalendar)
   const snapshotLoads = {}; // year -> the file's request while it's in flight, so two callers at once share it (#85)
@@ -207,7 +199,7 @@ const F1Data = (() => {
 
   // opts: onProgress(round, count); live: true skips the snapshot (the snapshot tool itself uses this);
   // fresh: true asks the browser to re-download the snapshot (Refresh data); onSnapshot(rounds) (#111): called with
-  // a copy of the season file's rounds as soon as the file is in, before f1api.dev is asked about newer rounds.
+  // a copy of the season file's rounds as soon as the file is in, before Jolpica is asked about newer rounds.
   async function loadSeason(year, opts={}){
     const { onProgress } = opts;
     const rounds = [];
@@ -220,10 +212,10 @@ const F1Data = (() => {
       if(onProgress && rounds.length) onProgress(rounds[rounds.length-1].round, rounds.length);
       if(opts.onSnapshot) try{ opts.onSnapshot(rounds.slice()); }catch(e){}
       if(snap.complete) return { rounds, failed, fetchedAt, fromSnapshot:true };
-      round = rounds.length ? rounds[rounds.length-1].round + 1 : 1; // only newer rounds come from f1api.dev
+      round = rounds.length ? rounds[rounds.length-1].round + 1 : 1; // only newer rounds come from Jolpica
     }
     const firstLive = round;
-    // #60: f1api.dev is asked about rounds newer than the snapshot at most once a day per season, across the
+    // #60: Jolpica is asked about rounds newer than the snapshot at most once a day per season, across the
     // whole site; until then every page and season switch reuses what that check found. Refresh data clears it.
     if(!opts.live){
       const entry = cacheGetEntry(`${year}/checked`), recent = entry && entry.v;
@@ -307,17 +299,33 @@ const F1Data = (() => {
     return { rounds, failed, fetchedAt, fromSnapshot: !!snap };
   }
 
-  // Real season schedule from /api/[year] — every round for the year, including ones not yet run,
+  // Real season schedule from /{year}.json — every round for the year, including ones not yet run,
   // each flagged for whether it has a sprint. This is the authoritative source for "how many rounds
   // and sprints does this season have in total", replacing any static guess. Cached for a day: calendars
   // are effectively static but can occasionally get revised (e.g. a postponed/relocated round).
   // Shape: {totalRounds, sprintRounds, raceNames, raceDates, raceTimes, countries, cities}. #89 added raceDates,
   // raceTimes and countries (round -> 'YYYY-MM-DD' Grand Prix date, round -> 'HH:MM:SSZ' start time in UTC when known,
   // round -> circuit country), for the homepage's next race; #85 added cities (round -> the circuit's city, when
-  // f1api.dev gives one). Season files made before them lack them; callers must cope.
+  // Jolpica gives one). Season files made before them lack them; callers must cope.
+  // The calendar from Jolpica's list of races (also used by tools/snapshot.mjs).
+  function calendarFrom(races){
+    const cal = { totalRounds: races.length, sprintRounds: [], raceNames: {}, raceDates: {}, raceTimes: {}, countries: {}, cities: {} };
+    races.forEach(r=>{
+      const n = +r.round;
+      cal.raceNames[n] = r.raceName;
+      const date = raceDate(r.date), time = date && raceTime(r.time);
+      if(date) cal.raceDates[n] = date;
+      if(time) cal.raceTimes[n] = time;
+      const country = circuitCountry(r);
+      if(country) cal.countries[n] = country;
+      const city = circuitCity(r);
+      if(city) cal.cities[n] = city;
+      if(r.Sprint && r.Sprint.date) cal.sprintRounds.push(n);
+    });
+    return cal;
+  }
   const CALENDAR_TTL_MS = 24*60*60*1000;
-  // f1api.dev's schedule.race: {date:'2026-10-25', time:'20:00:00Z'}; either can be null. Times without a zone
-  // are UTC (as in Ergast/Jolpica).
+  // A race's date ('2026-10-25') and time ('20:00:00Z'); either can be missing. Times without a zone are UTC.
   function raceDate(d){ return typeof d==='string' && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : null; }
   function raceTime(t){
     const m = typeof t==='string' && t.trim().match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?(?:\.\d+)?(Z|[+-]\d{2}:?\d{2})?$/i);
@@ -327,7 +335,7 @@ const F1Data = (() => {
   }
   // opts.dates (#89): the caller needs race dates. A season file made before #89 has none, so then the file's
   // calendar is skipped; with no file loaded yet, the season file is fetched for its calendar (one request the
-  // browser caches, and the pages need the same file) before falling back to f1api.dev.
+  // browser caches, and the pages need the same file) before falling back to Jolpica.
   async function getCalendar(year, opts={}){
     const usable = c => c && c.totalRounds && (!opts.dates || c.raceDates);
     // #13: a snapshot loaded for this season carries the calendar — no request needed
@@ -342,24 +350,9 @@ const F1Data = (() => {
     }
     let totalRounds=0, sprintRounds=[], raceNames={}, raceDates={}, raceTimes={}, countries={}, cities={}, failed=false;
     try{
-      const data = await fetchJSON(`${API}/${year}?limit=30`);
-      const races = (data && data.races) || [];
-      totalRounds = races.length;
-      races.forEach(r=>{
-        raceNames[r.round] = r.raceName;
-        const race = (r.schedule && r.schedule.race) || {};
-        const date = raceDate(race.date), time = date && raceTime(race.time);
-        if(date) raceDates[r.round] = date;
-        if(time) raceTimes[r.round] = time;
-        const country = circuitCountry(r);
-        if(country) countries[r.round] = country;
-        const city = circuitCity(r);
-        if(city) cities[r.round] = city;
-        const apiSaysSprint = !!(r.schedule && r.schedule.sprintRace && r.schedule.sprintRace.date);
-        const overrideKey = `${year}:${r.round}`;
-        const isSprint = overrideKey in SPRINT_OVERRIDES ? SPRINT_OVERRIDES[overrideKey] : apiSaysSprint;
-        if(isSprint) sprintRounds.push(r.round);
-      });
+      const data = await fetchJSON(`${API}/${year}.json?limit=30`);
+      const cal = calendarFrom((data && data.MRData && data.MRData.RaceTable && data.MRData.RaceTable.Races) || []);
+      ({ totalRounds, sprintRounds, raceNames, raceDates, raceTimes, countries, cities } = cal);
     }catch(e){ failed = true; /* leave zeros — callers fall back to their own default when totalRounds is 0 */ }
     const result = { totalRounds, sprintRounds, raceNames, raceDates, raceTimes, countries, cities };
     if(!failed) cacheSet(key, result, CALENDAR_TTL_MS); // a failed fetch isn't kept (#22), so the next load retries
@@ -390,5 +383,5 @@ const F1Data = (() => {
       .sort((a,b)=>b.total-a.total).slice(0,n).map(t=>t.teamId);
   }
 
-  return { loadSeason, loadGrid, loadTracks, cumulative, topTeams, getCalendar, clearCache };
+  return { loadSeason, loadGrid, loadTracks, cumulative, topTeams, getCalendar, clearCache, ergast: { normalizeResults, circuitCountry, calendarFrom } };
 })();

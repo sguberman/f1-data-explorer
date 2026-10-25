@@ -1,5 +1,5 @@
 # issue #53: run the browser tests in tests/ on every pull request (and on pushes to main).
-# They serve site/ locally with fake f1api.dev data, so they never touch the live site or the real API.
+# They serve site/ locally with fake Jolpica data, so they never touch the live site or the real API.
 name: Tests
 
 on:

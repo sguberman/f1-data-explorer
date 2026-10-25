@@ -50,7 +50,7 @@ module.exports = async (t, h) => {
   t.check('each round carries its circuit id', g.rounds[0].circuitId === 'c1' && g.rounds[1].circuitId === 'c2');
 
   // ---- The pages, with a fake grid file for the fixture season (12 rounds loaded of 23) ----
-  const order = api('https://f1api.dev/api/2026/12/race').body.races.results.map(r => r.driver.driverId); // finishing order of round 12
+  const order = api('https://api.jolpi.ca/ergast/f1/2026/12/results.json').body.MRData.RaceTable.Races[0].Results.map(r => r.Driver.driverId); // finishing order of round 12
   const rev = order.slice().reverse();
   const qual = ids => ids.map((id, i) => ({ driverId: id, code: null, teamId: null, position: i + 1, q1: null, q2: null, q3: null }));
   const rounds = []; for (let r = 1; r <= 12; r++) rounds.push({ round: r, raceName: 'R' + r, circuitId: 'c' + r, qualifying: qual(r % 2 ? rev : order), grid: {} });

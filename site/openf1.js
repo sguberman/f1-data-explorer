@@ -1,5 +1,5 @@
 // F1OpenF1 (#186): practice, qualifying and sprint lap data from OpenF1 (https://openf1.org), for the Weekend Pace page.
-// f1api.dev has no session laps, sectors, speeds or tyres, so this is the one page that talks to another API. It is
+// Jolpica has no session laps, sectors, speeds or tyres, so this is the one page that talks to another API. It is
 // called from the browser (OpenF1 allows it) and needs no key, except that OpenF1 closes its API to everyone without an
 // account (even for past sessions) while an F1 session is live. So a finished session is read from a saved copy
 // (site/data/pace/, written by tools/pace-snapshot.mjs after each session) before the API is asked, the API is asked no faster

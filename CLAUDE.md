@@ -1,7 +1,7 @@
 # CLAUDE.md
 
 Static Formula 1 statistics site (2026 season) at <https://f1.gubes.net/>, hosted on GitHub Pages, with live
-data from f1api.dev.
+data from Jolpica (api.jolpi.ca).
 
 **Read `docs/PROJECT_CONTEXT.md` first.** It's the full handoff: architecture, data layer, design
 requirements, decisions, known issues, tests, and the owner's standing rules. Then the open
@@ -14,10 +14,10 @@ requirements, decisions, known issues, tests, and the owner's standing rules. Th
 - `site/`: the website. It's the only folder deployed (`.github/workflows/static.yml`, on pushes to
   `main` that touch `site/`). Vanilla HTML/CSS/JS, no build step; Chart.js from cdnjs.
 - `site/data/{year}.json`: season files written by `.github/workflows/snapshot.yml` (`tools/snapshot.mjs`); pages load
-  a season from its file and ask f1api.dev only for newer rounds (#13). Don't edit them by hand.
+  a season from its file and ask Jolpica only for newer rounds (#13). Don't edit them by hand.
 - Previews: Cloudflare Pages builds `site/` for every PR branch (not `main`) and posts the link on the PR.
   Previews need a login (owner only).
-- `tests/`: browser tests (headless Chromium + fake f1api.dev data). `cd tests && npm ci && npm test`.
+- `tests/`: browser tests (headless Chromium + fake Jolpica data). `cd tests && npm ci && npm test`.
   Locally run only the affected files (`node run.js <name>`); GitHub runs the full suite on every PR push (#54).
   CI runs them on every pull request (`.github/workflows/tests.yml`).
 - `docs/`: project docs (context, issue lists, brainstorm). Not deployed.

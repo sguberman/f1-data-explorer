@@ -149,12 +149,12 @@ a.card:hover,a.card:focus-visible{border-color:var(--line-strong);box-shadow:0 4
 <script src="data.js"></script>
 <script>
 /* #89: the next Grand Prix — name, flag, location (#85), date and time in the visitor's time zone, a sprint tag and a
-   countdown — from the newest season's calendar (F1Data.getCalendar: the season file or f1api.dev, cached for a day);
+   countdown — from the newest season's calendar (F1Data.getCalendar: the season file or Jolpica, cached for a day);
    if it fails or has no dates, nothing is shown.
    #85: the season itself is loaded too (F1Data.loadSeason: the same season file plus the site's once-a-day check for
    newer rounds), only to say who can clinch a title at that race (F1Common.titleRace, as on the championship pages).
    The strip doesn't wait for it, and shows no clinch line if it fails. #111: the line is drawn from the season file
-   as soon as it's in (onSnapshot), without waiting for the check of f1api.dev, and drawn again when the check is done.
+   as soon as it's in (onSnapshot), without waiting for the check of Jolpica, and drawn again when the check is done.
    Both loads happen on page load only; nothing on the homepage fetches on interaction. */
 (() => {
   const DAY = 864e5, RACE_HOURS = 4; // a race counts as "under way" for 4 hours from its start
@@ -237,7 +237,7 @@ a.card:hover,a.card:focus-visible{border-color:var(--line-strong);box-shadow:0 4
 
   const el = document.getElementById('nextRace'), year = F1Common.YEARS[0];
   const calendar = F1Data.getCalendar(year, {dates:true});
-  // #111: the season file's rounds arrive before the daily check of f1api.dev (which can take seconds); the clinch line
+  // #111: the season file's rounds arrive before the daily check of Jolpica (which can take seconds); the clinch line
   // is drawn from them straight away, then again from the checked season (a newer result can change or remove it).
   let fileRounds = null;
   const fromFile = new Promise(res => { fileRounds = res; });

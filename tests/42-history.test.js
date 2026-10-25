@@ -33,7 +33,7 @@ module.exports = async (t, h) => {
   };
   const noWait = async () => {};
   const snap = await buildHistory(1967, jolpica(), { now: 5, wait: noWait });
-  t.check('years: 1950 to 2020, the season files before f1api.dev\'s', FIRST_YEAR === 1950 && LAST_YEAR === 2020);
+  t.check('years: 1950 to 2020, the season files before Jolpica\'s', FIRST_YEAR === 1950 && LAST_YEAR === 2020);
   t.check('a season file in the pages\' shape: v, year, complete, calendar, rounds, one race session per round',
     snap.v === 1 && snap.year === 1967 && snap.generatedAt === 5 && snap.complete === true && snap.rounds.length === 2
     && snap.rounds.every(r => r.sprintResults === null && r.raceResults.every(x => x.session === 'race')), JSON.stringify(snap).slice(0, 300));

@@ -2,7 +2,7 @@
 // (pit lane at the back) as the Grand Prix order, shown only when the grid file has that round, with no fetching.
 const { api } = require('./lib/fixture');
 module.exports = async (t, h) => {
-  const order = api('https://f1api.dev/api/2026/12/race').body.races.results.map(r => r.driverId || r.driver.driverId);
+  const order = api('https://api.jolpi.ca/ergast/f1/2026/12/results.json').body.MRData.RaceTable.Races[0].Results.map(r => r.Driver.driverId);
   const rev = order.slice().reverse();
   const qual = ids => ids.map((id, i) => ({ driverId: id, code: null, teamId: null, position: i + 1, q1: null, q2: null, q3: null }));
   const rounds = []; for (let r = 1; r <= 12; r++) rounds.push({ round: r, raceName: 'R' + r, circuitId: 'c' + r, qualifying: qual(order), grid: {} });

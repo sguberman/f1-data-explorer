@@ -10,21 +10,21 @@ module.exports = async (t, h) => {
   }
 
   const p = await h.openPage('drivers'); await h.loaded(p);
-  // #23: Refresh clears every f1cache:v2: entry, refetches, and keeps the theme + selected season.
+  // #23: Refresh clears every f1cache:v3: entry, refetches, and keeps the theme + selected season.
   p.apiHits.length = 0;
   await p.click('.f1c-refresh'); await h.loaded(p);
   const keys = await p.evaluate(() => Object.keys(localStorage));
-  t.check('Refresh data refetches from f1api.dev', p.apiHits.length > 20, `${p.apiHits.length} requests`);
-  t.check('Refresh data keeps theme and season', keys.includes('f1-theme') && keys.includes('f1cache:selectedSeason'), keys.filter(k => !k.startsWith('f1cache:v2:')).join(','));
+  t.check('Refresh data refetches from Jolpica', p.apiHits.length > 20, `${p.apiHits.length} requests`);
+  t.check('Refresh data keeps theme and season', keys.includes('f1-theme') && keys.includes('f1cache:selectedSeason'), keys.filter(k => !k.startsWith('f1cache:v3:')).join(','));
   t.check('cache entries record their fetch time', await p.evaluate(() =>
-    Object.keys(localStorage).filter(k => k.startsWith('f1cache:v2:2026/')).every(k => JSON.parse(localStorage[k]).t > 0)));
+    Object.keys(localStorage).filter(k => k.startsWith('f1cache:v3:2026/')).every(k => JSON.parse(localStorage[k]).t > 0)));
   // House rule: moving the slider never fetches.
   p.apiHits.length = 0;
   for(const r of [3, 9, 12]) await h.setRound(p, r);
   await p.waitForTimeout(200);
   t.check('round slider makes no network requests', p.apiHits.length === 0, `${p.apiHits.length}`);
   // #49: the age comes from the cache, and isn't reset to "just now" by re-stamping the latest round's TTL.
-  await p.evaluate(() => Object.keys(localStorage).filter(k => k.startsWith('f1cache:v2:')).forEach(k => {
+  await p.evaluate(() => Object.keys(localStorage).filter(k => k.startsWith('f1cache:v3:')).forEach(k => {
     const e = JSON.parse(localStorage[k]); e.t -= 3*3600e3; localStorage[k] = JSON.stringify(e); }));
   await p.reload(); await h.loaded(p);
   t.check('age read from cache ("3 hrs ago")', /updated 3 hrs ago/.test(await h.text(p, '.f1c-statusline')), await h.text(p, '.f1c-statusline'));
@@ -33,7 +33,7 @@ module.exports = async (t, h) => {
 
   // #48: partial failure (round 8 down) -> 7 rounds + message; Retry recovers once the API is back.
   let down = true;
-  const q = await h.openPage('drivers', {fail: u => down && /\/2026\/8\/race$/.test(u)}); await h.loaded(q);
+  const q = await h.openPage('drivers', {fail: u => down && /\/2026\/8\/results\.json/.test(u)}); await h.loaded(q);
   t.check('partial failure: message', /some results may be missing \(showing rounds 1–7\)/.test(await h.text(q, '.f1c-error')), await h.text(q, '.f1c-error'));
   t.check('partial failure: 7 rounds loaded', /7 rounds loaded/.test(await h.text(q, '.f1c-statusline')));
   down = false;
@@ -44,8 +44,8 @@ module.exports = async (t, h) => {
 
   // #48: total failure on every page.
   for(const name of ['drivers','constructors','position','simulator']){
-    const r = await h.openPage(name, {fail: u => /\/race$/.test(u)}); await h.loaded(r, 15000);
-    t.check(`${name}: total failure message`, /Couldn't load the 2026 season from f1api.dev/.test(await h.text(r, '.f1c-error')), await h.text(r, '.f1c-error'));
+    const r = await h.openPage(name, {fail: u => /\/results\.json/.test(u)}); await h.loaded(r, 15000);
+    t.check(`${name}: total failure message`, /Couldn't load the 2026 season from Jolpica/.test(await h.text(r, '.f1c-error')), await h.text(r, '.f1c-error'));
     t.check(`${name}: total failure, no page errors`, r.errors.length === 0, r.errors.join('; '));
     await r.done();
   }
