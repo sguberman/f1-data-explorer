@@ -114,6 +114,7 @@ tr.champ td{background:var(--inset);}
     <button class="reset" id="useGrid" type="button" hidden title="The Grand Prix starting grid (pit-lane starters at the back)">Starting grid</button>
     <button class="reset" id="useClinch" type="button" hidden>🏆 Title clinch</button>
     <button class="reset" id="useSim" type="button" title="Simulate this race 30,000 times and use the most likely finishing order">🎲 Simulated</button>
+    <button class="reset" id="useSimOrder" type="button" title="Simulate the race(s) 30,000 times with the order as it is now as the starting grid (drivers below the Not classified line start from the pit lane)">🎲 Simulate from this order</button>
     <span class="wiForm"><span class="presetLbl" id="winLbl">Form from</span>
       <span class="stepper" role="group" aria-labelledby="winLbl">
         <button type="button" id="winLess" aria-label="Use fewer races">−</button>
@@ -144,7 +145,7 @@ tr.champ td{background:var(--inset);}
 // the season already loaded — dragging and the buttons never fetch.
 let PTS_GP=[25,18,15,12,10,8,6,4,2,1]; // the season's scoring (#141: F1Common.scoring), set when a season loads
 const sprintPoints = year => F1Common.scoring(year).sprint;
-let year=null, seasonRounds=[], calendar=null, L=0, T=0, grid=null, tracks=null, simKnown=null, hasNext=false, openQuali=null; // grid: the season's qualifying and starting grid (#167)
+let year=null, seasonRounds=[], calendar=null, L=0, T=0, grid=null, tracks=null, simKnown={}, hasNext=false, openQuali=null, sprintQuali={}; // grid: the season's qualifying and starting grid (#167)
 // orders[session] = [driverId…] with null as the "not classified" divider: everyone after it gets no position.
 let orders={}, sessions=[], roster={};
 // #85: clinch = the "🏆 Title clinch" preset for round T ({orders, kinds, who, what}), or null when no title can be won
@@ -216,25 +217,35 @@ function setRound(round){
  resetOrders(startMode==='clinch' ? 'clinch' : actual ? 'actual' : 'standings');
  defaultOrders = JSON.parse(JSON.stringify(orders)); // #31: the round's starting order isn't put in the URL
 }
-// #191: the next race's qualifying order from the Weekend Pace page's data when the grid file doesn't have it yet: the saved copies
-// (data/pace/…, same site, no OpenF1 request) first, OpenF1 itself only when there is no saved copy of that qualifying session. Only on
-// load / Refresh data, never while interacting; any failure just leaves the preset out.
+// #191/#195: qualifying orders from the Weekend Pace page's data where the grid file has none: the next race's Grand Prix qualifying (for the
+// Qualifying order preset and 🎲 Simulated) and the Sprint Qualifying of each sprint round (sprintQuali[round], for the sprint list's 🎲 Simulated;
+// the grid file has no sprint data). The saved copies (data/pace/…, same site, no OpenF1 request) first; OpenF1 itself only for the next round
+// and only when it has no saved copy. Only on load / Refresh data, never while interacting; any failure just leaves that order out.
 async function loadOpenQuali(fresh){
- openQuali=null;
- const next=seasonRounds.length+1, g=grid && grid.rounds.find(x=>x.round===next);
- if(!hasNext || (g && g.qualifying && g.qualifying.length)) return;
- const O=F1OpenF1, over=w=>w && w.sessions.find(x=>x.name==='Qualifying' && Date.parse(x.end)<=Date.now());
+ openQuali=null; sprintQuali={};
+ const O=F1OpenF1, next=seasonRounds.length+1, g=grid && grid.rounds.find(x=>x.round===next);
+ const needGp = hasNext && !(g && g.qualifying && g.qualifying.length);
+ const sprints=((calendar && calendar.sprintRounds) || []).filter(r=>r<=seasonRounds.length+(hasNext ? 1 : 0));
+ if(!needGp && !sprints.length) return;
  try{
-  const cal=await F1Data.getCalendar(year, {dates:true});
-  let rows=null;
-  const saved=fresh ? null : await O.savedWeekends(year), sq=saved && over(O.weekendForRound(saved, cal, next));
-  if(sq) rows=await O.savedClassification(sq);
-  if(!rows){
-   const {list}=await O.sessions(year, {fresh}), s=over(O.weekendForRound(list, cal, next));
-   rows=s ? await O.classification(s, {fresh}) : [];
-  }
-  if(rows.length) openQuali={round:next, rows};
- }catch(e){ /* no qualifying order: the preset stays out */ }
+  const cal=await F1Data.getCalendar(year, {dates:true}), saved=await O.savedWeekends(year);
+  let list=null;
+  const over=(w, names)=>w && w.sessions.find(x=>names.includes(x.name) && Date.parse(x.end)<=Date.now());
+  const find=async (round, names)=>{
+   try{
+    const isNext=round===next, sq=saved && over(O.weekendForRound(saved, cal, round), names);
+    let rows = sq && (!fresh || !isNext) ? await O.savedClassification(sq) : null;
+    if(!rows && isNext){
+     if(!list) list=(await O.sessions(year, {fresh})).list;
+     const s=over(O.weekendForRound(list, cal, round), names);
+     rows = s ? await O.classification(s, {fresh}) : null;
+    }
+    return rows && rows.length ? rows : null;
+   }catch(e){ return null; }
+  };
+  if(needGp){ const rows=await find(next, ['Qualifying']); if(rows) openQuali={round:next, rows}; }
+  for(const r of sprints){ const rows=await find(r, O.RESULT_KINDS.sprintquali); if(rows) sprintQuali[r]=rows; }
+ }catch(e){ /* no qualifying order: the presets stay as they were */ }
 }
 const raceName = r => (calendar && calendar.raceNames && calendar.raceNames[r]) || ('Round '+r);
 function actualRound(){ return seasonRounds.find(r=>r.round===T); }
@@ -266,19 +277,20 @@ function gridOrder(mode){
  return [...ids, ...standingIds().filter(id=>!ids.includes(id)), null];
 }
 function resetOrders(mode){
+ const start = mode==='simorder' ? JSON.parse(JSON.stringify(orders)) : null; // #195: the order as it is now, before it is replaced
  const act=actualRound();
  const all=standingIds();
- simNote=''; simKnown=null;
+ simNote=''; simKnown={};
  orders={};
  sessions.forEach(s=>{
-   if(mode==='sim') orders[s]=simulatedOrder(s, all);
+   if(mode==='sim' || mode==='simorder') orders[s]=simulatedOrder(s, all, start && start[s]);
    else if(mode==='clinch' && clinch) orders[s]=clinch.orders[s].slice();
    else if((mode==='quali' || mode==='grid') && s==='gp' && gridOrder(mode)) orders[s]=gridOrder(mode);
    else if(mode==='actual' && act){
      orders[s]=orderFrom(s==='gp' ? act.raceResults : act.sprintResults);
    }else orders[s]=[...all, null];
  });
- if(mode==='sim') simNote=`Simulated ${SIM_RUNS.toLocaleString('en-US')} times from each driver’s ${windowShown()===Infinity?'whole season':'last '+windowShown()+' races'} (and a little from their teammate’s): drivers are ordered by average points, and anyone likely to retire is below the “Not classified” line. ${simKnown ? `Round ${T} is simulated from its ${simKnown==='grid' ? 'starting grid' : 'qualifying result'}. ` : ''}`;
+ if(mode==='sim' || mode==='simorder') simNote=`Simulated ${SIM_RUNS.toLocaleString('en-US')} times from each driver’s ${windowShown()===Infinity?'whole season':'last '+windowShown()+' races'} (and a little from their teammate’s): drivers are ordered by average points, and anyone likely to retire is below the “Not classified” line. ${simKnown.gp ? `Round ${T} is simulated from ${simKnown.gp==='order' ? 'your starting order' : 'its '+(simKnown.gp==='grid' ? 'starting grid' : 'qualifying result')}. ` : ''}${simKnown.sprint ? `The sprint is simulated from ${simKnown.sprint==='order' ? 'your starting order' : 'its sprint qualifying result'}. ` : ''}`;
  render();
 }
 
@@ -299,7 +311,7 @@ function stepWindow(dir){
 }
 // One session's order from SIM_RUNS simulated races: average points, then median finish, then the standings.
 // Drivers who didn't race in round L stay out of the draw and go below the not-classified line, as in the simulator.
-function simulatedOrder(session, standing){
+function simulatedOrder(session, standing, startOrder){
  const gp = session==='gp', pts = gp ? PTS_GP : sprintPoints(year);
  const res={}, raced=new Set(), team={};
  seasonRounds.filter(r=>r.round<=L).forEach(r=>(r.raceResults||[]).forEach(x=>{
@@ -311,7 +323,25 @@ function simulatedOrder(session, standing){
  // #167: this season's qualifying so far, and (Grand Prix only) round T's starting grid or qualifying result when known
  const gr=g=>grid && grid.rounds.find(x=>x.round===g), tr=gr(T), n=run.length;
  const form=id=>grid ? grid.rounds.filter(g=>g.round<=L).flatMap(g=>g.qualifying.filter(q=>q.driverId===id).map(q=>q.position)) : [];
- const known=id=>{ if(!gp || !tr) return null; if(id in tr.grid) return tr.grid[id]===0 ? n : tr.grid[id]; const q=tr.qualifying.find(x=>x.driverId===id); return q ? q.position : null; };
+ // #195: the known starting position of each driver, from (in this order) the user's own order (🎲 Simulate from this order; below the
+ // Not classified line = pit lane = last), the starting grid, the qualifying result, the saved / OpenF1 Weekend Pace qualifying (Sprint
+ // Qualifying for the sprint), else none
+ const byCode={}; Object.keys(roster).forEach(id=>{ if(roster[id].code) byCode[roster[id].code]=id; });
+ const fromRows=rows=>{ const m={}; rows.forEach(r=>{ if(byCode[r.code]) m[byCode[r.code]]=r.position; }); return m; };
+ let src=null, kpos=null;
+ if(startOrder){
+   const cut=startOrder.indexOf(null), above=(cut<0 ? startOrder : startOrder.slice(0, cut)).filter(id=>run.includes(id)), below=(cut<0 ? [] : startOrder.slice(cut+1)).filter(id=>run.includes(id));
+   kpos={}; above.forEach((id, i)=>{ kpos[id]=i+1; }); below.forEach(id=>{ kpos[id]=n; }); src='order';
+ }else if(gp){
+   if(tr && Object.keys(tr.grid).length) src='grid'; else if(tr && tr.qualifying.length) src='qualifying';
+   else if(openQuali && openQuali.round===T){ kpos=fromRows(openQuali.rows); src='qualifying'; }
+ }else if(sprintQuali[T]){ kpos=fromRows(sprintQuali[T]); src='sprint'; }
+ const known=id=>{
+   if(kpos) return id in kpos ? kpos[id] : null;
+   if(src!=='grid' && src!=='qualifying') return null;
+   if(id in tr.grid) return tr.grid[id]===0 ? n : tr.grid[id];
+   const q=tr.qualifying.find(x=>x.driverId===id); return q ? q.position : null;
+ };
  // #169: track history at round T's circuit, from earlier seasons only (finish minus that season's average)
  const circuit = grid ? ((grid.circuits && grid.circuits[T]) || (tr || {}).circuitId || null) : null;
  const track=id=>{
@@ -320,7 +350,7 @@ function simulatedOrder(session, standing){
    return F1RaceModel.trackPosition(e ? e.filter(x=>x[0]<year).map(x=>x[1]) : [], cur, n);
  };
  const win=windowShown(), drivers=run.map(id=>({results: win===Infinity ? res[id] : res[id].slice(-win), team: team[id], ev: F1RaceModel.evidence(known(id), form(id), track(id))}));
- if(gp) simKnown = run.some(id=>known(id)!=null) ? (Object.keys(tr.grid).length ? 'grid' : 'qualifying') : null;
+ simKnown[session] = src && run.some(id=>known(id)!=null) ? src : null;
  const sims=F1RaceModel.simulate(drivers, {pts, gridRate: starts ? dnfs/starts : 0, runs:SIM_RUNS, rand:Math.random});
  const idx=run.map((id,i)=>i).sort((a,b)=>sims[b].meanPoints-sims[a].meanPoints || sims[a].medianPos-sims[b].medianPos || a-b);
  const inn=idx.filter(i=>sims[i].pClassified>=0.5).map(i=>run[i]), out=idx.filter(i=>sims[i].pClassified<0.5).map(i=>run[i]);
@@ -597,6 +627,7 @@ document.getElementById('useQuali').addEventListener('click', ()=>resetOrders('q
 document.getElementById('useGrid').addEventListener('click', ()=>resetOrders('grid'));
 document.getElementById('useClinch').addEventListener('click', ()=>resetOrders('clinch'));
 document.getElementById('useSim').addEventListener('click', ()=>resetOrders('sim'));
+document.getElementById('useSimOrder').addEventListener('click', ()=>resetOrders('simorder'));
 document.getElementById('winLess').addEventListener('click', ()=>stepWindow(-1));
 document.getElementById('winMore').addEventListener('click', ()=>stepWindow(1));
 

@@ -553,6 +553,8 @@ Live and lap-by-lap running orders were considered and left out (see #48 for the
 Title race (#85, see "Title race on What-If" above): a box above the lists with what each title needs at this round, a live
 line above each table and a 🏆 Champion tag on the champion's row as you drag.
 
+**Known starting positions for the simulating buttons (#195):** "🎲 Simulated" gives each driver a known grid position from, in this order: the grid file's starting grid, its qualifying result, the Weekend Pace qualifying (saved copy `data/pace/…` first, OpenF1 only for the next round and only without a saved copy; read once at load by `loadOpenQuali`), else none. The sprint list uses the saved Sprint Qualifying/Shootout (the grid file has no sprint data) the same way. "🎲 Simulate from this order" instead takes each list as it is now as its starting grid (below the Not classified line = pit lane = last). The note after simulating names the source. What-If's slider edits round N (standings before it) and reaches the next race (#191).
+
 **eras.html (#135, `eras.js` = global `F1Eras`)** — Championship **position** (not points: scoring changed too often) of the picked
 drivers or teams in every season from 1950 to the latest, on one chart in the position trackers' style (#135 O1): each season is a flat
 segment at its position (`HALF` = 0.3 of a season either side of the year, a linear year axis), joined to the next season by an angled
