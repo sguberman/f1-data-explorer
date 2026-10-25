@@ -200,7 +200,7 @@ module.exports = async (t, h) => {
     // The What-If link: only for a next-race clinch; the round only when the slider isn't on the latest round; it asks
     // What-If to start from the title-clinch order (start=clinch).
     const href = await q.$eval('#titleRace .trLink', a => a.getAttribute('href')).catch(() => null);
-    const wantHref = isNext ? `whatif.html?season=2026${L < S[sc].rounds.length ? '&round=' + L : ''}&start=clinch` : null;
+    const wantHref = isNext ? `whatif.html?season=2026${L < S[sc].rounds.length ? '&round=' + (L + 1) : ''}&start=clinch` : null;
     t.check(`${name}, ${sc}, round ${L}: ${isNext ? '"Try it in What-If →" on its own line, linking to ' + wantHref : 'no What-If link'}`, href === wantHref
       && (!isNext || (await h.text(q, '#titleRace .trLinkLine')) === 'Try it in What-If →' && !/What-If/.test(await h.text(q, '#titleRace .trMain'))), String(href));
     await q.done();
@@ -227,12 +227,12 @@ module.exports = async (t, h) => {
   if(tw.state === 'next'){
     await h.setRound(tq, 7); await tq.waitForTimeout(60);
     const t7 = await tq.$eval('#titleRace .trText', e => e.textContent.replace(/\s+/g, ' ').trim());
-    t.check('constructors, round 7: the link carries the round', await tq.$eval('#titleRace .trLink', a => a.getAttribute('href')).catch(() => null) === 'whatif.html?season=2026&round=7&start=clinch');
+    t.check('constructors, round 7: the link carries the round', await tq.$eval('#titleRace .trLink', a => a.getAttribute('href')).catch(() => null) === 'whatif.html?season=2026&round=8&start=clinch');
     await tq.click('#titleRace .trLink'); await h.loaded(tq);
     t.check('…and opens What-If on round 8, saying the same about the constructors\' title', /whatif\.html/.test(tq.url()) && /Round 8/.test(await h.text(tq, '#orderHeading'))
       && await tq.$eval('#wiTitleRace .trMain[data-kind="teams"] .trText', e => e.textContent.replace(/\s+/g, ' ').trim()).catch(() => '') === t7, tq.url());
     t.check('…starting from the title-clinch order: the constructors\' champion is crowned, start=clinch kept in the URL', /^🏆 With this result, \S+ is champion/.test(await h.text(tq, '#clinchTeams'))
-      && /[?&]round=7&start=clinch$/.test(tq.url()), `${await h.text(tq, '#clinchTeams')} ${tq.url()}`);
+      && /[?&]round=8&start=clinch$/.test(tq.url()), `${await h.text(tq, '#clinchTeams')} ${tq.url()}`);
   } else t.check('constructors, round 7 is a next-race clinch (scenario check)', false, JSON.stringify(tw));
   t.check('constructors: no page errors', tq.errors.length === 0, tq.errors.join('; '));
   await tq.done();

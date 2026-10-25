@@ -80,7 +80,7 @@ module.exports = async (t, h) => {
   for(const page of ['constructors', 'position', 'simulator', 'whatif', 'drivers']){
     await go(p, page + '.html');
     const st = await p.evaluate(() => [F1Controls.state.round, document.querySelector('.f1c-round').value, document.querySelector('.f1c-roundlabel').textContent].join('|'));
-    t.check(`slider: ${page} opens on round 5`, st.startsWith('5|5|Round 5 of 12'), st);
+    t.check(`slider: ${page} opens on round 5`, st.startsWith(page === 'whatif' ? '5|5|Round 5 of 13' : '5|5|Round 5 of 12'), st); // #191: What-If's slider also reaches the next race
   }
   t.check('slider: the other pages follow it in the URL', /[?&]round=5\b/.test(p.url()), p.url());
   await go(p, 'drivers.html?season=2026');

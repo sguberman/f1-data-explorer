@@ -27,6 +27,16 @@ const F1Controls = (() => {
     return out;
   }
 
+  // #191: What-If's slider edits round N, so it reaches the next race even before its weekend begins: one round after the loaded ones
+  // (when the calendar has it), as a round with no results ({upcoming:true}). Nothing is fetched beyond the calendar.
+  async function withNext(year, rounds){
+    let cal = null;
+    try{ cal = await F1Data.getCalendar(year); }catch(e){}
+    const r = rounds.length + 1;
+    if(!cal || !cal.totalRounds || r > cal.totalRounds) return rounds;
+    return rounds.concat([{ round:r, raceName:(cal.raceNames && cal.raceNames[r]) || ('Round '+r), country:cal.countries && cal.countries[r], raceResults:[], sprintResults:null, upcoming:true }]);
+  }
+
   // "Round 5 of 12 — [flag] Miami Grand Prix" (#18: the circuit country's flag before the race name).
   function roundLabelHTML(round){
     if(!state.maxRound) return 'No rounds found';
@@ -95,7 +105,7 @@ const F1Controls = (() => {
     });
     const { failed, fetchedAt: newest } = loaded;
     const withResults = loaded.rounds.length;
-    const rounds = options.upcoming ? await withUpcoming(year, loaded.rounds) : loaded.rounds;
+    const rounds = options.upcoming ? await withUpcoming(year, loaded.rounds) : options.next && loaded.rounds.length ? await withNext(year, loaded.rounds) : loaded.rounds;
     if(token!==loadToken) return; // superseded by a newer load
     root.classList.remove('f1-loading');
     refreshBtn.disabled = false;
@@ -118,6 +128,7 @@ const F1Controls = (() => {
     saveRound();
     const slider = container.querySelector('.f1c-round');
     slider.max = state.maxRound || 1;
+    slider.min = options.next ? Math.min(2, slider.max) : 1; // #191: What-If's round 1 has no standings before it
     slider.value = state.round || 1;
     container.querySelector('.f1c-roundlabel').innerHTML = roundLabelHTML(state.round);
     loadedMsg = state.maxRound ? `${withResults} rounds loaded${rounds.length > withResults ? ` · race weekend of round ${rounds.length}` : ''}` : (failed ? 'No rounds loaded' : `Couldn't find any results for ${year}.`);

@@ -84,8 +84,8 @@ module.exports = async (t, h) => {
   await p.click('#useStandings');
   t.check('Standings order resets the list', JSON.stringify(await order('gp')) === JSON.stringify([...standing, null]));
 
-  // Slider back to 10: what-if for Round 11, which happened and had a sprint → both lists, from the actual result.
-  await h.setRound(p, 10);
+  // Slider on 11: what-if for Round 11, which happened and had a sprint → both lists, from the actual result.
+  await h.setRound(p, 11);
   const act = await p.evaluate(() => { const r = F1Controls.state.seasonRounds.find(x => x.round === 11);
     const o = res => [...res.filter(q => q.position).sort((a,b) => a.position-b.position).map(q => q.driverId), null, ...res.filter(q => !q.position).map(q => q.driverId)];
     return { gp:o(r.raceResults), sp:o(r.sprintResults) }; });

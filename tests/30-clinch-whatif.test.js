@@ -156,12 +156,12 @@ module.exports = async (t, h) => {
   await w.click('#useStandings');
   t.check('Standings order button: both open again, no tags', /^Title still open/.test(await text(w, '#clinchDrivers')) && /^Title still open/.test(await text(w, '#clinchTeams')) && (await w.$$('tr.champ')).length === 0);
   // Slider to 12 → round 13: can't be decided yet.
-  await h.setRound(w, 12);
+  await h.setRound(w, 13);
   const R12 = ranked(S, 12, 'drivers'), e13 = earliest(S, 12, 'drivers', cal);
   t.check(`slider to 12: "…can't be decided before round ${e13} at the earliest."`, await boxText(w, 'drivers') === `${CODE[A]} leads ${CODE[R12.order[1]]} by ${R12.t[A] - R12.t[R12.order[1]]} points. The title can't be decided before round ${e13} at the earliest.`
     && !(await w.$('#wiTitleRace .trNote')), await boxText(w, 'drivers'));
   // Replaying a past sprint round: slider on 18 → round 19 happened (sprint weekend), starts from the actual result.
-  await h.setRound(w, 18);
+  await h.setRound(w, 19);
   const m18 = margins(S, 18, 'drivers', cal), st19 = status(S, 19, 'drivers', cal);
   t.check('replay round 19: sprint and Grand Prix lists, from the actual result', /Round 19/.test(await text(w, '#orderHeading')) && J(await w.$$eval('.wiList', u => u.map(x => x.dataset.session))) === J(['sprint', 'gp'])
     && !(await w.$eval('#useActual', b => b.hidden)) && J((await gpOrder(w)).slice(0, 3)) === J(pat.p6));
@@ -307,7 +307,7 @@ module.exports = async (t, h) => {
     await again.done();
     // The slider moved back: a normal start again (standings order), start= gone; interactions never fetched.
     const hitsL = dp.apiHits.length;
-    await h.setRound(dp, L - 1); await dp.waitForTimeout(80);
+    await h.setRound(dp, L); await dp.waitForTimeout(80);
     t.check('slider moved: back to the normal start, start=clinch leaves the URL', J((await lists(dp)).gp) === J([...standingIds(rounds, L - 1), null]) && !new URL(dp.url()).searchParams.has('start'), dp.url());
     t.check('links and slider: no fetches after the page load', dp.apiHits.length === hitsL);
     t.check('links: no page errors', dp.errors.length === 0, dp.errors.join('; '));
