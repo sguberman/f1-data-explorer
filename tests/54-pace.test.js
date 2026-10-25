@@ -42,7 +42,12 @@ module.exports = async (t, h) => {
   t.check('the status line names the session, drivers and laps', /Practice 2 · 6 drivers · 65 timed laps/.test(s.status), s.status);
   t.check('loads the sessions and the one session once each (4 requests), no race control for practice', hits(p) === 'sessions,laps,stints,drivers', hits(p));
   t.check('the Share button is the shared one', await p.$('.f1c-share') !== null);
-  t.check('there is no Drivers/Teams choice: the picker is drivers only', await p.$('#bySel') === null && await p.$$eval('#presetRow .pill', b => b.map(x => x.textContent).join()) === 'All,None,Top 5,Top 10,Top 4 teams,Best of the rest,Title contention,Fastest 5,Fastest 10');
+  t.check('there is no Drivers/Teams choice: the picker is drivers only', await p.$('#bySel') === null && await p.$$eval('#presetRow .pill', b => b.map(x => x.textContent).join()) === 'All,None,Top 5,Top 10,Top 4 teams,Best of the rest,Title contention,Session top 5');
+  t.check('Session top 5 is the default preset and is lit', JSON.stringify(await p.$$eval('#presetRow .pill.active', b => b.map(x => x.dataset.preset))) === '["sessiontop5"]' && s.rows.filter(r => r[1]).length === 5, JSON.stringify(s.rows));
+  const before = s.rows.filter(r => r[1]).map(r => r[0]).join();
+  await p.click('.sessBtn:has-text("FP1")'); await ready(p);
+  t.check('changing the session keeps the drivers picked', (await state(p)).rows.filter(r => r[1]).map(r => r[0]).join() === before, before);
+  await p.click('.sessBtn:has-text("FP2")'); await ready(p);
   t.check('no page errors', p.errors.length === 0, p.errors.join('; '));
 
   // ---- the site's picker: flags, numbers, team groups, the site's team colours ----
@@ -212,9 +217,9 @@ module.exports = async (t, h) => {
   t.check('…and the summary counts them', await p.$eval('#pickerSummary', e => e.textContent) === '5 of 6 drivers');
   await p.click('#presetRow [data-preset="none"]'); await p.waitForTimeout(100);
   t.check('None: every card says there is nothing to show', await p.evaluate(() => ['lap', 'dot', 'dumb', 'sector', 'speed'].every(c => getComputedStyle(document.getElementById(c + 'Empty')).display !== 'none')));
-  await p.click('#presetRow [data-preset="fast5"]'); await p.waitForTimeout(100);
+  await p.click('#presetRow [data-preset="sessiontop5"]'); await p.waitForTimeout(100);
   s = await state(p);
-  t.check('Fastest 5 picks the five quickest in the session', s.rows.filter(r => r[1]).map(r => r[0]).join() === 'd0_0,d0_1,d1_0,d1_1,d2_0', JSON.stringify(s.rows));
+  t.check('Session top 5 picks the first five of the session', s.rows.filter(r => r[1]).map(r => r[0]).join() === 'd0_0,d0_1,d1_0,d1_1,d2_0', JSON.stringify(s.rows));
   await p.selectOption('#speedSel', 'i1'); await p.selectOption('#sectorCard .tsortSel', 'gap'); await p.waitForTimeout(100);
   t.check('the speed point changes the bars (intermediate 1: 284 km/h tops the five)', await p.evaluate(() => speedChart.data.datasets[0].data[0]) === 176.5);
   t.check('sorting by gap to ideal reorders the table', (await state(p)).table.map(r => r[6]).every((g, i, x) => !i || num(g.slice(1)) >= num(x[i - 1].slice(1))));

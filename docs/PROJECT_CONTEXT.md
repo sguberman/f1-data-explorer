@@ -690,7 +690,7 @@ slider reaches the race weekend that is on, before its Grand Prix. Only this pag
 - **Drivers are the site's** (no teams view): each OpenF1 driver is matched by its three-letter code to the season's results (`resolve()`), which
   gives the site's driver id, name, flag, number, team id and **team colour** (`F1Common.teamColor`); OpenF1's own colours are used only for a driver
   not in the season data (an FP1 reserve), who is listed last, unpicked, without a flag. The picker is the other pages' (Sort by, see below,
-  presets All, None, Top 5/10, Top 4 teams, Best of the rest, Title contention, plus Fastest 5/10, fold-away, flags and numbers via
+  presets All, None, Top 5/10, Top 4 teams, Best of the rest, Title contention, plus **Session top 5** (#193: the first five of the session's own order; the default, taken from the session the page opens on and kept when the session changes), fold-away, flags and numbers via
   `F1Common.driverPickerRowHTML`, whose right-hand column here is the best lap) and the picks use the shared saved selection
   (`F1Common.loadPickerSelection`/`savePickerSelection`), so they carry to and from the Drivers page, as do season and round.
 - **One sort for the driver list and both lap plots** (the same "Sort by" dropdown in the picker and on the Lap times and Lap time distribution cards, all kept
