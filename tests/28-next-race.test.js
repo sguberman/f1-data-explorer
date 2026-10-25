@@ -18,7 +18,7 @@ module.exports = async (t, h) => {
       flag: flag ? flag.getAttribute('src') : null, link: (el.querySelector('a') || {}).href || null };
   });
 
-  // The right next round, "in N days", a time, the circuit's flag, and no f1api.dev requests (the season file has it).
+  // The right next round, "in N days", a time, the circuit's flag, and no Jolpica requests (the season file has it).
   let p = await open('2026-10-15T12:00:00Z'); await settle(p);
   let s = await strip(p);
   t.check('next race: round 18 on Oct 15', !s.hidden && /Next race · Round 18/i.test(s.kicker) && /Round 18 Grand Prix/.test(s.name), JSON.stringify(s));
@@ -26,11 +26,11 @@ module.exports = async (t, h) => {
   t.check('date and time in the visitor\'s time zone', s.when === 'Sun, Oct 25 · 1:00 PM UTC', s.when);
   t.check('the circuit country\'s flag', s.flag === 'flags/sg.svg', s.flag);
   t.check('no sprint tag on a normal weekend', s.tag === null);
-  // #85: the season is loaded too (for the clinch line): the same season file, once, and f1api.dev only for the site's
+  // #85: the season is loaded too (for the clinch line): the same season file, once, and Jolpica only for the site's
   // once-a-day check of the round after the file (round 13 here). The calendar itself needs no request.
   await p.waitForTimeout(300);
-  t.check('the season file\'s calendar is used: the file once, f1api.dev only for the daily check of round 13', p.snapshotHits.length === 1
-    && p.apiHits.length <= 2 && p.apiHits.every(u => /\/api\/2026\/13\/(race|sprint\/race)$/.test(u)), p.apiHits.join(' '));
+  t.check('the season file\'s calendar is used: the file once, Jolpica only for the daily check of round 13', p.snapshotHits.length === 1
+    && p.apiHits.length <= 2 && p.apiHits.every(u => /\/f1\/2026\/13\/(results|sprint)\.json/.test(u)), p.apiHits.join(' '));
   // interactions never fetch: open and use the theme menu
   const hits = p.apiHits.length + p.snapshotHits.length;
   await p.click('.theme-trigger').catch(() => {}); await p.click('.theme-menu button:last-child').catch(() => {}); await p.waitForTimeout(150);
@@ -38,7 +38,7 @@ module.exports = async (t, h) => {
   t.check('no page errors', p.errors.length === 0, p.errors.join('; '));
   await p.done();
 
-  // Short race names: no "Formula 1", title sponsor or year, as f1api.dev's real names have.
+  // Short race names: no "Formula 1", title sponsor or year, as Jolpica's real names have.
   for(const [full, short] of [['Formula 1 Singapore Airlanes Singapore Grand Prix 2026', 'Singapore Grand Prix'],
     ['Formula 1 MSC Cruises Gran Premio de La Ciudad de México 2026', 'Gran Premio de La Ciudad de México'], ['Las Vegas Grand Prix', 'Las Vegas Grand Prix']]){
     const named = { ...snap, calendar: { ...snap.calendar, raceNames: { ...snap.calendar.raceNames, 18: full } } };
@@ -89,18 +89,18 @@ module.exports = async (t, h) => {
   await h.screenshot(p, 'next-race-complete-390-dark.png');
   await p.done();
 
-  // No season file: the calendar comes from f1api.dev, one request.
+  // No season file: the calendar comes from Jolpica, one request.
   p = await open('2026-10-15T12:00:00Z', { snapshots:{} }); await settle(p); s = await strip(p);
-  t.check('no season file: calendar from f1api.dev in one request', !s.hidden && /Round 18/.test(s.kicker) && p.apiHits.filter(u => /\/api\/2026\?/.test(u)).length === 1, p.apiHits.join(' '));
+  t.check('no season file: calendar from Jolpica in one request', !s.hidden && /Round 18/.test(s.kicker) && p.apiHits.filter(u => /\/f1\/2026\.json/.test(u)).length === 1, p.apiHits.join(' '));
   await p.done();
 
-  // A season file made before #89 (no race dates): falls back to f1api.dev's calendar.
+  // A season file made before #89 (no race dates): falls back to Jolpica's calendar.
   const old = { ...snap, calendar: { totalRounds: snap.calendar.totalRounds, sprintRounds: snap.calendar.sprintRounds, raceNames: snap.calendar.raceNames } };
   p = await open('2026-10-15T12:00:00Z', { snapshots:{ 2026: old } }); await settle(p); s = await strip(p);
-  t.check('season file without dates: falls back to f1api.dev\'s calendar', !s.hidden && /Round 18/.test(s.kicker) && p.apiHits.filter(u => /\/api\/2026\?/.test(u)).length === 1, p.apiHits.join(' '));
+  t.check('season file without dates: falls back to Jolpica\'s calendar', !s.hidden && /Round 18/.test(s.kicker) && p.apiHits.filter(u => /\/f1\/2026\.json/.test(u)).length === 1, p.apiHits.join(' '));
   await p.done();
 
-  // Failure: no file and f1api.dev down → nothing shown, cards in place, no errors.
+  // Failure: no file and Jolpica down → nothing shown, cards in place, no errors.
   p = await open('2026-10-15T12:00:00Z', { snapshots:{}, fail: () => true }); await p.waitForTimeout(1200); s = await strip(p);
   t.check('calendar fails: nothing shown', s.hidden, JSON.stringify(s));
   t.check('calendar fails: the cards are still there', (await p.$$('a.card')).length === 7);
@@ -173,10 +173,10 @@ module.exports = async (t, h) => {
       t.check(`"${name}": one "Try it in What-If →" link, on its own line after the clinch lines: whatif.html?season=2026&start=clinch`, got.every(g => g.link === null)
         && J(links) === J([['whatif.html?season=2026&start=clinch', 'Try it in What-If →', true, true]]), J(links));
     }
-    // Requests: the season file once (shared by the calendar and the season), and f1api.dev only for the site's
+    // Requests: the season file once (shared by the calendar and the season), and Jolpica only for the site's
     // once-a-day check of the round after the file; nothing more when using the page.
-    const okHits = p.apiHits.every(u => /\/api\/2026\/18\/(race|sprint\/race)$/.test(u));
-    t.check(`"${name}": one season-file request, f1api.dev only for the daily check of round 18`, p.snapshotHits.length === 1 && okHits && p.apiHits.length <= 2, J([p.snapshotHits, p.apiHits]));
+    const okHits = p.apiHits.every(u => /\/f1\/2026\/18\/(results|sprint)\.json/.test(u));
+    t.check(`"${name}": one season-file request, Jolpica only for the daily check of round 18`, p.snapshotHits.length === 1 && okHits && p.apiHits.length <= 2, J([p.snapshotHits, p.apiHits]));
     const n0 = p.apiHits.length + p.snapshotHits.length;
     await p.click('.theme-trigger').catch(() => {}); await p.click('.theme-menu button:last-child').catch(() => {}); await p.mouse.move(5, 5); await p.waitForTimeout(150);
     t.check(`"${name}": interactions fetch nothing`, p.apiHits.length + p.snapshotHits.length === n0);
@@ -194,17 +194,17 @@ module.exports = async (t, h) => {
   await p.done();
   // The season's newer-round check fails: the card shows without the clinch line, no errors (#111: the line drawn from
   // the season file is taken away again, since a newer result could be missing).
-  p = await open('2026-10-15T12:00:00Z', { snapshots:{ 2026: kit.snap(SC.both) }, fail: u => /\/api\/2026\/18\//.test(u) }); await settle(p); await p.waitForTimeout(1500);
+  p = await open('2026-10-15T12:00:00Z', { snapshots:{ 2026: kit.snap(SC.both) }, fail: u => /\/f1\/2026\/18\//.test(u) }); await settle(p); await p.waitForTimeout(1500);
   t.check('season load fails: the card still shows, without a clinch line', !(await strip(p)).hidden && (await clinchLines(p)).length === 0 && /Round 18/.test((await strip(p)).kicker));
   t.check('season load fails: no page errors', p.errors.length === 0, p.errors.join('; '));
   await p.done();
-  // #111: a slow check of f1api.dev holds nothing up: the card and its clinch lines come straight from the season file,
+  // #111: a slow check of Jolpica holds nothing up: the card and its clinch lines come straight from the season file,
   // and when the check is done (nothing newer) the lines stay as they were, so the cards below don't move.
   p = await open('2026-10-15T12:00:00Z', { snapshots:{ 2026: kit.snap(SC.both) }, delay: 2500 }); await settle(p); await p.waitForTimeout(150);
   const early = await clinchLines(p), shownEarly = !(await strip(p)).hidden, top = () => p.evaluate(() => document.querySelector('.list').getBoundingClientRect().top);
   const cardsTop = await top(), checking = p.apiHits.length;
   await p.waitForTimeout(3000);
-  t.check('slow check (#111): the card and both clinch lines show straight away, before f1api.dev answers', shownEarly && early.length === 2 && checking > 0, J(early));
+  t.check('slow check (#111): the card and both clinch lines show straight away, before Jolpica answers', shownEarly && early.length === 2 && checking > 0, J(early));
   t.check('…when the check is in, the lines are the same and the cards below haven\'t moved', J(await clinchLines(p)) === J(early) && await top() === cardsTop, `${cardsTop} → ${await top()}`);
   t.check('slow check: no page errors', p.errors.length === 0, p.errors.join('; '));
   await p.done();

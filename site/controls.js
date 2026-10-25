@@ -81,7 +81,7 @@ const F1Controls = (() => {
     age.hidden = !fetchedAt;
     if(fetchedAt){
       age.textContent = ` · updated ${relativeAge(fetchedAt)}`;
-      age.title = 'Data fetched from f1api.dev ' + new Date(fetchedAt).toLocaleString();
+      age.title = 'Data fetched from Jolpica ' + new Date(fetchedAt).toLocaleString();
     }
   }
 
@@ -112,8 +112,8 @@ const F1Controls = (() => {
     fetchedAt = newest;
     if(failed){
       container.querySelector('.f1c-errortext').textContent = rounds.length
-        ? `Couldn't load everything from f1api.dev — some results may be missing (showing rounds 1–${rounds.length}).`
-        : `Couldn't load the ${year} season from f1api.dev. It may be down or rate-limiting requests.`;
+        ? `Couldn't load everything from Jolpica — some results may be missing (showing rounds 1–${rounds.length}).`
+        : `Couldn't load the ${year} season from Jolpica. It may be down or rate-limiting requests.`;
       errorEl.hidden = false;
     }
     state.year = year;
@@ -164,7 +164,7 @@ const F1Controls = (() => {
           <select class="f1c-year">${yearOptionsHTML(defaultYear)}</select>
         </label>
         <span class="f1c-statusline"><span class="f1c-status"></span><span class="f1c-age" hidden></span>
-          · <button type="button" class="f1c-link f1c-refresh" title="Clear cached race data (all seasons) and reload from f1api.dev">Refresh data</button></span>
+          · <button type="button" class="f1c-link f1c-refresh" title="Clear cached race data (all seasons) and reload from Jolpica">Refresh data</button></span>
         ${F1Share.BUTTON}
       </div>
       <div class="f1c-error" role="alert" hidden><span class="f1c-errortext"></span>
@@ -178,7 +178,7 @@ const F1Controls = (() => {
     const roundSlider = container.querySelector('.f1c-round');
     const statusEl = container.querySelector('.f1c-status');
     const currentYear = () => +yearSel.value;
-    // issue #23: wipe the cached f1api.dev data and reload the selected season. The only network request
+    // issue #23: wipe the cached Jolpica data and reload the selected season. The only network request
     // these controls make besides loading a season — and only on an explicit click.
     container.querySelector('.f1c-refresh').addEventListener('click', ()=>{
       F1Data.clearCache();

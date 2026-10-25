@@ -41,7 +41,7 @@ module.exports = async (t, h) => {
   t.check('Hamilton\'s 2018 entry at his first race\'s circuit is his finish minus his 2018 average', entry && Math.abs(entry[1] - (first.p - mean)) < 0.0051, JSON.stringify([circuit, entry, first.p - mean]));
 
   // ---- The pages (fixture season: 12 of 23 rounds loaded; sprints at 2, 6, 11, 14, 19, 23) ----
-  const order = api('https://f1api.dev/api/2026/12/race').body.races.results.map(r => r.driver.driverId);
+  const order = api('https://api.jolpi.ca/ergast/f1/2026/12/results.json').body.MRData.RaceTable.Races[0].Results.map(r => r.Driver.driverId);
   const circuits = {}; for (let r = 1; r <= 23; r++) circuits[r] = 'c' + r;
   const grid = { v: 1, year: 2026, generatedAt: 1, complete: false, source: 'jolpica', circuits, rounds: [] };
   // order[0] is strong at c13 and c14 (a sprint weekend) in 2020 and 2021, and has an entry for 2026 itself, which must be ignored

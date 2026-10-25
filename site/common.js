@@ -2,7 +2,7 @@
    inline <script>; keep page-specific logic in the pages and only move something here once it's
    genuinely identical across them. Load after theme.js (uses F1Theme) and before controls.js. */
 const F1Common = (() => {
-  // Team colors by f1api.dev teamId. Unlisted teams get a stable hashed color instead of breaking.
+  // Team colors by teamId (Jolpica's constructorId). Unlisted teams get a stable hashed color instead of breaking.
   const TEAM_COLORS={mercedes:'#00A79D',ferrari:'#DC0000',mclaren:'#FF8000',red_bull:'#1B2A6B',redbull:'#1B2A6B',
    alpine:'#FF1493',haas:'#1A1A1A',williams:'#00A3E0',audi:'#E8534D',sauber:'#E8534D',
    aston_martin:'#229971',astonmartin:'#229971',rb:'#2B4EE6',racing_bulls:'#2B4EE6',visa_rb:'#2B4EE6',cadillac:'#B8860B'};
@@ -23,14 +23,14 @@ const F1Common = (() => {
    return `hsl(${h%360} 55% 45%)`;
   }
 
-  // Short display names by teamId — f1api.dev's own teamName is the full official sponsor-laden version
-  // ("Mercedes Formula 1 Team", "Scuderia Ferrari", "Audi Revolut F1 Team"...), too long for a legend.
+  // Short display names by teamId — older team names (and some files' sponsor-laden ones) can be long
+  // ("Mercedes Formula 1 Team", "Audi Revolut F1 Team"...), too long for a legend.
   const SHORT_TEAM_NAMES={mercedes:'Mercedes',ferrari:'Ferrari',mclaren:'McLaren',red_bull:'Red Bull',redbull:'Red Bull',
    alpine:'Alpine',haas:'Haas',williams:'Williams',audi:'Audi',sauber:'Sauber',alfa:'Alfa Romeo',alphatauri:'AlphaTauri',
    aston_martin:'Aston Martin',astonmartin:'Aston Martin',rb:'Racing Bulls',racing_bulls:'Racing Bulls',visa_rb:'Racing Bulls',cadillac:'Cadillac'};
   function shortTeamName(teamId, fallback){ return SHORT_TEAM_NAMES[teamId] || fallback || teamId; }
 
-  // Approximate season shape — fallback for when f1api.dev's calendar endpoint isn't available, so total
+  // Approximate season shape — fallback for when the calendar endpoint isn't available, so total
   // rounds/sprints per year are a lookup rather than fetched. Its keys are also the seasons offered in
   // the season dropdown (controls.js), so add a row here to add a season.
   const SEASON_META={2026:{rounds:23,sprints:6},2025:{rounds:24,sprints:6},2024:{rounds:24,sprints:6},
@@ -72,7 +72,7 @@ const F1Common = (() => {
   }
 
   // ---- #18: national flags and driver numbers ----
-  // f1api.dev gives nationalities and circuit countries as names; it isn't consistent about country name vs
+  // Jolpica gives nationalities as demonyms and circuit countries as names ("UK", "USA", "UAE"); older data isn't consistent about country name vs
   // demonym, so both map to the flag file in site/flags/ (ISO 3166 code). Unknown names get no flag.
   const FLAG_CODES={};
   [['ae','united arab emirates uae abu dhabi emirati'],['cl','chile chilean'],['co','colombia colombian'],['cz','czech czechia czechoslovakia'],['hk','hong kong'],['id','indonesia indonesian'],['ie','ireland irish'],['kr','korea south korea korean'],['li','liechtenstein liechtensteiner'],['ma','morocco moroccan'],['my','malaysia malaysian'],['se','sweden swedish swede'],['uy','uruguay uruguayan'],['ve','venezuela venezuelan'],['za','south africa south african'],['ar','argentina argentine argentinian'],['at','austria austrian'],

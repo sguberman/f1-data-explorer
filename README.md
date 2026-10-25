@@ -26,7 +26,7 @@ Every page except Eras has a season picker and an "as of round" slider, and ligh
 ## How it works
 
 A static site: plain HTML, CSS and JavaScript, with [Chart.js](https://www.chartjs.org/) for the charts and
-no build step. Race results are fetched in the browser from the free [f1api.dev](https://f1api.dev/docs)
+no build step. Race results are fetched in the browser from the free [Jolpica](https://github.com/jolpica/jolpica-f1) (the Ergast API's successor)
 API and cached locally. The site is hosted on GitHub Pages.
 
 ## Repository layout

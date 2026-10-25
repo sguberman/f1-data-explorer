@@ -322,9 +322,9 @@ module.exports = async (t, h) => {
   // standings order: many can still win), everyone below it out; checked against the independent status().
   {
     const { api } = require('./lib/fixture');
-    const fx = []; for(let r = 1; r <= 12; r++){ const g = api(`https://f1api.dev/api/2026/${r}/race`).body.races, s = api(`https://f1api.dev/api/2026/${r}/sprint/race`);
-      const norm = (rows, kind) => rows.map(q => ({ ...kit.row(q.driver.driverId), position: Number.isFinite(parseInt(q.position, 10)) ? parseInt(q.position, 10) : null, points: q.points, session: kind }));
-      fx.push({ round: r, raceResults: norm(g.results, 'race'), sprintResults: s.status === 200 ? norm(s.body.races.sprintRaceResults, 'sprint') : null }); }
+    const fx = []; for(let r = 1; r <= 12; r++){ const g = api(`https://api.jolpi.ca/ergast/f1/2026/${r}/results.json`).body.MRData.RaceTable.Races[0], s = api(`https://api.jolpi.ca/ergast/f1/2026/${r}/sprint.json`).body.MRData.RaceTable.Races[0];
+      const norm = (rows, kind) => rows.map(q => ({ ...kit.row(q.Driver.driverId), position: /^\d+$/.test(q.positionText) ? parseInt(q.positionText, 10) : null, points: +q.points, session: kind }));
+      fx.push({ round: r, raceResults: norm(g.Results, 'race'), sprintResults: s ? norm(s.SprintResults, 'sprint') : null }); }
     // The fake season: everyone can still win, so no line, and the live line says so.
     { const fp = await h.openPage('whatif'); await h.loaded(fp);
       const st = K.status(fromLists(fx, 13, await lists(fp)), 13, 'drivers', kit.cal);

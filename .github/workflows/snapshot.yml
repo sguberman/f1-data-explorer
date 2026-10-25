@@ -1,7 +1,7 @@
-# #13: refresh the season data files (site/data/{year}.json) from f1api.dev (and, #135, the Eras page's
+# #13: refresh the season data files (site/data/{year}.json) from Jolpica (and, #135, the Eras page's
 # site/data/eras.json from Jolpica), commit them if anything
-# changed, and redeploy the site. Pages load a whole season from one of these files instead of ~2 f1api.dev
-# requests per round; they still ask f1api.dev live for any round newer than the file.
+# changed, and redeploy the site. Pages load a whole season from one of these files instead of ~2 Jolpica
+# requests per round; they still ask Jolpica live for any round newer than the file.
 name: Update season data
 
 on:

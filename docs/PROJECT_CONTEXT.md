@@ -14,7 +14,7 @@ issues that were still open to their GitHub numbers. When citing a legacy issue 
 
 A static, multi-page Formula 1 statistics site for the 2026 season (every earlier season back to 1950 also loads, #141).
 It is hosted by the owner on **GitHub Pages** and fetches live race data in the browser from the public
-API at <https://f1api.dev/docs>. There is no server, no build step and no framework: plain HTML, CSS and
+API at <https://api.jolpi.ca/ergast/f1> (Jolpica, Ergast's successor). There is no server, no build step and no framework: plain HTML, CSS and
 vanilla JavaScript, plus Chart.js 4.4.1 from cdnjs.
 
 **Hosting (#37).** The live site is <https://f1.gubes.net/>. The custom domain is set in this repo's
@@ -46,7 +46,7 @@ site/                 The website (deployed as the site root, so URLs are unchan
   whatif.html         What-if: drag a finishing order for a round, see both championships after it, with the title race (#85).
   common.js           F1Common: helpers shared by the chart pages (issue #44 and later).
   counting.js         F1Counting (#141): how older seasons counted points (best-N results, best car only) and the notes about it.
-  data.js             F1Data: fetch, cache (localStorage), normalize f1api.dev data; SPRINT_OVERRIDES.
+  data.js             F1Data: fetch, cache (localStorage), normalize Jolpica data.
   controls.js         F1Controls: shared season dropdown + "as of round" slider; emits events.
   theme.js            Light/dark/system theme (dropdown in .theme-bar) + canvas color palette (F1Theme).
   nav.js              Site navigation (#62): home link + Pages menu at the left of .theme-bar (data pages).
@@ -62,7 +62,7 @@ site/                 The website (deployed as the site root, so URLs are unchan
   data/               {year}.json: one file per season, written by the snapshot workflow (#13). Don't edit by hand.
 .github/workflows/    static.yml deploys site/ on pushes to main that touch site/ (or the workflow).
                       tests.yml runs tests/ on PRs (a new push cancels the PR's older run, #137). snapshot.yml refreshes site/data/ (#13).
-tools/                snapshot.mjs: builds site/data/{year}.json from f1api.dev (run by snapshot.yml).
+tools/                snapshot.mjs: builds site/data/{year}.json (2021 on) from Jolpica (run by snapshot.yml).
                       backtest.mjs (#155): scores simulator models against 2014–2025 and tunes them; see docs/BACKTEST.md.
                       export-features.mjs + lgbm_experiment.py (#173): the LightGBM comparison (win / podium / points marginals), run by lgbm.yml; see docs/BACKTEST.md.
                       correlation-diagnostic.mjs (#177): do real results move together more than the race model's own draws? The per-team good-weekend
@@ -111,32 +111,30 @@ Move something into `common.js` only once it's genuinely identical on every page
   this round"** and is cached as a confirmed negative, not treated as a failure (issue #28).
 - `F1Data.loadSeason(year, {onProgress, onSnapshot})` walks rounds 1, 2, 3… until the API returns no results, and
   resolves to `{rounds, failed, fetchedAt}` (`onSnapshot(rounds)`, #111: called with the season file's rounds as soon
-  as the file is in, before any f1api.dev check). Each round becomes `{round, raceName, raceResults,
+  as the file is in, before any Jolpica check). Each round becomes `{round, raceName, raceResults,
   sprintResults, country}` (`country` = the circuit's, #18); result rows carry `driverId, code, name, teamId,
   teamName, number, nationality, teamNationality, position, points, session`. `position` is the classified
-  finishing position, or `null` when not classified (f1api.dev sends null, "-" or "NC").
+  finishing position, or `null` when not classified (Jolpica's positionText is a letter).
   `failed` is true if any fetch failed (the load stops at the first failed round; a failed sprint reads as
   "no sprint"), issue #48. `fetchedAt` is the newest fetch time of the data used, issue #49.
 - **Season files (#13):** `site/data/{year}.json` = `{v:1, year, generatedAt, complete, calendar, rounds}`,
   `rounds` in exactly the shape `loadSeason()` returns. `loadSeason()` fetches the file first: one request
   for the whole season, and `getCalendar()` reuses its calendar. Two callers asking for the file at the same time (the
   homepage's calendar and season, #85) share one request; a later call fetches it again as before. A `complete` season (every calendar round
-  present) makes no f1api.dev requests at all; an in-progress one then checks f1api.dev one round at a time
+  present) makes no Jolpica requests at all; an in-progress one then checks Jolpica one round at a time
   from the round after the file's last, so new results still appear straight after a race. A missing or
   broken file falls back to the old live walk. Refresh data re-downloads the file (`fresh`). "updated … ago"
   is the newer of the file's `generatedAt` and any live check.
   **Generator:** `tools/snapshot.mjs` runs `site/data.js` itself in Node (`loadSeason(year, {live:true})`),
   so the files match what pages build from the live API. It skips complete past seasons (`--all` rebuilds
   everything), never overwrites a file after a failed fetch, and only rewrites a file whose data changed.
-  **Jolpica patch (#59):** f1api.dev's 2021–2023 data has no sprint results and numbers every driver (no
-  "not classified"). For those years the generator patches the file from Jolpica (`api.jolpi.ca/ergast/f1`,
-  Ergast's successor): race positions from `positionText` (a number = classified, R/D/W/N… = `null`), Jolpica's
-  points, and sprint results (`session:'sprint'`). It only patches when both sources agree on the rounds and
-  drivers and the sprint rounds match the calendar; otherwise it warns and keeps the file as it was. A patched
-  file carries `patched:{source:'jolpica', version}`; bumping `PATCH_VERSION` re-patches those seasons once.
-  **Repeated drivers (#157):** f1api.dev once listed a driver twice in a round and left another out (2024 round 24: Pérez twice, no Lawson).
-  A stored or freshly built season whose round repeats a driver is rebuilt for that round from Jolpica (`repairRepeatedDrivers`, with the
-  drivers' details taken from their other rows); `47-data-repair` also checks no season file from 2014 on repeats one.
+  **One source (#199):** all results come from Jolpica (`api.jolpi.ca/ergast/f1`, Ergast's successor); f1api.dev is no longer used. It replaced
+  f1api.dev's data, the patches that fixed it for 2021–23 (#59: sprints and "not classified") and the repair of a driver listed twice (#157, 2024 round 24),
+  and its hand-kept sprint flag. `tools/snapshot.mjs` pages through `/{year}/results.json` and `/{year}/sprint.json` (100 rows a page, ~400 ms apart) and the
+  calendar `/{year}.json`, and normalizes the rows with the site's own `data.js` (`F1Data.ergast`). A round's classification comes from `positionText` (a number =
+  classified, a letter R/D/W/N… = `null`), so a driver who retired but was classified (over 90% of the distance) has a position. Team names are Jolpica's short
+  ones ("Mercedes"), driver numbers its permanent numbers, nationalities demonyms ("British"), countries "UK"/"USA"/"UAE", race names without sponsors. Driver ids
+  are Jolpica's (`arvid_lindblad`, `kevin_magnussen`). `47-data-files` checks the files: no repeated driver in a round, sprints exactly on the calendar's sprint rounds.
   **Workflow:** `snapshot.yml` runs daily, hourly on Saturdays, Sundays and Mondays (UTC), by hand (Actions → Update
   season data, optionally "all"), and on pushes that change the generator or `data.js`. It commits
   `issue #13: update season data (automated)` and, on `main`, starts the Pages deploy itself (commits made
@@ -144,7 +142,7 @@ Move something into `common.js` only once it's genuinely identical on every page
 - **Back-filled seasons (#141, `tools/history-snapshot.mjs`):** `site/data/{1950..2020}.json` are written from Jolpica
   (`/{year}/results.json`, pages of 100 rows ~350 ms apart, retries on 429/5xx, plus `/{year}.json` for the calendar) in the
   same shape as the recent seasons, so every page opens them with no change to `loadSeason()`: `complete` seasons make no
-  f1api.dev request (there is none for those years). They are leaner: no sprints (`sprintResults: null`, `calendar.sprintRounds: []`),
+  Jolpica request. They are leaner: no sprints (`sprintResults: null`, `calendar.sprintRounds: []`),
   and result rows carry only what the pages read. **What counted (`site/counting.js`, `F1Counting`):** before 1991 only a driver's best N
   results counted (sometimes N from each half of the season) and in 1958–78 only a team's best-placed car scored for the team in a race
   (1958–59: by finishing position alone, no fastest-lap point). A season with a rule has, on every result row, `awarded` (what was scored)
@@ -167,11 +165,11 @@ Move something into `common.js` only once it's genuinely identical on every page
   sprints 3-2-1 in 2021, 8-1 from 2022, none before; `fl` = the most a fastest lap added (1950–58 and 2019–24). Used by
   `maxWeekendPoints()` (title race), the drivers'/constructors' knockout line (`gp[0]` + `sprint[0]` per weekend; teams both
   cars), the Simulator (`PTS_GP` / `PTS_SPRINT`, its title-decided card) and What-If (its drag lists).
-- **Daily check (#60):** the check of f1api.dev for rounds newer than the season file runs at most once a
+- **Daily check (#60):** the check of Jolpica for rounds newer than the season file runs at most once a
   day per season, across the whole site. A clean check is kept as `f1cache:v2:{year}/checked` =
   `{firstLive, rounds}` (the rounds it found from `firstLive` on; with no season file, the whole season) for
   24 hours, with `t` = the newest data time for "updated … ago". Until it expires, every page load and season
-  switch reuses it and makes no f1api.dev requests; rounds a newer season file covers are dropped from it.
+  switch reuses it and makes no Jolpica requests; rounds a newer season file covers are dropped from it.
   A failed check isn't kept. Refresh data clears it (`clearCache()`), so it checks right away. New results
   still arrive during the day through the season file, which the scheduled job updates.
 - Caching: completed rounds are cached permanently in `localStorage` under `f1cache:v2:` (bumped from
@@ -181,18 +179,18 @@ Move something into `common.js` only once it's genuinely identical on every page
   `F1Data.clearCache()` removes every `f1cache:v2:` entry (issue #23); the theme and the
   `f1cache:selectedSeason` key are kept.
 - `F1Data.getCalendar(year, {dates})` gives the full season's calendar: `{totalRounds, sprintRounds, raceNames,
-  raceDates, raceTimes, countries, cities}`, each map keyed by round. #85 added `cities`: the circuit's city (f1api.dev's
+  raceDates, raceTimes, countries, cities}`, each map keyed by round. #85 added `cities`: the circuit's city (Jolpica's
   `circuit.city`, or `locality` as Ergast names it), only for rounds that have one, for the homepage's location line.
   Calendars without it (season files and cached calendars made before #85) still work: the homepage shows the country
   alone. The cache key stays `calendar3`, and the snapshot workflow rebuilds the current season's file (it runs when
   `data.js` changes). #89 added the last three: the Grand Prix date
-  (`'YYYY-MM-DD'`, from f1api.dev's `schedule.race.date`), its start time in UTC (`'HH:MM:SSZ'`, from
+  (`'YYYY-MM-DD'`, from Jolpica's race `date`), its start time in UTC (`'HH:MM:SSZ'`, from
   `schedule.race.time`, only when known; a time without a zone is read as UTC) and the circuit country. Season
   files made before #89 lack them (past seasons keep them until rebuilt with `--all`). With `{dates:true}` (the
   homepage) a calendar without `raceDates` is skipped: it fetches the season file if none is loaded, then falls back
-  to f1api.dev. Cached for a day under `{year}/calendar3` (bumped from `calendar2`); a failed fetch isn't cached.
+  to Jolpica. Cached for a day under `{year}/calendar3` (bumped from `calendar2`); a failed fetch isn't cached.
 - `F1Data.cumulative(seasonRounds, throughRound)` returns `{drivers, teams}` with per-round points.
-- **Finishes and NC (#46):** retirement causes aren't tracked (f1api.dev gives none; the old hand-researched
+- **Finishes and NC (#46):** retirement causes aren't tracked (Jolpica gives none; the old hand-researched
   mechanical/non-mechanical table was removed). A result with a classified position counts as that finish,
   even if the driver retired; a result with no classified position is **NC** ("not classified") on the
   position page and a **DNF** in the simulator — the same rule on both.
@@ -645,20 +643,20 @@ pages' "Try it in What-If →" link (`F1Common.clinchLink()`: `whatif.html?seaso
 clinch order). It needs the standings: the page also loads the season with `F1Data.loadSeason(year)` (the same season
 file, shared with the calendar's request, plus the site's once-a-day check for newer rounds, #60), started together with
 the calendar. The strip doesn't wait for it. **#111:** the lines are drawn first from the season file alone, as soon as
-it's in (`loadSeason`'s `onSnapshot(rounds)` callback, before f1api.dev is asked about newer rounds, which can take
+it's in (`loadSeason`'s `onSnapshot(rounds)` callback, before Jolpica is asked about newer rounds, which can take
 seconds on the first visit of the day), and drawn again (replaced) from the checked season when that arrives, so the
 cards below don't jump when the check is slow. Either way they come from `titleRace()` on the latest loaded round L,
 only when the race shown is round L+1 (results for the last race not in yet: no line) and only when the load didn't
 fail (missing results could make it wrong): if the check fails, the lines drawn from the file are taken away and the
 strip shows without them. After the last race it reads "2026 season · Season complete" with a "Final standings →" link (no
 champion: that would need the full results, which may lag the race). It comes from the newest season's calendar
-(`F1Data.getCalendar(year, {dates:true})`): the season file, or f1api.dev without one, cached for a day. That and the
+(`F1Data.getCalendar(year, {dates:true})`): the season file, or Jolpica without one, cached for a day. That and the
 season (for the clinch line) are the only data the homepage loads, both on page load; nothing on it fetches on
 interaction. If the calendar fails or has no dates, the strip stays hidden.
 
 ### Weekend Pace (`pace.html`, `openf1.js`, #186)
 
-The one page that uses another API: **OpenF1** (`https://api.openf1.org/v1`), because f1api.dev has no session laps, sectors, speeds or tyres
+The one page that uses another API: **OpenF1** (`https://api.openf1.org/v1`), because Jolpica has no session laps, sectors, speeds or tyres
 and Jolpica has only race laps and Q1–Q3 times. Called straight from the browser (OpenF1 sends `access-control-allow-origin`), no key,
 data from 2023 (an earlier season says so). **OpenF1 closes its API to everyone without an account while an F1 session is live, even for past sessions**
 (HTTP 401 "Live F1 session in progress…"); see "Saved copies" below. It is a normal season page: the shared `F1Controls` (season dropdown, slider, "Round N of M — flag
@@ -728,7 +726,7 @@ slider reaches the race weekend that is on, before its Grand Prix. Only this pag
   `f1cache:speedUnit` and the link. PNG and CSV on every card.
 - **Not built yet:** tyre use against allocation (#187; OpenF1 has no set allocation).
 - Tests: `53-openf1` (the pure helpers, in Node), `54-pace` (the page; the harness's `openf1` option serves `lib/openf1-fixture.js`, whose
-  weekends are rounds 11–13 of the fake season, whose drivers have the fake f1api.dev drivers' codes and whose qualifying has race control messages) and
+  weekends are rounds 11–13 of the fake season, whose drivers have the fake Jolpica drivers' codes and whose qualifying has race control messages) and
   `55-upcoming-round` (the option), `56-pace-snapshot` (the saved-copy tool: which sessions are saved and when, never twice, the live 401, 429, failures,
   sessions without laps) and, in `54-pace`, the saved copies, the closed API, older cached answers and the request spacing (harness options `pace`,
   `spacing` and `openf1.live` / `openf1.rate`).
@@ -749,7 +747,7 @@ slider reaches the race weekend that is on, before its Grand Prix. Only this pag
   simulator rows), team names on **constructor views only** (constructors picker, legend and labels; the
   what-if constructors table) and the race name in the round label (circuit country). Driver views show no
   team flags, and the drivers chart legend has no team names (#70): driver-picker team headings are the name only. Driver numbers only in driver pickers, muted, before the name. Not in tooltips or
-  under x-axis rounds. Nationalities come from f1api.dev as names or demonyms; unknown ones get no flag,
+  under x-axis rounds. Nationalities come from Jolpica as demonyms (the flags accept names or demonyms; unknown ones get no flag,
   and canvas labels keep the flag's space so they still line up.
 - Team colours: one colour per team (`TEAM_COLORS`) for every season, except teams that only raced in earlier
   seasons, which get that season's colour (`SEASON_TEAM_COLORS`, #72): Alfa Romeo and AlphaTauri (2021–23) and
@@ -812,10 +810,10 @@ position projection` to run only matching files). Screenshots of every page go t
 (git-ignored; uploaded as a CI artifact) for a person to look at — they're not compared automatically,
 since fonts render differently on different machines.
 
-- `lib/harness.js` serves `site/` at `http://site.test/`, answers f1api.dev from `lib/fixture.js` (a fake
+- `lib/harness.js` serves `site/` at `http://site.test/`, answers Jolpica from `lib/fixture.js` (a fake
   2026 season: 22 drivers, 12 of 23 rounds, sprints, unclassified results, one unknown team id; calendar circuits have a
   `city`, except round 22, and round 8's is its country's name, #85), serves Chart.js from
-  `node_modules`, and can simulate f1api.dev failures (`fail`) or slow responses (`delay`), and can fix the clock, time zone and locale (`now`, `timezone`, `locale`, #89). The fixture's calendar has race dates and times (round 22 date only).
+  `node_modules`, and can simulate Jolpica failures (`fail`) or slow responses (`delay`), and can fix the clock, time zone and locale (`now`, `timezone`, `locale`, #89). The fixture's calendar has race dates and times (round 22 date only).
 - Test files (`NN-name.test.js`) export `async (t, h) => { t.check(name, ok, detail) ... }`. Current files:
   smoke (every page, both themes, desktop + phone, no errors), common (#44), knockout (#45/#46),
   status (#23/#48/#49), movement (#47), position (#9), projection (#10),
@@ -837,8 +835,7 @@ since fonts render differently on different machines.
   pickers and slider (#104/#105/#124: presets, contenders as the default, picks and the slider's round kept between pages, folding the picker, against `lib/clinch.js`'s title calculation on a constructed season),
   links (#31: every page's setup round-trips through the URL, defaults left out, bad values ignored, Share copies it, a
   simulator link reproduces the same results) and exports (#33: PNG and CSV contents per chart, never fetches; #75/#76: share sheet on phones with download fallbacks,
-  icon in the picture's corner), Jolpica patch (#59: a stripped season patched from a fake Jolpica comes back exactly; mismatches
-  stop the patch), round results (#29: tap a round for its result; #113: the same on the position chart, own panel and URL keys, any loaded round; #106/#110: short race names in tooltips and the projected-points tooltip; sprint switch, arrows, close, NC last, projected
+  icon in the picture's corner), Jolpica results (#199, `22-jolpica`: the snapshot tool pages the fake Jolpica and gets the same rows as the round-by-round live load; `47-data-files`: the committed season files), round results (#29: tap a round for its result; #113: the same on the position chart, own panel and URL keys, any loaded round; #106/#110: short race names in tooltips and the projected-points tooltip; sprint switch, arrows, close, NC last, projected
   rounds closed, never fetches, URL round-trip, phone fit), driver contributions (#84: per-driver and per-team points
   checked against an independent sum and the picker, picker/slider/theme/season, a driver with two teams on constructed
   data, labels never cut off, tooltip, PNG/CSV, never fetches, phone fit), talking points (#88/#102: each fact against an
@@ -886,7 +883,7 @@ since fonts render differently on different machines.
 2. The PR carries the code, tests and doc updates, and its description says `Closes #NN` so GitHub closes
    the issue when the PR is merged. No issue-list files are edited.
 3. GitHub runs the tests (`tests.yml`). Cloudflare Pages (connected to the repo, output folder `site`)
-   builds a preview of the PR's branch and posts its link on the PR. Previews use live f1api.dev data and
+   builds a preview of the PR's branch and posts its link on the PR. Previews use live Jolpica data and
    their own web address, so their browser storage (cache, theme) is separate from the live site.
    Previews **require a login** (Cloudflare Access, set by the owner), so only the owner can open them;
    nothing in this environment can reach them anyway. **`main` isn't built on Cloudflare** (production
@@ -923,7 +920,7 @@ since fonts render differently on different machines.
 5. To verify official F1 results, use <https://www.formula1.com/en/results/2026/races> directly rather
    than news articles or Wikipedia. The 2026 season is real: e.g. the Bahrain GP was moved
    to Malaysia, and DNF counts are high because of new engine rules and new teams.
-6. Keep the site static (GitHub Pages), data live from f1api.dev, and interactions free of extra fetches.
+6. Keep the site static (GitHub Pages), data live from Jolpica, and interactions free of extra fetches.
 7. **Mockups only when the owner needs to choose** between options (layouts, styles, behaviours). Otherwise
    build it and show the result. Ask clarifying questions on ambiguous scope before work starts.
 8. Verify visually-significant changes by actually rendering them (light and dark, desktop and mobile
