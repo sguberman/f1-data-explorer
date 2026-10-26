@@ -26,7 +26,7 @@ async function close(){ if(browser) await browser.close(); }
 //   grids: {year: object|null} served as site/data/grid/{year}.json (#167); null = a 404 (no qualifying data); a year not
 //     listed gets the real file in site/data/grid/. page.gridHits lists the requests for it.
 //   tracks: an object served as site/data/tracks.json (#169), null = a 404; left out = the real file. page.trackHits lists the requests.
-//   pace: {list:{year: file}, sessions:{key: file}} served as site/data/pace/… (#186; a saved copy of a session, tools/pace-snapshot.mjs); anything else there is a 404. page.paceHits lists the requests.
+//   pace: {list:{year: file}, sessions:{key: file}, grids:{raceKey: file}} served as site/data/pace/… (#186; a saved copy of a session, tools/pace-snapshot.mjs); anything else there is a 404. page.paceHits lists the requests.
 //   spacing: ms the Weekend Pace page waits between OpenF1 requests (0 here, its real value is 350).
 //   openf1: {fail(url), live: true|fn(url) (OpenF1 closed for a live session: 401), rate: {left: n} (the first n get a 429), empty:[session keys], answer(url, options) (replaces the fixture)} answers api.openf1.org from lib/openf1-fixture.js (#186); left out = the request is blocked. page.openf1Hits lists the requests.
 // The returned page has .errors (uncaught page errors), .apiHits (Jolpica requests made) and .done().
@@ -66,10 +66,10 @@ async function openPage(name, {theme='light', width=1000, fail=()=>false, delay=
         trackHits.push(url);
         if(tracks !== undefined) return tracks ? route.fulfill({status:200, contentType:'application/json', body:JSON.stringify(tracks)}) : route.fulfill({status:404, body:''});
       }
-      const paceM = new URL(url).pathname.match(/^\/data\/pace\/(?:(\d{4})\.json|(\d{4})\/(\d+)\.json)$/);
+      const paceM = new URL(url).pathname.match(/^\/data\/pace\/(?:(\d{4})\.json|(\d{4})\/(\d+)(-grid)?\.json)$/);
       if(paceM){ // saved weekend pace data (#186): only what the test gives; the real files are never served
         paceHits.push(url);
-        const body = paceM[1] ? (pace.list || {})[paceM[1]] : (pace.sessions || {})[paceM[3]];
+        const body = paceM[1] ? (pace.list || {})[paceM[1]] : (paceM[4] ? pace.grids : pace.sessions || {})[paceM[3]]; // pace.grids {key: file}: a Race's saved starting grid (#201)
         return body ? route.fulfill({status:200, contentType:'application/json', body:JSON.stringify(body)}) : route.fulfill({status:404, body:''});
       }
       const gridM = new URL(url).pathname.match(/^\/data\/grid\/(\d{4})\.json$/);

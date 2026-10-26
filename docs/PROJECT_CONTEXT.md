@@ -551,6 +551,8 @@ Live and lap-by-lap running orders were considered and left out (see #48 for the
 Title race (#85, see "Title race on What-If" above): a box above the lists with what each title needs at this round, a live
 line above each table and a 🏆 Champion tag on the champion's row as you drag.
 
+**Starting grid before the race (#201):** Jolpica has a race's grid only after the race, and OpenF1 is closed to the page during live sessions, so `pace.yml` (via `tools/pace-snapshot.mjs`) saves the next Race's `/starting_grid` as `site/data/pace/{year}/{raceSessionKey}-grid.json` (`F1OpenF1.gridFile`: grid and drivers as number/position and number/code pairs) once that weekend's Qualifying has ended, rewrites it only when it changes (a late penalty) and stops when the race starts. On load / Refresh data, What-If's `loadSavedGrid` fills the next round's `grid` from that file (drivers matched by code; a round missing from the grid file is added) unless the grid file already has a grid, so Starting grid and the simulating buttons use it like the real one; Jolpica's grid replaces it after the race. A missing, empty or unmatched file changes nothing. **Unconfirmed against real data** (first chance: Mexico, 1 Nov): when OpenF1 fills the Race session's grid, and whether it includes penalties and pit-lane starters.
+
 **Known starting positions for the simulating buttons (#195):** "🎲 Simulated" gives each driver a known grid position from, in this order: the grid file's starting grid, its qualifying result, the Weekend Pace qualifying (saved copy `data/pace/…` first, OpenF1 only for the next round and only without a saved copy; read once at load by `loadOpenQuali`), else none. The sprint list uses the saved Sprint Qualifying/Shootout (the grid file has no sprint data) the same way. "🎲 Simulate from this order" instead takes each list as it is now as its starting grid (below the Not classified line = pit lane = last). The note after simulating names the source. What-If's slider edits round N (standings before it) and reaches the next race (#191).
 
 **eras.html (#135, `eras.js` = global `F1Eras`)** — Championship **position** (not points: scoring changed too often) of the picked
@@ -727,7 +729,7 @@ slider reaches the race weekend that is on, before its Grand Prix. Only this pag
 - **Not built yet:** tyre use against allocation (#187; OpenF1 has no set allocation).
 - Tests: `53-openf1` (the pure helpers, in Node), `54-pace` (the page; the harness's `openf1` option serves `lib/openf1-fixture.js`, whose
   weekends are rounds 11–13 of the fake season, whose drivers have the fake Jolpica drivers' codes and whose qualifying has race control messages) and
-  `55-upcoming-round` (the option), `56-pace-snapshot` (the saved-copy tool: which sessions are saved and when, never twice, the live 401, 429, failures,
+  `55-upcoming-round` (the option), `56-pace-snapshot` (the saved-copy tool: which sessions are saved and when, never twice, the live 401, 429, failures, the starting grid saved after qualifying and rewritten on a change (#201),
   sessions without laps) and, in `54-pace`, the saved copies, the closed API, older cached answers and the request spacing (harness options `pace`,
   `spacing` and `openf1.live` / `openf1.rate`).
 

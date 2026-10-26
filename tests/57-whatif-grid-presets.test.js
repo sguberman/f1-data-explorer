@@ -73,4 +73,39 @@ module.exports = async (t, h) => {
   p = await h.openPage('whatif', { grids: { 2026: null }, openf1: {}, pace: { list: { 2026: list }, sessions: {} } }); await h.loaded(p);
   t.check('no saved qualifying session: OpenF1 is the fallback, and the preset shows', !(await hidden(p, '#useQuali')) && p.openf1Hits.some(u => /session_result/.test(u)), p.openf1Hits.join(' '));
   await p.done();
+
+  // ---- #201: a starting grid saved ahead of the race (from OpenF1, data/pace/2026/205-grid.json) stands in until Jolpica has the real one ----
+  const saved = { v: 1, key: 205, fetchedAt: 1, grid: fx.STARTING.map((n, i) => [n, i + 1]), drivers: fx.DRIVERS.map(d => [d[0], d[1]]) };
+  const savedOrder = ['d1_0', 'd0_0', 'd1_1', 'd2_0', 'd0_1', 'd2_1']; // numbers 16, 63, 44, 1, 12, 81 by their codes DB0, DA0, DB1, DC0, DA1, DC1
+  const withSaved = (grids, pace = { list: { 2026: list }, sessions: {}, grids: { 205: saved } }) => h.openPage('whatif', { grids, openf1: {}, pace });
+  p = await withSaved({ 2026: qOnly }); await h.loaded(p);
+  const hits3 = p.apiHits.length, ghits3 = p.gridHits.length;
+  t.check('a saved grid, none in the grid file: Starting grid shows next to Qualifying order, with no OpenF1 request', !(await hidden(p, '#useGrid')) && !(await hidden(p, '#useQuali')) && p.openf1Hits.length === 0 && p.paceHits.some(u => /pace\/2026\/205-grid\.json/.test(u)), p.openf1Hits.join(' ') + p.paceHits.join(' '));
+  await p.click('#useGrid');
+  const sg = await order13(p);
+  t.check('…and puts the saved grid first, in order, then the others and the NC line last', JSON.stringify(sg.slice(0, 6)) === JSON.stringify(savedOrder) && sg[sg.length - 1] === null && new Set(sg.filter(Boolean)).size === sg.filter(Boolean).length, sg.join());
+  t.check('…fetching nothing more and with no errors', p.apiHits.length === hits3 && p.gridHits.length === ghits3 && p.openf1Hits.length === 0 && p.errors.length === 0, p.errors.join('; '));
+  await p.done();
+  // the grid file has no entry for round 13 yet (no qualifying there either): the saved grid alone gives the Starting grid button
+  p = await withSaved({ 2026: { ...qOnly, rounds: rounds } }); await h.loaded(p);
+  t.check('no round 13 in the grid file: the saved grid alone gives the Starting grid button', !(await hidden(p, '#useGrid')) && p.errors.length === 0, p.errors.join('; '));
+  await p.click('#useGrid');
+  t.check('…with the saved order', JSON.stringify((await order13(p)).slice(0, 6)) === JSON.stringify(savedOrder));
+  await p.done();
+  // Jolpica's own grid wins once the grid file has one
+  p = await withSaved({ 2026: full }); await h.loaded(p);
+  await p.click('#useGrid');
+  const own = await order13(p);
+  t.check('the grid file\'s own grid is used, not the saved one', own[0] === order[2] && own[1] === order[1] && !p.paceHits.some(u => /-grid\.json/.test(u)), own.slice(0, 3).join());
+  await p.done();
+  // nothing saved, or not usable: no Starting grid button
+  p = await withSaved({ 2026: qOnly }, { list: { 2026: list }, sessions: {}, grids: {} }); await h.loaded(p);
+  t.check('no saved grid: no Starting grid button, no errors', (await hidden(p, '#useGrid')) && p.errors.length === 0);
+  await p.done();
+  p = await withSaved({ 2026: qOnly }, { list: { 2026: list }, sessions: {}, grids: { 205: { ...saved, drivers: [[99, 'ZZZ']] } } }); await h.loaded(p);
+  t.check('a saved grid of drivers the season does not have: no button', await hidden(p, '#useGrid'));
+  await p.done();
+  p = await withSaved({ 2026: qOnly }, { sessions: {}, grids: { 205: saved } }); await h.loaded(p);
+  t.check('a saved grid without the sessions list cannot be placed: no button', await hidden(p, '#useGrid'));
+  await p.done();
 };

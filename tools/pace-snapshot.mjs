@@ -10,7 +10,10 @@
 // Files: site/data/pace/{year}.json = {v:1, year, generatedAt, sessions:[{meeting_key, session_key, session_name, date_start, date_end,
 // location, country_name, year, is_cancelled}]} (the whole calendar, upcoming sessions too; rewritten only when it changes), and
 // site/data/pace/{year}/{sessionKey}.json = F1OpenF1.compact(): laps, stints, drivers, the qualifying parts' start/finish messages and
-// the classification as arrays (the field names are in the file). A saved session is never fetched again. If OpenF1 says a live
+// the classification as arrays (the field names are in the file). A saved session is never fetched again.
+// #201: site/data/pace/{year}/{raceSessionKey}-grid.json = F1OpenF1.gridFile(): the Race's starting grid (/starting_grid) and drivers, saved
+// once qualifying has ended and kept up to date (a late penalty) until the race starts, so What-If can offer the Starting grid before the
+// race, when OpenF1 is closed and Jolpica has no grid yet. If OpenF1 says a live
 // session has closed it, the run stops quietly and the next run tries again; nothing half-written is kept.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -46,7 +49,7 @@ async function getRows(url, fetchImpl, wait){
 
 // One year: the sessions list, then each finished session that is not saved. Returns {year, written:[keys], failed:[keys], list:'written'|'unchanged', live}.
 export async function runYear(year, { fetchImpl = fetch, dir = OUT, now = Date.now(), wait = sleep, gap = 350 } = {}){
-  const out = { year, written: [], failed: [], list: 'unchanged', live: false };
+  const out = { year, written: [], failed: [], grids: [], list: 'unchanged', live: false };
   const get = async url => { await wait(gap); return getRows(url, fetchImpl, wait); };
   let rows;
   try{ rows = await get('/sessions?year=' + year); }
@@ -79,6 +82,25 @@ export async function runYear(year, { fetchImpl = fetch, dir = OUT, now = Date.n
       out.failed.push(s.session_key); console.log(`::warning::${year} ${s.session_name} (${s.session_key}): ${e.message}`);
     }
   }
+  // #201: the starting grid of a Race that has not started, once its weekend's qualifying is over; rewritten only when it changes
+  for(const s of sessions){
+    if(s.session_name !== 'Race' || s.is_cancelled || Date.parse(s.date_start) <= now) continue;
+    const quali = sessions.find(x => x.meeting_key === s.meeting_key && x.session_name === 'Qualifying' && !x.is_cancelled);
+    if(!quali || Date.parse(quali.date_end) > now) continue;
+    const file = path.join(dir, String(year), `${s.session_key}-grid.json`);
+    try{
+      const q = '?session_key=' + s.session_key, grid = await get('/starting_grid' + q);
+      if(!grid.some(r => r.position != null)) continue; // not published yet: keep what there is
+      const next = O.gridFile(s.session_key, grid, await get('/drivers' + q), now);
+      let had = null; try{ had = JSON.parse(fs.readFileSync(file, 'utf8')); }catch(e){}
+      if(had && JSON.stringify([had.grid, had.drivers]) === JSON.stringify([next.grid, next.drivers])) continue;
+      fs.writeFileSync(file, JSON.stringify(next));
+      out.grids.push(s.session_key);
+    }catch(e){
+      if(e instanceof LiveSession){ out.live = true; return out; }
+      out.failed.push(s.session_key); console.log(`::warning::${year} starting grid (${s.session_key}): ${e.message}`);
+    }
+  }
   return out;
 }
 
@@ -88,7 +110,7 @@ async function main(){
   const years = only.length ? only : all ? Array.from({ length: last - FIRST_YEAR + 1 }, (_, i) => FIRST_YEAR + i) : [last];
   for(const year of years){
     const r = await runYear(year);
-    console.log(`${year}: ${r.live ? 'OpenF1 is closed (a live session): nothing saved this time' : `sessions list ${r.list}, ${r.written.length} session(s) saved${r.failed.length ? `, ${r.failed.length} failed` : ''}`}`);
+    console.log(`${year}: ${r.live ? 'OpenF1 is closed (a live session): nothing saved this time' : `sessions list ${r.list}, ${r.written.length} session(s) saved${r.grids.length ? `, ${r.grids.length} starting grid(s)` : ''}${r.failed.length ? `, ${r.failed.length} failed` : ''}`}`);
     if(r.live) break;
   }
 }
