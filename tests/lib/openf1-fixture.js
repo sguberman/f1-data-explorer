@@ -86,6 +86,16 @@ const STARTING = [16, 63, 44, 1, 12, 81];
 const gridFor = key => nameOf(key) === 'Race' ? STARTING.map((n, i) => ({ position: i + 1, driver_number: n, lap_duration: 90 + i, meeting_key: 0, session_key: key })) : [];
 
 // Answers a request to https://api.openf1.org/v1/…; `empty` lists session keys with no data yet.
+// #203: pit stops of the fake races (/pit): [driver number, lap, time in the box, time in the pit lane]. Driver 44 (DB1) has no box time at Silverstone (OpenF1 leaves
+// some out) and driver 1 (DC0) a 15.3 s stop (a repair); Silverstone's Sprint has one stop. The Zandvoort race (205) has not been run at the fixed "now".
+const PIT = {
+  305: [[63, 12, 2.4, 22.1], [12, 14, 2.9, 23.0], [16, 15, 2.6, 22.8], [44, 16, null, 24.5], [1, 20, 15.3, 35.0], [81, 22, 3.1, 23.4], [63, 30, 2.2, 22.0]],
+  303: [[81, 10, 2.8, 23.0]],
+  105: [[63, 18, 2.3, 22.5], [12, 20, 2.5, 22.9], [16, 21, 2.6, 22.4], [44, 22, 2.8, 23.1], [1, 25, 3.0, 23.6], [81, 26, 2.4, 22.7]],
+  205: [[63, 20, 2.5, 22.2]]
+};
+const pitFor = key => (PIT[key] || []).map(([n, lap, box, lane], i) => ({ meeting_key: 0, session_key: key, driver_number: n, lap_number: lap, date: new Date(startOf(key) + (lap + i) * 90e3).toISOString(), stop_duration: box, lane_duration: lane, pit_duration: lane }));
+
 function answer(url, { empty = [] } = {}){
   const u = new URL(url), key = +u.searchParams.get('session_key');
   const path = u.pathname.replace(/^\/v1/, '');
@@ -97,6 +107,7 @@ function answer(url, { empty = [] } = {}){
   if(path === '/stints') return stintsFor(key);
   if(path === '/drivers') return driversFor(key);
   if(path === '/starting_grid') return gridFor(key);
+  if(path === '/pit') return pitFor(key);
   return null;
 }
-module.exports = { STARTING, gridFor, NOW, SESSIONS, DRIVERS, RESERVE, raceControlFor, resultFor, ORDERS, answer, lapsFor, stintsFor, driversFor };
+module.exports = { pitFor, PIT, STARTING, gridFor, NOW, SESSIONS, DRIVERS, RESERVE, raceControlFor, resultFor, ORDERS, answer, lapsFor, stintsFor, driversFor };

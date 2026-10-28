@@ -42,6 +42,7 @@ site/                 The website (deployed as the site root, so URLs are unchan
                       preset and Node (`require`); takes the random generator and points tables as arguments.
   pace.html           Weekend Pace (#186): practice, sprint and qualifying laps from OpenF1; season controls with `upcoming:true` (see "Weekend Pace").
   openf1.js           F1OpenF1 (#186): OpenF1 fetch + cache and the pure helpers behind pace.html (also `require`d by Node tests).
+  pit.html / pit.js   Pit Stops (#203): time in the box by driver or team from saved OpenF1 data; F1Pit = the pure helpers (also `require`d by Node tests; see "Pit Stops").
   eras.html / eras.js Eras (#135): championship position per season since 1950 against rule eras; F1Eras = lineage map + model.
   whatif.html         What-if: drag a finishing order for a round, see both championships after it, with the title race (#85).
   common.js           F1Common: helpers shared by the chart pages (issue #44 and later).
@@ -72,6 +73,7 @@ tools/                snapshot.mjs: builds site/data/{year}.json (2021 on) from 
                       eras-snapshot.mjs (#135): builds site/data/eras.json (standings since 1950) from Jolpica (same workflow).
                       history-snapshot.mjs (#141): builds site/data/{1950..2020}.json (per-round results) from Jolpica (same workflow).
                       pace-snapshot.mjs (#186): saved copies of finished OpenF1 sessions, site/data/pace/ (own workflow, pace.yml); read by the Weekend Pace page.
+                      pit-snapshot.mjs (#203): pit stop times of finished Races and Sprints, site/data/pit/{year}.json (own workflow, pit.yml); read by the Pit Stops page.
                       qualifying-snapshot.mjs (#158): builds site/data/grid/{2014..}.json (qualifying position and Q1–Q3 times, starting grid
                       per driver, 0 = pit lane, plus each round's circuit id, the whole calendar's circuit ids and the upcoming round's qualifying) from
                       Jolpica (same workflow); read by the Simulator and What-If (#167) and the backtest.
@@ -732,6 +734,29 @@ slider reaches the race weekend that is on, before its Grand Prix. Only this pag
   `55-upcoming-round` (the option), `56-pace-snapshot` (the saved-copy tool: which sessions are saved and when, never twice, the live 401, 429, failures, the starting grid saved after qualifying and rewritten on a change (#201),
   sessions without laps) and, in `54-pace`, the saved copies, the closed API, older cached answers and the request spacing (harness options `pace`,
   `spacing` and `openf1.live` / `openf1.rate`).
+
+### Pit Stops (`pit.html`, `pit.js`, #203)
+
+Time in the box (how long the car stood still in its pit box) by driver or team, over the season so far, one race or a range of races. Data: OpenF1 `/pit`:
+`stop_duration` is the time in the box (what the page shows), `lane_duration` the whole pit lane (shown in the stops list only). **`stop_duration` is null for every
+stop before 2025 and for some since** (checked 2026-10-28: 2025 727 of 867 stops timed, 2026 160 of 801; 2024 none), so the page starts in 2025 (`F1Pit.FIRST_YEAR`)
+and says "n of m stops timed" everywhere. OpenF1 answers a session with no stops (most Sprints) with a 404 "No results found", which the tool reads as "no stops".
+- **Saved data only, no OpenF1 request from the page:** `tools/pit-snapshot.mjs`, run by `.github/workflows/pit.yml` (every 20 minutes Friday–Monday UTC, daily, on a change to
+  the tool or `pit.js`, or by hand with `all`), saves each finished Race and Sprint 20 minutes after it ends (and not twice; no stops within a day of the end = try again later) into
+  `site/data/pit/{year}.json` = `{v:1, year, generatedAt, sessions:[{key, meeting, name:'Race'|'Sprint', start, location, drivers:[[number, code]], stops:[[number, lap, box s|null, lane s|null]]}]}`
+  (`F1Pit.compact`). It ends quietly on OpenF1's live-session 401 (what was fetched before is kept). The page reads the season's file once (on loading the season, Refresh data and Retry).
+- **Rounds, drivers and teams are the site's** (`F1Pit.roundOf`: the calendar round whose Grand Prix date is from a day before to two days after the session's start, so a Sprint goes with its
+  Race; `F1Pit.stopsOf`: each driver's code is matched to that round's results for id, name and team, so a driver who changed team is counted for the right one; stops are numbered per driver and
+  session in lap order). A round without results yet has no stops.
+- **Long stops:** a box time over 10 s (`F1Pit.LONG`: repairs, penalties) is left out of the figures unless **Include long stops** is on; it stays in the stops list, marked ✕.
+  Untimed stops are counted in the total only. Figures (`F1Pit.aggregate`): fastest, average, median, timed stops used / all stops in view.
+- **Page:** the shared season controls (the slider's round is the last race of the range); **Compare** Drivers/Teams; **Races** Season so far (from round 1), This race (follows the slider)
+  or **from round N** to the slider's round; **Sessions** Race + Sprint / Race / Sprint; Include long stops. Cards: the picker (the site's rows; picks per view, shared with the other pages through
+  `loadPickerSelection`, default the top 5 of the standings), **Time in the box** table (click Fastest / Average / Median to sort by it), a bar chart of the statistic, the statistic by race
+  (two or more races; a team's second driver dashed) and **Every stop** (the 300 fastest, CSV has all). The statistic dropdown and the table headings are one setting. Share link keys: `from`
+  (`race` = follows the slider), `by`, `kinds`, `long`, `stat`, `d`, `t`. No interaction fetches.
+- **Not built yet / limits:** 2023–2024 (no box time), pit lane time as a view (Jolpica has `/pitstops` from 2011 with the pit lane time only; not used), stop-by-stop detail for tyre changes.
+- Tests: `59-pit-snapshot` (the tool), `60-pit-helpers` (the helpers in Node, and the committed files' shape), `61-pit` (the page; harness option `pit`, `lib/openf1-fixture.js` `PIT`).
 
 ## Design requirements (owner-approved — keep these)
 

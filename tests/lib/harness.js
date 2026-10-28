@@ -27,15 +27,16 @@ async function close(){ if(browser) await browser.close(); }
 //     listed gets the real file in site/data/grid/. page.gridHits lists the requests for it.
 //   tracks: an object served as site/data/tracks.json (#169), null = a 404; left out = the real file. page.trackHits lists the requests.
 //   pace: {list:{year: file}, sessions:{key: file}, grids:{raceKey: file}} served as site/data/pace/… (#186; a saved copy of a session, tools/pace-snapshot.mjs); anything else there is a 404. page.paceHits lists the requests.
+//   pit: {year: file|'error'|null} served as site/data/pit/{year}.json (#203; the saved pit stops, tools/pit-snapshot.mjs); anything else there is a 404, 'error' = HTTP 500. page.pitHits lists the requests.
 //   spacing: ms the Weekend Pace page waits between OpenF1 requests (0 here, its real value is 350).
 //   openf1: {fail(url), live: true|fn(url) (OpenF1 closed for a live session: 401), rate: {left: n} (the first n get a 429), empty:[session keys], answer(url, options) (replaces the fixture)} answers api.openf1.org from lib/openf1-fixture.js (#186); left out = the request is blocked. page.openf1Hits lists the requests.
 // The returned page has .errors (uncaught page errors), .apiHits (Jolpica requests made) and .done().
-async function openPage(name, {theme='light', width=1000, fail=()=>false, delay=0, snapshots={}, grids={}, tracks=undefined, openf1=null, pace={}, spacing=0, eras=null, now=null, timezone, locale}={}){
+async function openPage(name, {theme='light', width=1000, fail=()=>false, delay=0, snapshots={}, grids={}, tracks=undefined, openf1=null, pace={}, pit={}, spacing=0, eras=null, now=null, timezone, locale}={}){
   const ctx = await browser.newContext({ viewport:{width, height:1400}, ...(timezone ? {timezoneId:timezone} : {}), ...(locale ? {locale} : {}) });
   if(now !== null) await ctx.clock.setFixedTime(now);
   await ctx.addInitScript(t => { try{ localStorage.setItem('f1-theme', t); }catch(e){} }, theme);
   await ctx.addInitScript(n => { window.F1O_SPACING = n; }, spacing); // the Weekend Pace page's pause between OpenF1 requests (0 here)
-  const apiHits = [], snapshotHits = [], gridHits = [], trackHits = [], openf1Hits = [], openf1Times = [], paceHits = [];
+  const apiHits = [], snapshotHits = [], gridHits = [], trackHits = [], openf1Hits = [], openf1Times = [], paceHits = [], pitHits = [];
   await ctx.route('**/*', async route => {
     const url = route.request().url();
     if(url.startsWith('https://api.jolpi.ca/')){
@@ -72,6 +73,12 @@ async function openPage(name, {theme='light', width=1000, fail=()=>false, delay=
         const body = paceM[1] ? (pace.list || {})[paceM[1]] : (paceM[4] ? pace.grids : pace.sessions || {})[paceM[3]]; // pace.grids {key: file}: a Race's saved starting grid (#201)
         return body ? route.fulfill({status:200, contentType:'application/json', body:JSON.stringify(body)}) : route.fulfill({status:404, body:''});
       }
+      const pitM = new URL(url).pathname.match(/^\/data\/pit\/(\d{4})\.json$/);
+      if(pitM){ // saved pit stops (#203): only what the test gives; the real files are never served
+        pitHits.push(url);
+        const body = pit[pitM[1]];
+        return body === 'error' ? route.fulfill({status:500, body:'error'}) : body ? route.fulfill({status:200, contentType:'application/json', body:JSON.stringify(body)}) : route.fulfill({status:404, body:''});
+      }
       const gridM = new URL(url).pathname.match(/^\/data\/grid\/(\d{4})\.json$/);
       if(gridM){
         gridHits.push(url);
@@ -90,7 +97,7 @@ async function openPage(name, {theme='light', width=1000, fail=()=>false, delay=
     return route.abort();
   });
   const page = await ctx.newPage();
-  page.errors = []; page.apiHits = apiHits; page.snapshotHits = snapshotHits; page.gridHits = gridHits; page.trackHits = trackHits; page.openf1Hits = openf1Hits; page.openf1Times = openf1Times; page.paceHits = paceHits;
+  page.errors = []; page.apiHits = apiHits; page.snapshotHits = snapshotHits; page.gridHits = gridHits; page.trackHits = trackHits; page.openf1Hits = openf1Hits; page.openf1Times = openf1Times; page.paceHits = paceHits; page.pitHits = pitHits;
   page.on('pageerror', e => page.errors.push(e.message));
   page.done = () => ctx.close();
   await page.goto(`http://site.test/${name}.html`);
