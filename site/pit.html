@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pit Stops · F1 Data Explorer</title>
+<link rel="icon" href="favicon.ico" sizes="48x48">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="stylesheet" href="theme.css">
+<script src="theme.js"></script>
+<script src="nav.js"></script>
+<script src="common.js"></script>
+<script src="data.js"></script>
+<script src="pit.js"></script>
+<script src="share.js"></script>
+<script src="export.js"></script>
+<script src="controls.js"></script>
+<style>
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;padding:24px 16px 40px;}
+.wrap{max-width:820px;margin:0 auto;}
+h1{font-size:18px;margin:0 0 4px;color:var(--ink);}
+.sub{font-size:12.5px;color:var(--sub);margin:0 0 16px;}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:16px;}
+.note{font-size:11.5px;color:var(--sub);line-height:1.5;margin-top:10px;}
+.pitStatus{font-size:12px;color:var(--sub);margin:10px 0 0;}
+.pitStatus.err{color:var(--elim);}
+.cardTitle{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px;margin:0 0 10px;}
+.cardTitle b{font-size:13px;font-weight:600;color:var(--ink);}
+.cardTitle span{font-size:12px;color:var(--sub);}
+.opts{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;}
+.optGroup{display:inline-flex;flex-wrap:wrap;align-items:center;gap:6px;}
+.optLbl{font-size:12px;color:var(--sub);}
+.pitChartBox{position:relative;width:100%;}
+.pitEmpty{font-size:12.5px;color:var(--sub);display:none;margin-top:8px;}
+.pitTable{width:100%;border-collapse:collapse;font-size:12.5px;font-variant-numeric:tabular-nums;}
+.pitTable th{font-size:11.5px;font-weight:600;color:var(--sub);text-align:right;padding:4px 8px;border-bottom:1px solid var(--line);white-space:nowrap;}
+.pitTable th.sortable{cursor:pointer;}
+.pitTable th.sortable:hover,.pitTable th.on{color:var(--ink);}
+.pitTable td{text-align:right;padding:5px 8px;border-bottom:1px solid var(--line);white-space:nowrap;}
+.pitTable th:first-child,.pitTable td:first-child{text-align:left;padding-left:2px;}
+.pitTable td.who{font-weight:600;}
+.pitTable td.on{font-weight:700;color:var(--ink);}
+.pitTable td.dim{color:var(--sub);}
+.pitTable .dim,.pitTable td.dim{color:var(--sub);}
+.pitTable .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;vertical-align:baseline;}
+.tableScroll{overflow-x:auto;}
+.tableScroll.tall{max-height:380px;overflow-y:auto;}
+.pitTable.left th,.pitTable.left td{text-align:left;}
+.pitTable.stops td:nth-child(n+4),.pitTable.stops th:nth-child(n+4){text-align:right;}
+@media (max-width:600px){ .pitTable{font-size:10.5px;} .pitTable th{font-size:10.5px;} .pitTable th,.pitTable td{padding:5px 3px;} .pitTable .dot{margin-right:4px;} }
+</style>
+</head>
+<body>
+<div class="wrap">
+<div class="theme-bar"><nav id="siteNav" class="site-nav" aria-label="Site"></nav><div id="themeToggle"></div></div>
+<h1>Pit Stops</h1>
+<p class="sub">Time in the box: how long each car stood still in its pit box, from OpenF1 and saved on this site after each Grand Prix and Sprint. Compare drivers or teams over the season so far, a single race, or a range of races.</p>
+<div id="f1controls" class="f1c"></div>
+
+<div class="card" id="viewCard">
+<div class="opts">
+ <div class="optGroup" role="group" aria-label="Compare"><span class="optLbl">Compare</span>
+  <button type="button" class="pill" data-by="drivers">Drivers</button>
+  <button type="button" class="pill" data-by="teams">Teams</button></div>
+ <div class="optGroup" role="group" aria-label="Races"><span class="optLbl">Races</span>
+  <button type="button" class="pill" data-span="season">Season so far</button>
+  <button type="button" class="pill" data-span="race">This race</button>
+  <label class="optLbl" for="fromSel">from round</label><select id="fromSel" class="ddSelect" aria-label="First round of the range"></select>
+  <span class="optLbl" id="toLbl"></span></div>
+ <div class="optGroup" role="group" aria-label="Sessions"><span class="optLbl">Sessions</span>
+  <button type="button" class="pill" data-kinds="both">Race + Sprint</button>
+  <button type="button" class="pill" data-kinds="race">Race</button>
+  <button type="button" class="pill" data-kinds="sprint">Sprint</button></div>
+ <label class="optCheck" title="Stops over 10 seconds are repairs or penalties, not pit stops; they are left out of the figures unless this is ticked"><input type="checkbox" id="longChk"> Include long stops</label>
+</div>
+<div class="pitStatus" id="pitStatus">Loading the season…</div>
+</div>
+
+<div class="card" id="pickCard">
+<div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:10px;">
+ <button type="button" class="pickerToggle" id="pickerToggle" aria-expanded="true" aria-controls="pitPicker" title="Show or hide the list"><span class="chev" aria-hidden="true">▾</span><span id="pickerLabel">Drivers shown</span></button><span id="pickerSummary" class="pickerSummary"></span>
+</div>
+<div class="btnrow" id="presetRow" style="margin-bottom:10px;"></div>
+<div id="pitPicker" class="f1-skel"></div>
+</div>
+
+<div class="card" id="sumCard">
+<div class="cardTitle"><b>Time in the box</b><span id="sumSub"></span></div>
+<div class="tableScroll"><table class="pitTable" id="sumTable"></table></div>
+<div class="pitEmpty" id="sumEmpty">Nothing to show.</div>
+<div class="note" id="sumNote"></div>
+</div>
+
+<div class="card" id="barCard">
+<div class="cardTitle"><b id="barTitle">Median time in the box</b><span id="barSub"></span></div>
+<div class="opts" style="margin-bottom:10px;">
+ <span class="optLbl">Statistic</span>
+ <select id="statSel" class="ddSelect" aria-label="Which figure the chart, the trend and the table are sorted by">
+  <option value="median">Median</option><option value="mean">Average</option><option value="fastest">Fastest</option></select>
+</div>
+<div class="pitChartBox" id="barWrap"><canvas id="barCanvas" role="img" aria-label="Time in the box of each picked driver or team, fastest first"></canvas></div>
+<div class="pitEmpty" id="barEmpty">Nothing to show.</div>
+</div>
+
+<div class="card" id="trendCard">
+<div class="cardTitle"><b id="trendTitle">Median time in the box by race</b><span id="trendSub"></span></div>
+<div class="pitChartBox" id="trendWrap" style="height:320px;"><canvas id="trendCanvas" role="img" aria-label="The statistic for each picked driver or team, race by race"></canvas></div>
+<div class="pitEmpty" id="trendEmpty">Pick a range of two or more races to see the trend.</div>
+</div>
+
+<div class="card" id="stopCard">
+<div class="cardTitle"><b>Every stop</b><span id="stopSub"></span></div>
+<div class="tableScroll tall"><table class="pitTable left stops" id="stopTable"></table></div>
+<div class="pitEmpty" id="stopEmpty">Nothing to show.</div>
+<div class="note" id="stopNote"></div>
+</div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+const ff = getComputedStyle(document.body).fontFamily;
+const $ = id => document.getElementById(id);
+const esc = t => String(t == null ? '' : t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+const P = F1Pit;
+const STATS = { median: 'Median', mean: 'Average', fastest: 'Fastest' };
+const DASH = [6, 4]; // a team's second driver
+
+// the season and round come from F1Controls; the round is the last race of the range
+let year = null, calendar = null, seasonRounds = [], resultRounds = [], round = 0;
+let file = null, stops = [], token = 0, notice = '';
+let from = 1; // first round of the range; null = "This race" (follows the slider)
+let kinds = 'both', by = 'drivers', longs = false, stat = 'median';
+let selected = { drivers: null, teams: null }; // picked ids per view; null = the default (the top 5 of the standings)
+let barChart = null, trendChart = null, stopRows = [];
+
+const status = (text, err) => { const s = $('pitStatus'); s.className = 'pitStatus' + (err ? ' err' : ''); s.innerHTML = text; };
+const fromRound = () => from == null ? round : Math.max(1, Math.min(from, round));
+const kindSet = () => new Set(kinds === 'both' ? P.KINDS : [kinds === 'race' ? 'Race' : 'Sprint']);
+const color = id => F1Theme.team(F1Common.teamColor(id));
+const raceName = r => F1Common.shortGP((calendar && calendar.raceNames && calendar.raceNames[r]) || (seasonRounds[r - 1] || {}).raceName) || `Round ${r}`;
+const rangeText = () => { const f = fromRound(); return f === round ? `Round ${round}, ${raceName(round)}` : `Rounds ${f}–${round}`; };
+
+// ---- state in the URL: the season and round are F1Controls' (F1Share), the rest is registered here ----
+F1Share.register(() => ({
+  from: from == null ? 'race' : from === 1 ? null : from,
+  by: by === 'drivers' ? null : by,
+  kinds: kinds === 'both' ? null : kinds,
+  long: longs ? '1' : null,
+  stat: stat === 'median' ? null : stat,
+  d: selected.drivers ? selected.drivers.join(',') : null,
+  t: selected.teams ? selected.teams.join(',') : null,
+}));
+
+// ---- season ----
+async function onSelection(detail){
+  const my = ++token;
+  year = detail.year; seasonRounds = detail.seasonRounds; resultRounds = seasonRounds.filter(r => !r.upcoming); round = detail.round;
+  file = null; stops = []; notice = '';
+  const link = F1Share.take(); // a shared link's setup, first season only
+  if(link){
+    const f = link.get('from'); from = f === 'race' ? null : Math.max(1, +f || 1);
+    by = link.get('by') === 'teams' ? 'teams' : 'drivers'; kinds = ['race', 'sprint'].includes(link.get('kinds')) ? link.get('kinds') : 'both';
+    longs = link.get('long') === '1'; if(STATS[link.get('stat')]) stat = link.get('stat');
+    const dv = Object.keys(F1Data.cumulative(resultRounds, resultRounds.length).drivers), tv = Object.keys(F1Data.cumulative(resultRounds, resultRounds.length).teams);
+    selected = { drivers: F1Share.ids(link.get('d'), dv), teams: F1Share.ids(link.get('t'), tv) };
+    syncControls();
+  }else{
+    const cum = F1Data.cumulative(resultRounds, resultRounds.length);
+    selected = { drivers: F1Common.loadPickerSelection('drivers', year, Object.keys(cum.drivers)), teams: F1Common.loadPickerSelection('teams', year, Object.keys(cum.teams)) };
+  }
+  if(year < P.FIRST_YEAR){ render(); status(`OpenF1 has pit stop times from ${P.FIRST_YEAR} on, so there is nothing to show for ${year}.`, true); return; }
+  status('Loading the pit stops…');
+  try{ calendar = await F1Data.getCalendar(year, { dates: true }); }catch(e){ calendar = null; }
+  try{
+    const res = await fetch(`data/pit/${year}.json`, detail.fresh ? { cache: 'reload' } : undefined);
+    if(res.status === 404) file = { sessions: [] };
+    else if(!res.ok) throw new Error('HTTP ' + res.status);
+    else file = await res.json();
+  }catch(e){
+    if(my !== token) return;
+    render(); status('Couldn’t load the saved pit stops. <button type="button" class="f1c-link" id="retry">Retry</button>', true);
+    $('retry').addEventListener('click', () => onSelection({ ...detail, fresh: true }));
+    return;
+  }
+  if(my !== token) return;
+  stops = P.stopsOf(file, calendar, resultRounds);
+  render();
+  if(link) F1Share.sync();
+}
+
+// ---- what is in view ----
+const view = () => P.select(stops, { from: fromRound(), to: round, kinds: kindSet(), longs });
+const standings = () => resultRounds.length ? F1Common.standingsOrder(resultRounds, Math.min(round, resultRounds.length), by) : [];
+function ordered(ents){ // fastest first by the chosen statistic; no figure last
+  return [...ents].sort((a, b) => ((a[stat] ?? Infinity) - (b[stat] ?? Infinity)) || (b.total - a.total) || a.label.localeCompare(b.label));
+}
+function defaultIds(ents){
+  const ids = new Set(ents.map(e => e.id)), top = standings().filter(id => ids.has(id)).slice(0, 5);
+  return top.length ? top : ordered(ents).slice(0, 5).map(e => e.id);
+}
+const pickedIds = ents => { const ids = new Set(ents.map(e => e.id)), s = selected[by]; return s ? s.filter(id => ids.has(id)) : defaultIds(ents); };
+function setPicked(ids, ents){
+  const def = defaultIds(ents);
+  selected[by] = F1Share.sameSet(ids, def) ? null : ids;
+  F1Common.savePickerSelection(by, year, ids, def);
+  render();
+}
+const PRESETS = [['all', 'All'], ['none', 'None'], ['5', 'Top 5'], ['10', 'Top 10']];
+const presetIds = (k, ents) => { const st = standings().filter(id => ents.some(e => e.id === id)); const rest = ents.map(e => e.id).filter(id => !st.includes(id)); const rank = [...st, ...rest];
+  return k === 'all' ? ents.map(e => e.id) : k === 'none' ? [] : rank.slice(0, +k); };
+
+// ---- render ----
+function syncControls(){
+  document.querySelectorAll('[data-by]').forEach(b => b.classList.toggle('active', b.dataset.by === by));
+  document.querySelectorAll('[data-kinds]').forEach(b => b.classList.toggle('active', b.dataset.kinds === kinds));
+  document.querySelectorAll('[data-span]').forEach(b => b.classList.toggle('active', b.dataset.span === 'race' ? fromRound() === round : fromRound() === 1 && round > 1));
+  const f = fromRound(); $('fromSel').innerHTML = Array.from({ length: Math.max(round, 1) }, (_, i) => `<option value="${i + 1}">${i + 1}</option>`).join(''); $('fromSel').value = f;
+  $('toLbl').textContent = f === round ? '' : `to round ${round} (the slider)`;
+  $('longChk').checked = longs; $('statSel').value = stat;
+}
+function show(card, any){
+  $(card + 'Empty').style.display = any ? 'none' : 'block';
+  document.querySelector({ sum: '#sumCard .tableScroll', bar: '#barWrap', trend: '#trendWrap', stop: '#stopCard .tableScroll' }[card]).style.display = any ? '' : 'none';
+}
+function render(){
+  syncControls();
+  const noun = by === 'teams' ? 'Teams' : 'Drivers';
+  $('pickerLabel').textContent = noun + ' shown';
+  const v = view(), ents = ordered(P.aggregate(v, by)), picked = pickedIds(ents), chosen = ents.filter(e => picked.includes(e.id));
+  // the picker
+  $('presetRow').innerHTML = PRESETS.map(([k, label]) => `<button type="button" class="pill" data-preset="${k}">${label}</button>`).join('');
+  const sets = Object.fromEntries(PRESETS.map(([k]) => [k, presetIds(k, ents)]));
+  F1Common.markActivePreset(sets, picked);
+  $('pitPicker').innerHTML = ents.map((e, i) => { const on = picked.includes(e.id), val = e[stat] != null ? P.fmt(e[stat]) : '–';
+    return by === 'teams'
+      ? `<label class="pickerRow"><input type="checkbox" data-id="${esc(e.id)}"${on ? ' checked' : ''}><span class="pickerRank">${i + 1}</span><span class="pickerDot" style="background:${color(e.teamId)}"></span><span class="pickerName${on ? '' : ' off'}">${esc(e.label)}</span><span class="pickerPts">${val}</span></label>`
+      : F1Common.driverPickerRowHTML({ driverId: e.id, name: esc(e.label), code: esc(e.code), teamId: e.teamId }, { rank: i + 1, checked: on, valueText: val }); }).join('');
+  F1Common.updatePickerSummary(chosen.map(e => e.id), ents.length, noun.toLowerCase());
+  Chart.defaults.font.family = ff; Chart.defaults.color = F1Theme.chart().text;
+  const where = rangeText(), what = kinds === 'both' ? 'Races and Sprints' : kinds === 'race' ? 'Races' : 'Sprints';
+  $('sumSub').textContent = $('barSub').textContent = $('trendSub').textContent = $('stopSub').textContent = `${where} · ${what}`;
+  $('barTitle').textContent = `${STATS[stat]} time in the box`; $('trendTitle').textContent = `${STATS[stat]} time in the box by race`;
+  // the status line: how much of the data is there
+  if(year >= P.FIRST_YEAR && file){
+    const all = v.inView.length;
+    notice = !all ? '' : `${all - v.untimed} of ${all} stops timed${v.untimed ? ` (OpenF1 has no time in the box for ${v.untimed})` : ''}${v.long ? `; ${v.long} over ${P.LONG} s left out of the figures` : ''}.`;
+    status(all ? notice : year >= P.FIRST_YEAR && !file.sessions.length ? `No pit stops are saved for ${year} yet.` : 'No pit stops in this range.', !all && !file.sessions.length);
+  }
+  drawTable(chosen, v); drawBars(chosen); drawTrend(chosen, v); drawStops(chosen, v);
+  F1Share.sync();
+}
+function drawTable(chosen, v){
+  const head = (key, label) => `<th class="sortable${stat === key ? ' on' : ''}" data-stat="${key}" title="Sort by ${label.toLowerCase()}">${label}${stat === key ? ' ▲' : ''}</th>`;
+  $('sumTable').innerHTML = `<thead><tr><th>${by === 'teams' ? 'Team' : 'Driver'}</th>${head('fastest', 'Fastest')}${head('mean', 'Average')}${head('median', 'Median')}<th title="Stops used for the figures, of all stops in view">Stops</th></tr></thead><tbody>` +
+    chosen.map(e => `<tr><td class="who"><span class="dot" style="background:${color(e.teamId)}"></span>${esc(by === 'teams' ? e.label : e.code)}</td>` +
+      ['fastest', 'mean', 'median'].map(k => `<td class="${stat === k ? 'on' : ''}">${P.fmt(e[k], k === 'mean' ? 2 : 1)}</td>`).join('') + `<td class="dim">${e.n} / ${e.total}</td></tr>`).join('') + '</tbody>';
+  $('sumNote').textContent = `Time in the box is how long the car was stationary, not the time in the pit lane. Figures use the stops OpenF1 timed${longs ? '' : `, leaving out stops over ${P.LONG} s (repairs, penalties)`}.`;
+  show('sum', chosen.length > 0);
+}
+function drawBars(chosen){
+  const rows = chosen.filter(e => e[stat] != null);
+  if(barChart){ barChart.destroy(); barChart = null; }
+  show('bar', rows.length > 0); if(!rows.length) return;
+  const T = F1Theme.chart();
+  $('barWrap').style.height = (60 + rows.length * 26) + 'px';
+  barChart = new Chart($('barCanvas'), { type: 'bar',
+    data: { labels: rows.map(e => by === 'teams' ? e.label : e.code), datasets: [{ data: rows.map(e => +e[stat].toFixed(2)), backgroundColor: rows.map(e => color(e.teamId)), borderRadius: 3 }] },
+    options: { indexAxis: 'y', responsive: true, maintainAspectRatio: false, animation: false,
+      plugins: { legend: { display: false }, tooltip: { callbacks: { title: i => rows[i[0].dataIndex].label, label: i => { const e = rows[i.dataIndex]; return `${STATS[stat]} ${P.fmt(e[stat], 2)} s · ${e.n} timed of ${e.total} stops`; } } } },
+      scales: { x: { beginAtZero: true, grid: { color: T.grid }, border: { color: T.axis }, title: { display: true, text: 'seconds in the box' } }, y: { grid: { display: false }, border: { color: T.axis } } } } });
+}
+function drawTrend(chosen, v){
+  const pr = P.perRound(v, by, stat);
+  if(trendChart){ trendChart.destroy(); trendChart = null; }
+  const lines = chosen.filter(e => (pr.series[e.id] || []).some(x => x != null));
+  show('trend', pr.rounds.length > 1 && lines.length > 0); if(pr.rounds.length < 2 || !lines.length) return;
+  const T = F1Theme.chart(), seenTeam = {};
+  const datasets = lines.map(e => { const second = by === 'drivers' && seenTeam[e.teamId]; seenTeam[e.teamId] = true;
+    return { label: by === 'teams' ? e.label : e.code, data: pr.series[e.id], borderColor: color(e.teamId), backgroundColor: color(e.teamId), borderWidth: 2, pointRadius: 3, tension: 0, spanGaps: true, borderDash: second ? DASH : [] }; });
+  trendChart = new Chart($('trendCanvas'), { type: 'line', data: { labels: pr.rounds.map(r => 'R' + r), datasets },
+    options: { responsive: true, maintainAspectRatio: false, animation: false, interaction: { mode: 'nearest', intersect: false },
+      plugins: { legend: { position: 'bottom', labels: { boxWidth: 18, usePointStyle: false } }, tooltip: { callbacks: { title: i => { const r = pr.rounds[i[0].dataIndex]; return `Round ${r}, ${raceName(r)}`; }, label: i => `${i.dataset.label}: ${P.fmt(i.parsed.y, 2)} s` } } },
+      scales: { x: { grid: { display: false }, border: { color: T.axis } }, y: { grid: { color: T.grid }, border: { color: T.axis }, title: { display: true, text: 'seconds in the box' } } } } });
+}
+const MAX_STOPS = 300;
+function drawStops(chosen, v){
+  const ids = new Set(chosen.map(e => e.id)), key = s => by === 'teams' ? s.teamId : s.driverId;
+  const rows = v.inView.filter(s => ids.has(key(s))).sort((a, b) => ((a.stop ?? Infinity) - (b.stop ?? Infinity)) || (a.round - b.round) || (a.lap - b.lap));
+  stopRows = rows;
+  const shown = rows.slice(0, MAX_STOPS);
+  $('stopTable').innerHTML = '<thead><tr><th>Round</th><th>Driver</th><th>Team</th><th>Stop</th><th>Lap</th><th>Box (s)</th><th>Lane (s)</th></tr></thead><tbody>' + shown.map(s =>
+    `<tr><td title="${esc(raceName(s.round))}">${s.round}${s.kind === 'Sprint' ? ' <span class="dim">Sprint</span>' : ''}</td><td class="who"><span class="dot" style="background:${color(s.teamId)}"></span>${esc(s.code)}</td><td>${esc(F1Common.shortTeamName(s.teamId, s.teamName))}</td>` +
+    `<td>${s.n}</td><td>${s.lap}</td><td class="${s.stop == null || (s.long && !longs) ? 'dim' : 'on'}" title="${s.stop == null ? 'OpenF1 has no time in the box for this stop' : s.long && !longs ? 'Left out of the figures: over ' + P.LONG + ' s' : ''}">${s.stop == null ? '–' : P.fmt(s.stop)}${s.long && !longs ? ' ✕' : ''}</td><td class="dim">${P.fmt(s.lane)}</td></tr>`).join('') + '</tbody>';
+  $('stopNote').textContent = rows.length > MAX_STOPS ? `The ${MAX_STOPS} fastest of ${rows.length} stops are shown; the CSV has all of them. ` : '';
+  $('stopNote').textContent += 'Box is the time in the box; Lane is the whole pit lane, entry to exit. ✕ marks a stop left out of the figures for being over ' + P.LONG + ' s.';
+  show('stop', rows.length > 0);
+}
+
+// ---- export ----
+const subtitle = () => `${year} · ${rangeText()}`;
+F1Export.attach($('sumCard'), { name: 'pit-summary', title: () => 'Time in the box', subtitle, noPng: true,
+  csv: () => { const e = F1Export.tableRows($('sumTable')); return e.length > 1 ? e : null; } });
+F1Export.attach($('barCard'), { name: 'pit-bars', title: () => `${STATS[stat]} time in the box`, subtitle, canvas: () => $('barCanvas'),
+  csv: () => barChart ? [[by === 'teams' ? 'Team' : 'Driver', STATS[stat] + ' (s)'], ...barChart.data.labels.map((l, i) => [l, barChart.data.datasets[0].data[i]])] : null });
+F1Export.attach($('trendCard'), { name: 'pit-trend', title: () => `${STATS[stat]} time in the box by race`, subtitle, canvas: () => $('trendCanvas'),
+  csv: () => trendChart ? [['Round', ...trendChart.data.datasets.map(d => d.label)], ...trendChart.data.labels.map((l, i) => [l.slice(1), ...trendChart.data.datasets.map(d => d.data[i] == null ? '' : +d.data[i].toFixed(2))])] : null });
+F1Export.attach($('stopCard'), { name: 'pit-stops', title: () => 'Every stop', subtitle, noPng: true,
+  csv: () => stopRows.length ? [['Round', 'Session', 'Driver', 'Team', 'Stop', 'Lap', 'Time in the box (s)', 'Pit lane (s)', 'Over ' + P.LONG + ' s'], ...stopRows.map(s => [s.round, s.kind, s.code, s.teamName, s.n, s.lap, s.stop, s.lane, s.long ? 'yes' : ''])] : null });
+
+// ---- events (none of these fetch) ----
+window.addEventListener('f1selection', e => onSelection(e.detail));
+window.addEventListener('f1roundchange', e => { round = e.detail.round; if(file) render(); });
+window.addEventListener('themechange', () => { if(file) render(); });
+document.querySelectorAll('[data-by]').forEach(b => b.addEventListener('click', () => { by = b.dataset.by; render(); }));
+document.querySelectorAll('[data-kinds]').forEach(b => b.addEventListener('click', () => { kinds = b.dataset.kinds; render(); }));
+document.querySelectorAll('[data-span]').forEach(b => b.addEventListener('click', () => { from = b.dataset.span === 'race' ? null : 1; render(); }));
+$('fromSel').addEventListener('change', e => { from = +e.target.value; render(); });
+$('longChk').addEventListener('change', e => { longs = e.target.checked; render(); });
+$('statSel').addEventListener('change', e => { stat = e.target.value; render(); });
+$('sumTable').addEventListener('click', e => { const th = e.target.closest('th[data-stat]'); if(th){ stat = th.dataset.stat; render(); } });
+$('pitPicker').addEventListener('change', e => {
+  const ents = P.aggregate(view(), by), id = e.target.dataset.id, cur = pickedIds(ents);
+  setPicked(e.target.checked ? [...cur, id] : cur.filter(x => x !== id), ents);
+});
+$('presetRow').addEventListener('click', e => { const b = e.target.closest('.pill'); if(!b) return; const ents = P.aggregate(view(), by); setPicked(presetIds(b.dataset.preset, ents), ents); });
+F1Common.initPickerToggle();
+F1Controls.mount('f1controls');
+</script>
+</body>
+</html>

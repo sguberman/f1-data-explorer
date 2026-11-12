@@ -242,7 +242,7 @@ html.f1-loading .f1-skel::after{content:"";position:absolute;inset:0;z-index:6;b
 .pickerCollapsed .pickerSummary{display:inline;margin-left:6px;}
 .pickerCollapsed .pickerSummary::before{content:"· ";}
 .pickerCollapsed .pickerSort{display:none;}
-.pickerCollapsed #driverPicker,.pickerCollapsed #teamPicker,.pickerCollapsed #pacePicker{display:none;}
+.pickerCollapsed #driverPicker,.pickerCollapsed #teamPicker,.pickerCollapsed #pacePicker,.pickerCollapsed #pitPicker{display:none;}
 /* #103: "Projection from" stepper on the championship pages' points chart */
 .projStep .stepper{display:flex;align-items:center;gap:2px;}
 .projStep .stepper button{width:26px;height:26px;padding:0;border-radius:6px;background:var(--ctrl);color:var(--ink);border:1px solid var(--line);font-size:15px;font-weight:600;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;}
